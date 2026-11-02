@@ -107,6 +107,48 @@ export function WeekView({ week }: {
   const selectedDistance = selectedWorkout
     ? estimatedWorkoutDistanceKm(selectedWorkout, vdot)
     : null;
+  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
+
+  useEffect(() => {
+    if (!copyStatus) return;
+    const timeout = window.setTimeout(() => setCopyStatus(null), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [copyStatus]);
+
+  function weekAsText(): string {
+    const lines = [
+      `${t.week.heading} · ${formatDate(locale, week.startDate)} – ${formatDate(locale, addDays(week.startDate, 6))}`,
+      `${t.week.weeklyTime}: ${formatDuration(total, t)} · ${t.week.estimatedWeeklyDistance}: ~${distanceRange(locale, minKm, maxKm, t)} · VDOT ${formatDecimal(locale, vdot)}`,
+    ];
+    for (let day = 0; day < 7; day++) {
+      const workout = week.workouts.find((entry) => entry.day === day);
+      const date = `${weekdayName(locale, day)} ${formatDate(locale, addDays(week.startDate, day))}`;
+      lines.push("");
+      if (!workout) {
+        lines.push(`${date}: ${t.week.rest}`);
+        continue;
+      }
+      const distance = estimatedWorkoutDistanceKm(workout, vdot);
+      lines.push(`${date}: ${workout.durationMinutes} ${t.units.min} · ${t.workouts[workoutLabelKey(workout.type ?? "easy")]}${distance ? ` · ~${distanceRange(locale, distance.min, distance.max, t)}` : ""}`);
+      const plan = workout.type && workout.type !== "easy" && workout.type !== "long"
+        ? workoutSessionPlan(workout.type, vdot, workout.durationMinutes,
+          workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0))
+        : null;
+      if (plan) lines.push(...workoutDetailLines(plan.steps, vdot, t).map((step) => `- ${step.description}`));
+      else lines.push(`- ${t.week.estimatedEasyPace}: ${easyPace}`);
+    }
+    return lines.join("\n");
+  }
+
+  async function copyWeek() {
+    try {
+      await navigator.clipboard.writeText(weekAsText());
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
+  }
+
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -137,6 +179,18 @@ export function WeekView({ week }: {
           VDOT {formatDecimal(locale, vdot)}
           <span className="sr-only"> {t.week.atGeneration}</span>
         </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <p role="status" className="text-sm text-stone-600">
+          {copyStatus === "copied" ? t.week.copied : copyStatus === "failed" ? t.week.copyFailed : ""}
+        </p>
+        <button type="button" aria-label={t.week.copyWeek} title={t.week.copyWeek} onClick={copyWeek}
+          className="rounded-lg border border-stone-200 bg-white p-2 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-5">
+            <rect x="8" y="8" width="12" height="13" rx="2" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" />
+          </svg>
+        </button>
       </div>
     </div>
     <ol aria-label={t.week.calendar} className="mt-4 grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-4 lg:grid-cols-7">

@@ -94,7 +94,9 @@ duration. The pace ranges and example formats follow the [VDOT2 training
 definitions](https://vdoto2.com/Calculator). These are illustrative sessions,
 not individualized coaching advice.
 
-Select a calendar day to view its workout details. Non-easy workouts include an
+Select a calendar day to view its workout details. The copy button copies the
+week, including workout steps and paces, as plain text in the current language.
+Non-easy workouts include an
 option to download a Garmin FIT workout file. Files contain timed workout steps
 and VDOT-derived pace targets where available. Transfer the downloaded file to
 a compatible Garmin device using Garmin Connect or the device's supported
