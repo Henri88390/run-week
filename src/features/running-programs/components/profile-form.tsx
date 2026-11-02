@@ -43,13 +43,13 @@ function DistanceInput({ label, value, onChange }: { label: string; value: numbe
   );
 }
 
-export function ProfileForm({ profile, onSave, onCancel }: {
+export function ProfileForm({ profile, onSave }: {
   profile?: Profile;
   onSave: (profile: Profile) => void;
-  onCancel?: () => void;
 }) {
   const [distance, setDistance] = useState(profile?.distanceMeters ?? 5000);
-  const [hours, setHours] = useState(profile ? Math.floor(profile.raceSeconds / 3600).toString() : "");
+  const [hours, setHours] = useState(profile && profile.distanceMeters > 5000
+    ? Math.floor(profile.raceSeconds / 3600).toString() : "");
   const [minutes, setMinutes] = useState(profile ? Math.floor(profile.raceSeconds % 3600 / 60).toString() : "");
   const [seconds, setSeconds] = useState(profile ? (profile.raceSeconds % 60).toString() : "");
   const [weeklyTargetMode, setWeeklyTargetMode] = useState<"distance" | "time" | "unspecified">(
@@ -63,7 +63,14 @@ export function ProfileForm({ profile, onSave, onCancel }: {
   const [schedule, setSchedule] = useState<Schedule>(profile?.schedule ?? { mode: "count", count: 3 });
   const [errors, setErrors] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
-  const raceSeconds = Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+  const updateDistance = (value: number) => {
+    setDistance(value);
+    setHours("");
+    setMinutes("");
+    setSeconds("");
+  };
+  const usesHours = distance > 5000;
+  const raceSeconds = (usesHours ? Number(hours) * 3600 : 0) + Number(minutes) * 60 + Number(seconds);
   const draft: Profile = {
     distanceMeters: distance, raceSeconds, vdot: calculateVdot(distance, raceSeconds),
     goal: profile?.goal ?? "none", goalDistanceMeters: profile?.goalDistanceMeters ?? 5000, schedule,
@@ -71,7 +78,7 @@ export function ProfileForm({ profile, onSave, onCancel }: {
     desiredWeeklyDurationMinutes: weeklyTargetMode === "time"
       ? Number(weeklyHours) * 60 + Number(weeklyMinutes) : null,
   };
-  const hoursValid = !hours || (/^\d+$/.test(hours) && Number(hours) <= 8);
+  const hoursValid = !usesHours || !hours || (/^\d+$/.test(hours) && Number(hours) <= 8);
   const minutesValid = !minutes || (/^\d+$/.test(minutes) && Number(minutes) <= 59);
   const secondsValid = !seconds || (/^\d+$/.test(seconds) && Number(seconds) <= 59);
   const timePartsValid = hoursValid && minutesValid && secondsValid;
@@ -82,15 +89,15 @@ export function ProfileForm({ profile, onSave, onCancel }: {
     ? validatePerformance(distance, raceSeconds).find((error) => error.includes("supported estimate range")) ?? ""
     : "";
   const weeklyHoursValid = weeklyTargetMode !== "time" || (/^\d+$/.test(weeklyHours) && Number(weeklyHours) <= 168);
-  const weeklyMinutesValid = weeklyTargetMode !== "time" || (/^\d+$/.test(weeklyMinutes) && Number(weeklyMinutes) <= 59);
+  const weeklyMinutesValid = weeklyTargetMode !== "time" || !weeklyMinutes
+    || (/^\d+$/.test(weeklyMinutes) && Number(weeklyMinutes) <= 59);
   const weeklyTargetError = submitted
     ? validateProfile(draft).find((error) => error.toLowerCase().includes("desired weekly") || error.toLowerCase().includes("choose either")) ?? ""
     : "";
   const hasChanges = !profile || !profilesMatch(profile, draft);
   return (
-    <section className="panel" aria-labelledby="setup-heading">
-      <h1 id="setup-heading" className="text-xl font-semibold">{profile ? "Edit setup" : "Set up your week"}</h1>
-      <form noValidate className="mt-6 space-y-6" onSubmit={(event) => {
+    <>
+      <form noValidate className="mt-4 space-y-4" onSubmit={(event) => {
         event.preventDefault();
         const issues = validateProfile(draft);
         setSubmitted(true);
@@ -98,12 +105,12 @@ export function ProfileForm({ profile, onSave, onCancel }: {
         setErrors(issues);
         if (!issues.length) onSave(draft);
       }}>
-        <div className="grid items-start gap-6 sm:grid-cols-2">
-          <DistanceInput label="Recent performance distance" value={distance} onChange={setDistance} />
+        <div className="grid items-start gap-4 sm:grid-cols-2">
+          <DistanceInput label="Recent performance distance" value={distance} onChange={updateDistance} />
           <fieldset>
-            <legend className="field-label">Race time (hours : minutes : seconds)</legend>
-            <div className="grid grid-cols-3 gap-2">
-              <label><span className="sr-only">Hours</span><input className={`field ${submitted && !hoursValid ? "border-red-600" : ""}`} aria-label="Hours" aria-invalid={submitted && !hoursValid} aria-describedby={submitted && !hoursValid ? "hours-error" : undefined} type="number" min="0" max="8" step="1" placeholder="h" value={hours} onChange={(event) => setHours(event.target.value)} /></label>
+            <legend className="field-label">Race time ({usesHours ? "hours : minutes : seconds" : "minutes : seconds"})</legend>
+            <div className={`grid ${usesHours ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
+              {usesHours && <label><span className="sr-only">Hours</span><input className={`field ${submitted && !hoursValid ? "border-red-600" : ""}`} aria-label="Hours" aria-invalid={submitted && !hoursValid} aria-describedby={submitted && !hoursValid ? "hours-error" : undefined} type="number" min="0" max="8" step="1" placeholder="h" value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
               <label><span className="sr-only">Minutes</span><input className={`field ${submitted && !minutesValid ? "border-red-600" : ""}`} aria-label="Minutes" aria-invalid={submitted && !minutesValid} aria-describedby={submitted && !minutesValid ? "minutes-error" : undefined} type="number" min="0" max="59" step="1" placeholder="m" value={minutes} onChange={(event) => setMinutes(event.target.value)} /></label>
               <label><span className="sr-only">Seconds</span><input className={`field ${submitted && !secondsValid ? "border-red-600" : ""}`} aria-label="Seconds" aria-invalid={submitted && !secondsValid} aria-describedby={submitted && !secondsValid ? "seconds-error" : undefined} type="number" min="0" max="59" step="1" placeholder="s" value={seconds} onChange={(event) => setSeconds(event.target.value)} /></label>
             </div>
@@ -116,10 +123,10 @@ export function ProfileForm({ profile, onSave, onCancel }: {
             {performanceError && <p className="mt-2 text-sm text-red-700" role="alert">{performanceError}</p>}
           </fieldset>
         </div>
-        <div className="max-w-2xl">
-          <fieldset className="space-y-3">
+        <div className="grid items-start gap-4 sm:grid-cols-2">
+          <fieldset className="space-y-2">
             <legend className="field-label">Weekly target</legend>
-            <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "distance"} onChange={() => setWeeklyTargetMode("distance")} />Distance</label>
               <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "time"} onChange={() => setWeeklyTargetMode("time")} />Time</label>
               <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "unspecified"} onChange={() => setWeeklyTargetMode("unspecified")} />Don’t specify</label>
@@ -138,38 +145,36 @@ export function ProfileForm({ profile, onSave, onCancel }: {
                   aria-label="Weekly hours" type="number" min="0" max="168" step="1" placeholder="h" required
                   value={weeklyHours} aria-invalid={submitted && !weeklyHoursValid} onChange={(event) => setWeeklyHours(event.target.value)} /></label>
                 <label><span className="sr-only">Weekly minutes</span><input className={`field ${submitted && !weeklyMinutesValid ? "border-red-600" : ""}`}
-                  aria-label="Weekly minutes" type="number" min="0" max="59" step="1" placeholder="m" required
+                  aria-label="Weekly minutes" type="number" min="0" max="59" step="1" placeholder="m"
                   value={weeklyMinutes} aria-invalid={submitted && !weeklyMinutesValid} onChange={(event) => setWeeklyMinutes(event.target.value)} /></label>
               </div>
               {submitted && (!weeklyHoursValid || !weeklyMinutesValid) && <p className="mt-1 text-sm text-red-700" role="alert">Enter whole hours from 0 to 168 and minutes from 0 to 59.</p>}
             </fieldset>}
             {weeklyTargetError && <span id="weekly-target-error" className="block text-sm text-red-700" role="alert">{weeklyTargetError}</span>}
           </fieldset>
+          <fieldset>
+            <legend className="field-label">Schedule</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" name="schedule" checked={schedule.mode === "days"} onChange={() => setSchedule({ mode: "days", days: [1, 3, 5] })} />Choose exact weekdays</label>
+              <label className="flex items-center gap-2"><input type="radio" name="schedule" checked={schedule.mode === "count"} onChange={() => setSchedule({ mode: "count", count: 3 })} />Choose runs per week</label>
+            </div>
+            {schedule.mode === "days" ? <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+              {WEEKDAYS.map((day, i) => <label key={day} className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border p-2 text-sm ${schedule.days.includes(i) ? "border-emerald-700 bg-emerald-50" : "border-stone-300"}`}>
+                <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
+                <input aria-label={day} type="checkbox" checked={schedule.days.includes(i)} onChange={(event) => setSchedule({ mode: "days", days: event.target.checked ? [...schedule.days, i] : schedule.days.filter((entry) => entry !== i) })} />
+              </label>)}
+            </div> : <label className="mt-2 block max-w-xs"><span className="field-label">Runs per week</span>
+              <select className="field" value={schedule.count} onChange={(event) => setSchedule({ mode: "count", count: Number(event.target.value) })}>
+                {[1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}
+              </select>
+            </label>}
+          </fieldset>
         </div>
-        <fieldset>
-          <legend className="field-label">Schedule</legend>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <label className="flex items-center gap-2"><input type="radio" name="schedule" checked={schedule.mode === "days"} onChange={() => setSchedule({ mode: "days", days: [1, 3, 5] })} />Choose exact weekdays</label>
-            <label className="flex items-center gap-2"><input type="radio" name="schedule" checked={schedule.mode === "count"} onChange={() => setSchedule({ mode: "count", count: 3 })} />Choose runs per week</label>
-          </div>
-          {schedule.mode === "days" ? <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-7">
-            {WEEKDAYS.map((day, i) => <label key={day} className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 text-sm ${schedule.days.includes(i) ? "border-emerald-700 bg-emerald-50" : "border-stone-300"}`}>
-              <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
-              <input aria-label={day} type="checkbox" checked={schedule.days.includes(i)} onChange={(event) => setSchedule({ mode: "days", days: event.target.checked ? [...schedule.days, i] : schedule.days.filter((entry) => entry !== i) })} />
-            </label>)}
-          </div> : <label className="mt-3 block max-w-xs"><span className="field-label">Runs per week</span>
-            <select className="field" value={schedule.count} onChange={(event) => setSchedule({ mode: "count", count: Number(event.target.value) })}>
-              {[1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}
-            </select>
-          </label>}
-        </fieldset>
-        {profile && <p className="text-sm text-stone-600">Saving changes replaces the current week after confirmation.</p>}
         {errors.length > 0 && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900"><ul className="list-inside list-disc">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
         <div className="flex flex-wrap gap-3">
-          <button className="button-primary" type="submit" disabled={Boolean(profile && !hasChanges)}>{profile ? "Save setup" : "Create current week"}</button>
-          {onCancel && <button className="button-secondary" type="button" onClick={onCancel}>Cancel</button>}
+          <button className="button-primary" type="submit" disabled={Boolean(profile && !hasChanges)}>{profile ? "Save and regenerate week" : "Create current week"}</button>
         </div>
       </form>
-    </section>
+    </>
   );
 }

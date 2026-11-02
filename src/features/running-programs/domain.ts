@@ -1,4 +1,4 @@
-import type { AdjustmentLevel, PlannerState, Profile, Schedule, TrainingWeek, WorkoutType } from "./types";
+import type { AdjustmentLevel, PlannerState, Profile, Schedule, TrainingWeek, Workout, WorkoutType } from "./types";
 
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 export const DISTANCES = [
@@ -239,6 +239,24 @@ export function workoutSessionDetails(
   legacyIntensityDecreased = false,
 ): string | null {
   return workoutSessionPlan(type, vdot, durationMinutes, adjustment, legacyIntensityDecreased)?.description ?? null;
+}
+
+export function estimatedWorkoutDistanceKm(workout: Workout, vdot: number): { min: number; max: number } {
+  const type = workout.type ?? "easy";
+  const plan = workoutSessionPlan(
+    type,
+    vdot,
+    workout.durationMinutes,
+    workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0),
+  );
+  const steps = plan?.steps ?? [{ durationMinutes: workout.durationMinutes, paceFractions: undefined }];
+  return steps.reduce((distance, step) => {
+    const [slowFraction, fastFraction] = step.paceFractions ?? [0.59, 0.74];
+    return {
+      min: distance.min + step.durationMinutes * 60 / paceAtFraction(vdot, slowFraction),
+      max: distance.max + step.durationMinutes * 60 / paceAtFraction(vdot, fastFraction),
+    };
+  }, { min: 0, max: 0 });
 }
 
 function plannedWorkoutDurations(vdot: number, workoutTypes: WorkoutType[]): number[] {

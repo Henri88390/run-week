@@ -1,9 +1,64 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { addDays, easyPace, paceAtFraction, WEEKDAYS, workoutLabel, workoutSessionDetails } from "../domain";
+import { addDays, easyPace, estimatedWorkoutDistanceKm, formatPace, paceAtFraction, WEEKDAYS, workoutLabel, workoutSessionPlan } from "../domain";
 import type { TrainingWeek } from "../types";
+import type { WorkoutSessionStep } from "../domain";
 import { downloadWorkoutFit } from "../fit-export";
+
+type WorkoutDetailLine = {
+  key: string;
+  description: string;
+};
+
+function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number): WorkoutDetailLine[] {
+  const lines: WorkoutDetailLine[] = [];
+  let index = 0;
+
+  while (index < steps.length) {
+    const step = steps[index];
+    if (step.paceFractions && (step.intensity === "interval" || step.intensity === "active")) {
+      const durations = [step.durationMinutes];
+      const recoveries: number[] = [];
+      let next = index + 1;
+      while (
+        next + 1 < steps.length
+        && steps[next].intensity === "recovery"
+        && steps[next + 1].name === step.name
+        && steps[next + 1].paceFractions?.join(",") === step.paceFractions.join(",")
+      ) {
+        recoveries.push(steps[next].durationMinutes);
+        durations.push(steps[next + 1].durationMinutes);
+        next += 2;
+      }
+
+      const pace = `${formatPace(paceAtFraction(vdot, step.paceFractions[1]))}–${formatPace(paceAtFraction(vdot, step.paceFractions[0]))} min/km`;
+      const intervals = durations.length > 1 && durations.every((duration) => duration === durations[0])
+        ? `${durations.length}x ${durations[0]}min`
+        : durations.map((duration) => `${duration}min`).join(", ");
+      const recovery = recoveries.length > 0 && recoveries.every((duration) => duration === recoveries[0])
+        ? `, ${recoveries[0]}min easy jog recovery`
+        : recoveries.length > 0
+          ? `, ${recoveries.map((duration) => `${duration}min`).join(", ")} easy jog recoveries`
+          : "";
+
+      lines.push({ key: `${step.name}-${index}`, description: `${intervals} at ${pace}${recovery}` });
+      index = next;
+      continue;
+    }
+
+    const pace = step.paceFractions
+      ? `${formatPace(paceAtFraction(vdot, step.paceFractions[1]))}–${formatPace(paceAtFraction(vdot, step.paceFractions[0]))} min/km`
+      : null;
+    lines.push({
+      key: `${step.name}-${index}`,
+      description: `${step.name} · ${step.durationMinutes} min${pace ? ` at ${pace}` : step.intensity === "recovery" ? " · Easy effort" : ""}`,
+    });
+    index++;
+  }
+
+  return lines;
+}
 
 export function dateLabel(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -36,9 +91,15 @@ export function WeekView({ week }: {
   const maxKm = (total * 60) / paceAtFraction(week.profile.vdot, 0.74);
   const distanceEstimate = `${minKm.toFixed(1)}–${maxKm.toFixed(1)} km`;
   const selectedWorkout = week.workouts.find((workout) => workout.day === selectedDay);
-  const selectedSessionDetails = selectedWorkout?.type
-    ? workoutSessionDetails(selectedWorkout.type, week.profile.vdot, selectedWorkout.durationMinutes,
+  const selectedSessionPlan = selectedWorkout?.type
+    ? workoutSessionPlan(selectedWorkout.type, week.profile.vdot, selectedWorkout.durationMinutes,
       selectedWorkout.intensityAdjustment ?? (selectedWorkout.intensityIncreased ? 1 : selectedWorkout.intensityDecreased ? -1 : 0))
+    : null;
+  const sessionDetailLines = selectedSessionPlan
+    ? workoutDetailLines(selectedSessionPlan.steps, week.profile.vdot)
+    : null;
+  const selectedDistance = selectedWorkout
+    ? estimatedWorkoutDistanceKm(selectedWorkout, week.profile.vdot)
     : null;
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -59,22 +120,25 @@ export function WeekView({ week }: {
     <div className="flex flex-wrap items-start justify-between gap-4">
       <h2 id={headingId} className="sr-only">Weekly running plan</h2>
       <div className="flex flex-wrap gap-2">
-        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm">
           <span className="sr-only">Weekly time: </span>{formatDuration(total)}
         </p>
-        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm">
           <span className="sr-only">Estimated weekly distance: </span>~{distanceEstimate}
           <span className="sr-only"> based on the VDOT easy pace range</span>
         </p>
-        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm">
           VDOT {week.profile.vdot.toFixed(1)}
           <span className="sr-only"> at generation</span>
         </p>
       </div>
     </div>
-    <ol aria-label="Week calendar" className="mt-6 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+    <ol aria-label="Week calendar" className="mt-4 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {WEEKDAYS.map((day, i) => {
         const workout = week.workouts.find((entry) => entry.day === i);
+        const workoutDistance = workout
+          ? estimatedWorkoutDistanceKm(workout, week.profile.vdot)
+          : null;
         const isToday = addDays(week.startDate, i) === today;
         const calendarDate = addDays(week.startDate, i);
         return <li key={day} aria-current={isToday ? "date" : undefined}
@@ -82,18 +146,19 @@ export function WeekView({ week }: {
           {workout ? <button type="button"
             aria-label={`${day}, ${dateLabel(calendarDate)}: ${workout.durationMinutes} minutes, ${workoutLabel(workout.type ?? "easy")}`}
             onClick={() => setSelectedDay(i)}
-            className="block min-h-24 w-full rounded-lg p-3 text-left hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
+            className="flex h-full min-h-24 w-full flex-col rounded-lg p-2.5 text-left hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
             <span className="flex items-center justify-between gap-2 text-sm font-medium">
               <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
               {isToday && <span className="text-xs font-semibold text-emerald-800">Today</span>}
             </span>
-            <span className="mt-2 block text-sm">{workout.durationMinutes} min · {workoutLabel(workout.type ?? "easy")}</span>
-          </button> : <div className="min-h-24 rounded-lg p-3">
+            <span className="mt-1.5 block text-sm">{workout.durationMinutes} min · {workoutLabel(workout.type ?? "easy")}</span>
+            {workoutDistance && <span className="mt-auto block pt-1 text-xs text-stone-600">~{workoutDistance.min.toFixed(1)}–{workoutDistance.max.toFixed(1)} km</span>}
+          </button> : <div className="min-h-20 rounded-lg p-2.5">
             <span className="flex items-center justify-between gap-2 text-sm font-medium">
               <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
               {isToday && <span className="text-xs font-semibold text-emerald-800">Today</span>}
             </span>
-            <span className="mt-2 block text-sm">Rest</span>
+            <span className="mt-1.5 block text-sm">Rest</span>
           </div>}
         </li>;
       })}
@@ -110,6 +175,9 @@ export function WeekView({ week }: {
           {selectedWorkout && <p className="mt-2 text-sm text-stone-600">
             {selectedWorkout.durationMinutes} minutes · {workoutLabel(selectedWorkout.type ?? "easy")}
           </p>}
+          {selectedDistance && <p className="mt-2 inline-flex rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium">
+            <span className="sr-only">Estimated distance: </span>~{selectedDistance.min.toFixed(1)}–{selectedDistance.max.toFixed(1)} km
+          </p>}
         </div>
         <button ref={closeButton} type="button" aria-label="Close workout details"
           className="rounded-lg p-2 text-stone-600 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
@@ -121,13 +189,20 @@ export function WeekView({ week }: {
       </div>
       {selectedWorkout ? <>
         {selectedWorkout.type === undefined || selectedWorkout.type === "easy" ?
-          <p className="mt-4 text-sm leading-6 text-stone-600">Run at a comfortable, conversational effort.</p> :
+          <div className="mt-4 space-y-2">
+            <p className="text-sm font-medium text-emerald-900">Keep the effort easy and conversational; effort matters more than pace.</p>
+            <p className="text-sm text-stone-600">Estimated easy pace: {easyPace(week.profile.vdot)}</p>
+          </div> :
           selectedWorkout.type === "long" ?
           <div className="mt-4">
             <p className="text-sm font-medium text-emerald-900">{easyPace(week.profile.vdot)}</p>
             <p className="mt-2 text-sm leading-6 text-stone-600">Estimated pace; adjust or skip if uncomfortable.</p>
           </div> :
-          <p className="mt-4 text-sm leading-6 text-stone-600">{selectedSessionDetails ?? "Session details are not defined."}</p>}
+          sessionDetailLines ? <ol aria-label="Workout steps" className="mt-4 space-y-2">
+            {sessionDetailLines.map((step) => <li key={step.key} className="border-b border-stone-100 pb-2 text-sm last:border-0">
+              {step.description}
+            </li>)}
+          </ol> : <p className="mt-4 text-sm leading-6 text-stone-600">Session details are not defined.</p>}
         {selectedWorkout.type && selectedWorkout.type !== "easy" && <button type="button"
           className="mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
           onClick={() => downloadWorkoutFit(week, selectedWorkout)}>
