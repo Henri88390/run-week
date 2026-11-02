@@ -64,7 +64,9 @@ used directly. The resulting duration is distributed among workouts by type and
 neighboring sessions. Without a target, session durations use the VDOT-based
 baseline: the first easy run is the longest, and each additional easy run is
 shorter, by a larger step and down to a lower floor for lower VDOT values. Easy
-runs next to a key session or the long run get the shorter durations. Existing
+runs next to a key session or the long run get the shorter durations. The long
+run is always longer than every easy run: if needed, 10-minute blocks are moved
+to it from the longest easy run, keeping the weekly total. Existing
 local planner data is migrated by estimating volume from its
 saved workout durations and VDOT pace.
 

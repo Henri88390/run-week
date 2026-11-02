@@ -324,6 +324,27 @@ function plannedWorkoutDurations(vdot: number, workoutTypes: WorkoutType[]): num
   });
 }
 
+/**
+ * Makes the long run strictly longer than every easy run by moving 10-minute blocks to it, keeping the
+ * weekly total. The longest easy run gives time first, then other sessions above 10 minutes. Only when
+ * every run is already at 10 minutes is the long run extended beyond the total.
+ */
+function lengthenLongRun(durations: number[], workoutTypes: WorkoutType[]): number[] {
+  const result = [...durations];
+  const longIndex = workoutTypes.indexOf("long");
+  if (longIndex === -1) return result;
+  const easyIndexes = workoutTypes.flatMap((type, index) => type === "easy" ? [index] : []);
+  const longestEasy = () => easyIndexes.reduce((best, index) => result[index] > result[best] ? index : best, easyIndexes[0]);
+  while (easyIndexes.length > 0 && result[longIndex] <= result[longestEasy()]) {
+    const easyDonor = longestEasy();
+    const donor = result[easyDonor] > 10 ? easyDonor
+      : result.findIndex((duration, index) => index !== longIndex && duration > 10);
+    if (donor !== -1) result[donor] -= 10;
+    result[longIndex] += 10;
+  }
+  return result;
+}
+
 function allocateDuration(weights: number[], totalMinutes: number): number[] {
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   const remainingSlots = totalMinutes / 10 - weights.length;
@@ -478,9 +499,9 @@ export function generateWeek(
     : profile.recentWeeklyVolumeKm === null
       ? null
       : Math.round(profile.recentWeeklyVolumeKm * averageEasyPaceSecondsPerKm(profile.vdot) / 600) * 10;
-  const durations = targetMinutes === null
+  const durations = lengthenLongRun(targetMinutes === null
     ? durationWeights.map((duration) => Math.max(10, Math.round(duration / 10) * 10))
-    : allocateDuration(durationWeights, targetMinutes);
+    : allocateDuration(durationWeights, targetMinutes), workoutTypes);
   const targetWeeklyVolumeKm = profile.recentWeeklyVolumeKm
     ?? (targetMinutes === null ? null : targetMinutes * 60 / averageEasyPaceSecondsPerKm(profile.vdot));
   return {
