@@ -3,6 +3,13 @@ export type Schedule =
   | { mode: "days"; days: number[] }
   | { mode: "count"; count: number };
 
+/** Optional weekday (0 = Monday) for each key session; ignored when the session is not scheduled. */
+export type PreferredDays = {
+  vo2max: number | null;
+  threshold: number | null;
+  long: number | null;
+};
+
 export type Profile = {
   distanceMeters: number;
   raceSeconds: number;
@@ -12,6 +19,7 @@ export type Profile = {
   schedule: Schedule;
   recentWeeklyVolumeKm: number | null;
   desiredWeeklyDurationMinutes: number | null;
+  preferredDays: PreferredDays;
 };
 
 export type WorkoutType = "easy" | "long" | "workout" | "vo2max" | "threshold";

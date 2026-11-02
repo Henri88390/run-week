@@ -75,6 +75,12 @@ export const pl = {
     weeklyMinutes: "Minuty w tygodniu",
     save: "Zapisz i wygeneruj tydzień ponownie",
     create: "Utwórz tydzień treningowy",
+    advancedOptions: "Opcje zaawansowane",
+    preferredWorkoutDay: "Preferowany dzień treningu",
+    preferredVo2maxDay: "Preferowany dzień treningu VO₂max",
+    preferredThresholdDay: "Preferowany dzień treningu progowego",
+    preferredLongRunDay: "Preferowany dzień długiego biegu",
+    noPreference: "Bez preferencji",
   },
   validation: {
     fields: {
@@ -96,6 +102,8 @@ export const pl = {
     chooseWeekday: "Wybierz co najmniej jeden prawidłowy dzień tygodnia.",
     weeklyDistanceTooLow: "Docelowy dystans tygodniowy jest zbyt mały, aby przydzielić co najmniej 10 minut każdemu zaplanowanemu biegowi.",
     weeklyTimeTooLow: "Docelowy czas tygodniowy musi zapewniać co najmniej 10 minut na każdy zaplanowany bieg.",
+    differentPreferredDays: "Wybierz inny dzień dla każdej sesji.",
+    preferredDayNotScheduled: "Wybierz preferowane dni spośród zaznaczonych dni tygodnia.",
   },
   week: {
     heading: "Tygodniowy plan biegowy",

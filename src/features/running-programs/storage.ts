@@ -1,5 +1,5 @@
 import { addDays, averageEasyPaceSecondsPerKm, mondayOf, validateProfile } from "./domain";
-import type { PlannerState, Profile, TrainingWeek, Workout } from "./types";
+import type { PlannerState, PreferredDays, Profile, TrainingWeek, Workout } from "./types";
 
 export const STORAGE_KEY = "run-week.planner.v1";
 
@@ -20,12 +20,24 @@ function isProfile(value: unknown): value is Profile {
     || (value.desiredWeeklyDurationMinutes !== undefined && value.desiredWeeklyDurationMinutes !== null
       && typeof value.desiredWeeklyDurationMinutes !== "number")
     || !["none", "maintain", "improve"].includes(String(value.goal))) return false;
+  if (value.preferredDays !== undefined && (!isRecord(value.preferredDays)
+    || !(["vo2max", "threshold", "long"] as const).every((type) => {
+      const day = (value.preferredDays as Record<string, unknown>)[type];
+      return day === undefined || day === null || typeof day === "number";
+    }))) return false;
   const profile = {
     ...value,
     recentWeeklyVolumeKm: value.recentWeeklyVolumeKm ?? null,
     desiredWeeklyDurationMinutes: value.desiredWeeklyDurationMinutes ?? null,
+    preferredDays: normalizePreferredDays(value.preferredDays),
   } as unknown as Profile;
   return validateProfile(profile).length === 0;
+}
+
+function normalizePreferredDays(value: unknown): PreferredDays {
+  const stored = isRecord(value) ? value : {};
+  const day = (type: keyof PreferredDays) => typeof stored[type] === "number" ? stored[type] as number : null;
+  return { vo2max: day("vo2max"), threshold: day("threshold"), long: day("long") };
 }
 
 function isWeek(value: unknown): value is TrainingWeek {
@@ -86,6 +98,7 @@ function normalizeProfile(profile: Profile, fallbackVolume: number | null): Prof
     ...profile,
     recentWeeklyVolumeKm: recentWeeklyVolumeKm === undefined ? fallbackVolume : recentWeeklyVolumeKm,
     desiredWeeklyDurationMinutes: profile.desiredWeeklyDurationMinutes ?? null,
+    preferredDays: normalizePreferredDays(profile.preferredDays),
   };
 }
 

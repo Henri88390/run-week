@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { weekdayName } from "@/features/i18n/locales";
 import { useI18n } from "@/features/i18n/use-i18n";
-import { calculateVdot, distanceLabel, DISTANCES } from "../domain";
-import type { Profile, Schedule } from "../types";
-import { createProfileFormSchema, type ProfileFormValues } from "./profile-form.schema";
+import { activePreferredDays, calculateVdot, distanceLabel, DISTANCES, NO_PREFERRED_DAYS } from "../domain";
+import type { PreferredDays, Profile, Schedule } from "../types";
+import { createProfileFormSchema, preferredDaysFromForm, type ProfileFormValues } from "./profile-form.schema";
+
+type PreferredDayField = "preferredVo2maxDay" | "preferredThresholdDay" | "preferredLongRunDay";
+const PREFERRED_DAY_FIELDS: PreferredDayField[] = ["preferredVo2maxDay", "preferredThresholdDay", "preferredLongRunDay"];
+
+function scheduledPreferredDays(preferredDays: PreferredDays, runCount: number): PreferredDays {
+  const scheduled = { ...NO_PREFERRED_DAYS };
+  for (const { type, day } of activePreferredDays(preferredDays, runCount)) scheduled[type] = day;
+  return scheduled;
+}
 
 function profilesMatch(a: Profile, b: Profile): boolean {
   const schedulesMatch = a.schedule.mode === b.schedule.mode && (
@@ -22,6 +31,9 @@ function profilesMatch(a: Profile, b: Profile): boolean {
     && a.desiredWeeklyDurationMinutes === b.desiredWeeklyDurationMinutes
     && a.goal === b.goal
     && a.goalDistanceMeters === b.goalDistanceMeters
+    && a.preferredDays.vo2max === b.preferredDays.vo2max
+    && a.preferredDays.threshold === b.preferredDays.threshold
+    && a.preferredDays.long === b.preferredDays.long
     && schedulesMatch;
 }
 
@@ -56,6 +68,9 @@ export function ProfileForm({ profile, onSave }: {
       scheduleMode: defaultSchedule.mode,
       scheduleDays: defaultSchedule.mode === "days" ? [...defaultSchedule.days] : [1, 3, 5],
       scheduleCount: defaultSchedule.mode === "count" ? String(defaultSchedule.count) : "3",
+      preferredVo2maxDay: String(profile?.preferredDays.vo2max ?? ""),
+      preferredThresholdDay: String(profile?.preferredDays.threshold ?? ""),
+      preferredLongRunDay: String(profile?.preferredDays.long ?? ""),
     },
   });
 
@@ -72,6 +87,9 @@ export function ProfileForm({ profile, onSave }: {
     scheduleMode,
     scheduleDays,
     scheduleCount,
+    preferredVo2maxDay,
+    preferredThresholdDay,
+    preferredLongRunDay,
   ] = useWatch({
     control,
     name: [
@@ -87,6 +105,9 @@ export function ProfileForm({ profile, onSave }: {
       "scheduleMode",
       "scheduleDays",
       "scheduleCount",
+      "preferredVo2maxDay",
+      "preferredThresholdDay",
+      "preferredLongRunDay",
     ],
   });
 
@@ -96,6 +117,29 @@ export function ProfileForm({ profile, onSave }: {
   const schedule: Schedule = scheduleMode === "days"
     ? { mode: "days", days: scheduleDays }
     : { mode: "count", count: Number(scheduleCount) };
+  const runCount = schedule.mode === "days" ? schedule.days.length : schedule.count;
+  const preferredDayOptions = schedule.mode === "days"
+    ? [...schedule.days].sort((a, b) => a - b)
+    : [0, 1, 2, 3, 4, 5, 6];
+  const preferredDayInputs: { field: PreferredDayField; label: string; visible: boolean }[] = [
+    {
+      field: "preferredVo2maxDay",
+      label: runCount >= 5 ? t.form.preferredVo2maxDay : t.form.preferredWorkoutDay,
+      visible: runCount >= 1,
+    },
+    { field: "preferredThresholdDay", label: t.form.preferredThresholdDay, visible: runCount >= 5 },
+    { field: "preferredLongRunDay", label: t.form.preferredLongRunDay, visible: runCount >= 3 },
+  ];
+  const [advancedOpen, setAdvancedOpen] = useState(
+    () => Boolean(profile && Object.values(profile.preferredDays).some((day) => day !== null)));
+  const hasPreferredDayErrors = Boolean(
+    errors.preferredVo2maxDay || errors.preferredThresholdDay || errors.preferredLongRunDay);
+  const clearPreferredDaysOutside = (days: number[]) => {
+    for (const field of PREFERRED_DAY_FIELDS) {
+      const value = { preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay }[field];
+      if (value !== "" && !days.includes(Number(value))) setValue(field, "", { shouldDirty: true });
+    }
+  };
   const draft: Profile = {
     distanceMeters: distance,
     raceSeconds,
@@ -106,6 +150,8 @@ export function ProfileForm({ profile, onSave }: {
     recentWeeklyVolumeKm: weeklyTargetMode === "distance" ? Number(recentWeeklyVolume) : null,
     desiredWeeklyDurationMinutes: weeklyTargetMode === "time"
       ? Number(weeklyHours) * 60 + Number(weeklyMinutes) : null,
+    preferredDays: scheduledPreferredDays(
+      preferredDaysFromForm({ preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay }), runCount),
   };
   const hasChanges = !profile || !profilesMatch(profile, draft);
 
@@ -140,6 +186,8 @@ export function ProfileForm({ profile, onSave }: {
       recentWeeklyVolumeKm: values.weeklyTargetMode === "distance" ? Number(values.recentWeeklyVolume) : null,
       desiredWeeklyDurationMinutes: values.weeklyTargetMode === "time"
         ? Number(values.weeklyHours) * 60 + Number(values.weeklyMinutes) : null,
+      preferredDays: scheduledPreferredDays(preferredDaysFromForm(values),
+        submittedSchedule.mode === "days" ? submittedSchedule.days.length : submittedSchedule.count),
     });
   };
 
@@ -159,6 +207,9 @@ export function ProfileForm({ profile, onSave }: {
     errors.weeklyMinutes?.message,
     errors.scheduleDays?.message,
     errors.scheduleCount?.message,
+    errors.preferredVo2maxDay?.message,
+    errors.preferredThresholdDay?.message,
+    errors.preferredLongRunDay?.message,
   ].filter((message): message is string => Boolean(message));
 
   return <form noValidate className="mt-4 space-y-4" onSubmit={handleSubmit(onSubmit)}>
@@ -224,7 +275,7 @@ export function ProfileForm({ profile, onSave }: {
         <fieldset>
           <legend className="sr-only">{t.form.schedule}</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-            <label className="flex items-center gap-2"><input type="radio" value="days" {...register("scheduleMode")} />{t.form.chooseWeekdays}</label>
+            <label className="flex items-center gap-2"><input type="radio" value="days" {...register("scheduleMode", { onChange: () => clearPreferredDaysOutside(scheduleDays) })} />{t.form.chooseWeekdays}</label>
             <label className="flex items-center gap-2"><input type="radio" value="count" {...register("scheduleMode")} />{t.form.chooseRunCount}</label>
           </div>
           {scheduleMode === "days" ? <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
@@ -238,6 +289,7 @@ export function ProfileForm({ profile, onSave }: {
                   const days = event.target.checked
                     ? [...scheduleDays, index]
                     : scheduleDays.filter((entry) => entry !== index);
+                  clearPreferredDaysOutside(days);
                   setValue("scheduleDays", days, { shouldDirty: true, shouldValidate: true });
                 }}
               />
@@ -249,6 +301,28 @@ export function ProfileForm({ profile, onSave }: {
             </select>
           </label>}
           <ErrorMessage>{errors.scheduleDays?.message ?? errors.scheduleCount?.message}</ErrorMessage>
+          {runCount >= 1 && <details
+            className="group/advanced mt-3"
+            open={advancedOpen || hasPreferredDayErrors}
+            onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+          >
+            <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded text-sm font-medium text-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 [&::-webkit-details-marker]:hidden">
+              <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open/advanced:rotate-180">
+                <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+              </svg>
+              {t.form.advancedOptions}
+            </summary>
+            <div className="mt-2 grid gap-2">
+              {preferredDayInputs.filter(({ visible }) => visible).map(({ field, label }) => <label key={field} className="block max-w-xs">
+                <span className="field-label">{label}</span>
+                <select {...register(field)} className="field pr-5" aria-invalid={Boolean(errors[field])}>
+                  <option value="">{t.form.noPreference}</option>
+                  {preferredDayOptions.map((day) => <option key={day} value={day}>{weekdayName(locale, day)}</option>)}
+                </select>
+              </label>)}
+            </div>
+          </details>}
+          <ErrorMessage>{errors.preferredVo2maxDay?.message ?? errors.preferredThresholdDay?.message ?? errors.preferredLongRunDay?.message}</ErrorMessage>
         </fieldset>
       </div>
 

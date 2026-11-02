@@ -75,6 +75,12 @@ export const es = {
     weeklyMinutes: "Minutos semanales",
     save: "Guardar y regenerar la semana",
     create: "Crear semana de entrenamiento",
+    advancedOptions: "Opciones avanzadas",
+    preferredWorkoutDay: "Día de entrenamiento preferido",
+    preferredVo2maxDay: "Día preferido para el entrenamiento VO₂máx",
+    preferredThresholdDay: "Día preferido para el entrenamiento de umbral",
+    preferredLongRunDay: "Día preferido para la tirada larga",
+    noPreference: "Sin preferencia",
   },
   validation: {
     fields: {
@@ -96,6 +102,8 @@ export const es = {
     chooseWeekday: "Elige al menos un día válido.",
     weeklyDistanceTooLow: "La distancia semanal deseada es demasiado baja para asignar al menos 10 minutos a cada carrera programada.",
     weeklyTimeTooLow: "El tiempo semanal deseado debe permitir al menos 10 minutos por carrera programada.",
+    differentPreferredDays: "Elige un día distinto para cada sesión.",
+    preferredDayNotScheduled: "Elige los días preferidos entre los días seleccionados.",
   },
   week: {
     heading: "Plan semanal de carrera",

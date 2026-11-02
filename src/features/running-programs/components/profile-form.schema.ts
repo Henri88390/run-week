@@ -1,7 +1,23 @@
 import { z } from "zod";
 import type { Locale } from "@/features/i18n/locales";
 import type { Messages } from "@/features/i18n/messages/en";
-import { averageEasyPaceSecondsPerKm, calculateVdot, DISTANCES, isSupportedPerformance } from "../domain";
+import {
+  activePreferredDays, averageEasyPaceSecondsPerKm, calculateVdot, DISTANCES, isSupportedPerformance,
+} from "../domain";
+import type { PreferredDays } from "../types";
+
+export function preferredDaysFromForm(values: {
+  preferredVo2maxDay: string;
+  preferredThresholdDay: string;
+  preferredLongRunDay: string;
+}): PreferredDays {
+  const day = (value: string) => /^[0-6]$/.test(value) ? Number(value) : null;
+  return {
+    vo2max: day(values.preferredVo2maxDay),
+    threshold: day(values.preferredThresholdDay),
+    long: day(values.preferredLongRunDay),
+  };
+}
 
 export function createProfileFormSchema(messages: Messages["validation"], locale: Locale) {
   const { fields } = messages;
@@ -18,6 +34,9 @@ export function createProfileFormSchema(messages: Messages["validation"], locale
     scheduleMode: z.enum(["days", "count"]),
     scheduleDays: z.array(z.number()),
     scheduleCount: z.string(),
+    preferredVo2maxDay: z.string(),
+    preferredThresholdDay: z.string(),
+    preferredLongRunDay: z.string(),
   }).superRefine((values, context) => {
     const wholeNumber = (
       value: string,
@@ -101,6 +120,20 @@ export function createProfileFormSchema(messages: Messages["validation"], locale
       (!validRunCount || new Set(values.scheduleDays).size !== runCount ||
         values.scheduleDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6))) {
       context.addIssue({ code: "custom", path: ["scheduleDays"], message: messages.chooseWeekday });
+    }
+
+    if (validRunCount) {
+      const preferred = activePreferredDays(preferredDaysFromForm(values), runCount);
+      const fieldFor = { vo2max: "preferredVo2maxDay", threshold: "preferredThresholdDay", long: "preferredLongRunDay" };
+      const seen = new Set<number>();
+      for (const { type, day } of preferred) {
+        if (values.scheduleMode === "days" && !values.scheduleDays.includes(day)) {
+          context.addIssue({ code: "custom", path: [fieldFor[type]], message: messages.preferredDayNotScheduled });
+        } else if (seen.has(day)) {
+          context.addIssue({ code: "custom", path: [fieldFor[type]], message: messages.differentPreferredDays });
+        }
+        seen.add(day);
+      }
     }
 
     if (validRunCount && weeklyDistance !== null && vdot !== undefined &&

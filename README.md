@@ -77,7 +77,11 @@ two easy, long); five or more (VO₂ max, easy, threshold, long, then additional
 easy runs). The total weekly duration is allocated in proportion to workout-type
 and neighboring-session weights. Workout and long runs are spaced as evenly as
 the selected weekdays allow, with the long run favored for a weekend when
-spacing is otherwise equal. The displayed distance is a separate estimate based
+spacing is otherwise equal. Optional preferred days can be set for the VO₂ max
+workout, the threshold workout, and the long run; each option is shown only when
+the run count includes that session. With selected weekdays, preferred days must
+be among them. With a run count, the run days are chosen to include the
+preferred days and keep key sessions as far apart as possible. The displayed distance is a separate estimate based
 on the VDOT easy-pace range. These are product heuristics, not scientifically
 validated training rules.
 

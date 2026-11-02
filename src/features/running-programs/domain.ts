@@ -1,4 +1,10 @@
-import type { AdjustmentLevel, PlannerState, Profile, Schedule, TrainingWeek, Workout, WorkoutType } from "./types";
+import type {
+  AdjustmentLevel, PlannerState, PreferredDays, Profile, Schedule, TrainingWeek, Workout, WorkoutType,
+} from "./types";
+
+export const NO_PREFERRED_DAYS: PreferredDays = { vo2max: null, threshold: null, long: null };
+export type PreferredSession = keyof PreferredDays;
+export type PreferredDay = { type: PreferredSession; day: number };
 
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 export type NamedDistance = "mile" | "halfMarathon" | "marathon";
@@ -64,32 +70,50 @@ export function weeklyWorkoutTypes(runCount: number): WorkoutType[] {
   return ["vo2max", "easy", "threshold", "long", ...Array.from({ length: runCount - 4 }, () => "easy" as const)];
 }
 
-function spaceKeyWorkouts(days: number[], types: WorkoutType[]): WorkoutType[] {
+/** Preferred days for the key sessions that the given run count actually schedules. */
+export function activePreferredDays(preferredDays: PreferredDays | undefined, runCount: number): PreferredDay[] {
+  if (!preferredDays) return [];
+  const types = weeklyWorkoutTypes(runCount);
+  return (["vo2max", "threshold", "long"] as const)
+    .filter((type) => types.includes(type) && preferredDays[type] !== null)
+    .map((type) => ({ type, day: preferredDays[type] as number }));
+}
+
+/** Lexicographic comparison of score arrays; higher is better. */
+function isBetterScore(score: number[], best: number[] | null): boolean {
+  if (!best) return true;
+  const index = score.findIndex((value, i) => value !== best[i]);
+  return index >= 0 && score[index] > best[index];
+}
+
+function cyclicGaps(days: number[]): number[] {
+  return days.length > 1 ? days.map((day, index) => (days[(index + 1) % days.length] - day + 7) % 7 || 7) : [7];
+}
+
+function gapVariance(gaps: number[]): number {
+  return gaps.reduce((sum, gap) => sum + (gap - 7 / gaps.length) ** 2, 0);
+}
+
+/**
+ * Assign session types to sorted run days. Score order: preferred days honoured,
+ * then spacing between key sessions, then a weekend long run.
+ */
+function spaceKeyWorkouts(days: number[], types: WorkoutType[], preferred: PreferredDay[] = []) {
   let best: WorkoutType[] = types;
-  let bestMinimumGap = -1;
-  let bestGapVariance = Number.POSITIVE_INFINITY;
-  let bestLongWeekend = -1;
+  let bestScore: number[] | null = null;
 
   function consider(candidate: WorkoutType[]) {
     const keyDays = candidate
       .map((type, index) => type === "easy" ? -1 : days[index])
       .filter((day) => day >= 0)
       .sort((a, b) => a - b);
-    const gaps = keyDays.length > 1
-      ? keyDays.map((day, index) => (keyDays[(index + 1) % keyDays.length] - day + 7) % 7 || 7)
-      : [7];
-    const minimumGap = Math.min(...gaps);
-    const targetGap = 7 / gaps.length;
-    const gapVariance = gaps.reduce((sum, gap) => sum + (gap - targetGap) ** 2, 0);
+    const gaps = cyclicGaps(keyDays);
     const longWeekend = candidate.some((type, index) => type === "long" && days[index] >= 5) ? 1 : 0;
-
-    if (minimumGap > bestMinimumGap ||
-      (minimumGap === bestMinimumGap && gapVariance < bestGapVariance) ||
-      (minimumGap === bestMinimumGap && gapVariance === bestGapVariance && longWeekend > bestLongWeekend)) {
+    const matched = preferred.filter(({ type, day }) => candidate[days.indexOf(day)] === type).length;
+    const score = [matched, Math.min(...gaps), -gapVariance(gaps), longWeekend];
+    if (isBetterScore(score, bestScore)) {
       best = [...candidate];
-      bestMinimumGap = minimumGap;
-      bestGapVariance = gapVariance;
-      bestLongWeekend = longWeekend;
+      bestScore = score;
     }
   }
 
@@ -108,7 +132,7 @@ function spaceKeyWorkouts(days: number[], types: WorkoutType[]): WorkoutType[] {
   }
 
   arrange(0, types, []);
-  return best;
+  return { types: best, score: bestScore ?? [] };
 }
 
 export type WorkoutLabelKey = "easy" | "long" | "vo2max" | "threshold";
@@ -320,6 +344,36 @@ export function selectDays(schedule: Schedule): number[] {
     .sort((a, b) => a - b);
 }
 
+/** Choose run days and session types, honouring preferred days for key sessions when possible. */
+export function planSessions(schedule: Schedule, preferredDays?: PreferredDays): { days: number[]; types: WorkoutType[] } {
+  const defaultDays = selectDays(schedule);
+  const preferred = activePreferredDays(preferredDays, defaultDays.length);
+  const sessionTypes = weeklyWorkoutTypes(defaultDays.length);
+  const defaultPlan = { days: defaultDays, ...spaceKeyWorkouts(defaultDays, sessionTypes, preferred) };
+  if (schedule.mode === "days" || !preferred.length)
+    return { days: defaultPlan.days, types: defaultPlan.types };
+
+  // In run-count mode the days are free: search every set of days for the best arrangement.
+  let best = defaultPlan;
+  let bestScore: number[] | null = null;
+  for (let mask = 0; mask < 128; mask++) {
+    const days = [0, 1, 2, 3, 4, 5, 6].filter((day) => mask & (1 << day));
+    if (days.length !== defaultDays.length) continue;
+    const plan = spaceKeyWorkouts(days, sessionTypes, preferred);
+    const [matched, keyGap, keyVariance, longWeekend] = plan.score;
+    const runGaps = cyclicGaps(days);
+    const score = [
+      matched, keyGap, Math.min(...runGaps), keyVariance, -gapVariance(runGaps), longWeekend,
+      days.filter((day) => defaultDays.includes(day)).length,
+    ];
+    if (isBetterScore(score, bestScore)) {
+      best = { days, ...plan };
+      bestScore = score;
+    }
+  }
+  return { days: best.days, types: best.types };
+}
+
 export function isSupportedPerformance(distanceMeters: number, raceSeconds: number): boolean {
   const speed = distanceMeters / (raceSeconds / 60);
   const vdot = calculateVdot(distanceMeters, raceSeconds);
@@ -365,6 +419,16 @@ export function validateProfile(profile: Profile): string[] {
       (profile.schedule.mode === "days" && (new Set(profile.schedule.days).size !== count ||
         profile.schedule.days.some((day) => !Number.isInteger(day) || day < 0 || day > 6))))
     errors.push("Choose at least one weekday, or between 1 and 7 runs.");
+  const preferredDays = profile.preferredDays ?? NO_PREFERRED_DAYS;
+  if (Object.values(preferredDays).some((day) => day !== null && (!Number.isInteger(day) || day < 0 || day > 6)))
+    errors.push("Preferred days must be weekdays.");
+  else if (scheduleIsValid) {
+    const active = activePreferredDays(preferredDays, count).map(({ day }) => day);
+    if (new Set(active).size !== active.length)
+      errors.push("Choose a different day for each preferred session.");
+    if (profile.schedule.mode === "days" && active.some((day) => !(profile.schedule as { days: number[] }).days.includes(day)))
+      errors.push("Choose preferred days among the selected weekdays.");
+  }
   if (!Number.isFinite(profile.vdot) || Math.abs(profile.vdot - vdot) > 0.000001)
     errors.push("VDOT must match the entered performance.");
   return errors;
@@ -393,8 +457,8 @@ export function generateWeek(
   startDate: string,
   weekNumber = 1,
 ): TrainingWeek {
-  const days = selectDays(profile.schedule);
-  const workoutTypes = spaceKeyWorkouts(days, weeklyWorkoutTypes(days.length));
+  const { days, types: workoutTypes } = planSessions(profile.schedule, profile.preferredDays);
+  const preferred = activePreferredDays(profile.preferredDays, days.length);
   const durationWeights = plannedWorkoutDurations(profile.vdot, workoutTypes);
   const targetMinutes = profile.desiredWeeklyDurationMinutes !== null
     ? Math.round(profile.desiredWeeklyDurationMinutes / 10) * 10
@@ -410,8 +474,9 @@ export function generateWeek(
     id: startDate,
     number: weekNumber,
     startDate,
-    profile: { ...profile, schedule: profile.schedule.mode === "days"
-      ? { mode: "days", days: [...profile.schedule.days] } : { ...profile.schedule } },
+    profile: { ...profile, preferredDays: { ...(profile.preferredDays ?? NO_PREFERRED_DAYS) },
+      schedule: profile.schedule.mode === "days"
+        ? { mode: "days", days: [...profile.schedule.days] } : { ...profile.schedule } },
     workouts: days.map((day, i) => ({
       day,
       durationMinutes: durations[i],
@@ -428,7 +493,9 @@ export function generateWeek(
       targetMinutes === null
         ? "Session durations are rounded to 10-minute increments and adjusted for workout type and nearby sessions."
         : "The weekly target is rounded to 10-minute session increments and distributed by workout type and nearby sessions.",
-      "Workout and long runs are spaced as evenly as the selected weekdays allow; a weekend long run is preferred when spacing is equal.",
+      preferred.length
+        ? "Preferred days for key sessions are applied first; remaining workouts and long runs are spaced as evenly as the schedule allows."
+        : "Workout and long runs are spaced as evenly as the selected weekdays allow; a weekend long run is preferred when spacing is equal.",
       "Workout categories follow the selected weekly structure. Session details are illustrative product rules, not validated coaching advice.",
     ].filter(Boolean).join(" "),
   };
