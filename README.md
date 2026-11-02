@@ -78,11 +78,12 @@ duration. The pace ranges and example formats follow the [VDOT2 training
 definitions](https://vdoto2.com/Calculator). These are illustrative sessions,
 not individualized coaching advice.
 
-Each non-easy workout card can download a Garmin FIT workout file. Files contain
-timed workout steps and VDOT-derived pace targets where available. Transfer the
-downloaded file to a compatible Garmin device using Garmin Connect or the device's
-supported file-transfer method. Easy runs do not have FIT downloads; files are
-generated in the browser and are not uploaded automatically.
+Select a calendar day to view its workout details. Non-easy workouts include an
+option to download a Garmin FIT workout file. Files contain timed workout steps
+and VDOT-derived pace targets where available. Transfer the downloaded file to
+a compatible Garmin device using Garmin Connect or the device's supported
+file-transfer method. Easy runs do not have FIT downloads; files are generated
+in the browser and are not uploaded automatically.
 
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.
