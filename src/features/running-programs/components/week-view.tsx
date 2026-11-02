@@ -72,9 +72,8 @@ function formatDuration(totalMinutes: number): string {
 
 function workoutCardColor(type: string | undefined): string {
   if (type === "long") return "border-sky-300 bg-sky-50";
-  if (type === "vo2max") return "border-rose-300 bg-rose-50";
+  if (type === "vo2max" || type === "workout") return "border-rose-300 bg-rose-50";
   if (type === "threshold") return "border-amber-300 bg-amber-50";
-  if (type === "workout") return "border-violet-300 bg-violet-50";
   return "border-emerald-300 bg-emerald-50";
 }
 
@@ -198,11 +197,11 @@ export function WeekView({ week }: {
             <p className="text-sm font-medium text-emerald-900">{easyPace(week.profile.vdot)}</p>
             <p className="mt-2 text-sm leading-6 text-stone-600">Estimated pace; adjust or skip if uncomfortable.</p>
           </div> :
-          sessionDetailLines ? <ol aria-label="Workout steps" className="mt-4 space-y-2">
+          sessionDetailLines && <ol aria-label="Workout steps" className="mt-4 space-y-2">
             {sessionDetailLines.map((step) => <li key={step.key} className="border-b border-stone-100 pb-2 text-sm last:border-0">
               {step.description}
             </li>)}
-          </ol> : <p className="mt-4 text-sm leading-6 text-stone-600">Session details are not defined.</p>}
+          </ol>}
         {selectedWorkout.type && selectedWorkout.type !== "easy" && <button type="button"
           className="mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
           onClick={() => downloadWorkoutFit(week, selectedWorkout)}>

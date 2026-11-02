@@ -74,7 +74,9 @@ export const profileFormSchema = z.object({
   if (values.weeklyTargetMode === "distance") {
     weeklyDistance = wholeNumber(values.recentWeeklyVolume, "recentWeeklyVolume", "Desired weekly distance", 1, null, true) ?? null;
   } else if (values.weeklyTargetMode === "time") {
-    const weeklyHours = wholeNumber(values.weeklyHours, "weeklyHours", "Weekly hours", 0, 168, true);
+    const weeklyHours = values.weeklyHours === ""
+      ? 0
+      : wholeNumber(values.weeklyHours, "weeklyHours", "Weekly hours", 0, 168, false);
     const weeklyMinutes = wholeNumber(values.weeklyMinutes, "weeklyMinutes", "Weekly minutes", 0, 59, false) ?? 0;
     if (weeklyHours !== undefined) {
       weeklyDuration = weeklyHours * 60 + weeklyMinutes;

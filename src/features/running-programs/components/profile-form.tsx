@@ -151,9 +151,9 @@ export function ProfileForm({ profile, onSave }: {
   ].filter((message): message is string => Boolean(message));
 
   return <form noValidate className="mt-4 space-y-4" onSubmit={handleSubmit(onSubmit)}>
-    <div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
+    <div className="grid items-start gap-3 sm:grid-cols-2">
       <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-2 min-h-10 text-sm font-medium">Recent performance distance</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">Recent performance distance</h3>
         <label className="block">
           <span className="sr-only">Recent performance distance</span>
           <select
@@ -185,7 +185,7 @@ export function ProfileForm({ profile, onSave }: {
       </div>
 
       <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-2 min-h-10 text-sm font-medium">Race time ({usesHours ? "hours : minutes : seconds" : "minutes : seconds"})</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">Race time ({usesHours ? "hours : minutes : seconds" : "minutes : seconds"})</h3>
         <fieldset>
           <legend className="sr-only">Race time</legend>
           <div className={`grid ${usesHours ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
@@ -209,31 +209,7 @@ export function ProfileForm({ profile, onSave }: {
       </div>
 
       <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-2 min-h-10 text-sm font-medium">Weekly target</h3>
-        <fieldset className="space-y-2">
-          <legend className="sr-only">Weekly target</legend>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-            <label className="flex items-center gap-2"><input type="radio" value="distance" {...register("weeklyTargetMode")} />Distance</label>
-            <label className="flex items-center gap-2"><input type="radio" value="time" {...register("weeklyTargetMode")} />Time</label>
-            <label className="flex items-center gap-2"><input type="radio" value="unspecified" {...register("weeklyTargetMode")} />Don’t specify</label>
-          </div>
-          {weeklyTargetMode === "distance" && <label className="block max-w-sm">
-            <span className="field-label">Desired weekly distance (km, whole number)</span>
-            <input {...register("recentWeeklyVolume")} className="field" type="number" min="1" step="1" aria-invalid={Boolean(errors.recentWeeklyVolume)} />
-          </label>}
-          {weeklyTargetMode === "time" && <fieldset>
-            <legend className="field-label">Desired weekly time (hours : minutes)</legend>
-            <div className="grid max-w-sm grid-cols-2 gap-2">
-              <input {...register("weeklyHours")} className="field" aria-label="Weekly hours" type="number" min="0" max="168" step="1" placeholder="h" aria-invalid={Boolean(errors.weeklyHours)} />
-              <input {...register("weeklyMinutes")} className="field" aria-label="Weekly minutes" type="number" min="0" max="59" step="1" placeholder="m" aria-invalid={Boolean(errors.weeklyMinutes)} />
-            </div>
-          </fieldset>}
-          <ErrorMessage>{errors.recentWeeklyVolume?.message ?? errors.weeklyHours?.message ?? errors.weeklyMinutes?.message}</ErrorMessage>
-        </fieldset>
-      </div>
-
-      <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-2 min-h-10 text-sm font-medium">Schedule</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">Schedule</h3>
         <fieldset>
           <legend className="sr-only">Schedule</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
@@ -262,6 +238,30 @@ export function ProfileForm({ profile, onSave }: {
             </select>
           </label>}
           <ErrorMessage>{errors.scheduleDays?.message ?? errors.scheduleCount?.message}</ErrorMessage>
+        </fieldset>
+      </div>
+
+      <div className="min-w-0 p-3">
+        <h3 className="mb-1 min-h-5 text-sm font-medium">Weekly target</h3>
+        <fieldset className="space-y-2">
+          <legend className="sr-only">Weekly target</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+            <label className="flex items-center gap-2"><input type="radio" value="distance" {...register("weeklyTargetMode")} />Distance</label>
+            <label className="flex items-center gap-2"><input type="radio" value="time" {...register("weeklyTargetMode")} />Time</label>
+            <label className="flex items-center gap-2"><input type="radio" value="unspecified" {...register("weeklyTargetMode")} />Don’t specify</label>
+          </div>
+          {weeklyTargetMode === "distance" && <label className="block max-w-sm">
+            <span className="field-label">Desired weekly distance (km, whole number)</span>
+            <input {...register("recentWeeklyVolume")} className="field" type="number" min="1" step="1" aria-invalid={Boolean(errors.recentWeeklyVolume)} />
+          </label>}
+          {weeklyTargetMode === "time" && <fieldset>
+            <legend className="field-label">Desired weekly time (hours : minutes)</legend>
+            <div className="grid max-w-sm grid-cols-2 gap-2">
+              <input {...register("weeklyHours")} className="field" aria-label="Weekly hours" type="number" min="0" max="168" step="1" placeholder="h" aria-invalid={Boolean(errors.weeklyHours)} />
+              <input {...register("weeklyMinutes")} className="field" aria-label="Weekly minutes" type="number" min="0" max="59" step="1" placeholder="m" aria-invalid={Boolean(errors.weeklyMinutes)} />
+            </div>
+          </fieldset>}
+          <ErrorMessage>{errors.recentWeeklyVolume?.message ?? errors.weeklyHours?.message ?? errors.weeklyMinutes?.message}</ErrorMessage>
         </fieldset>
       </div>
     </div>

@@ -51,9 +51,9 @@ export function easyRunDuration(vdot: number): number {
 
 export function weeklyWorkoutTypes(runCount: number): WorkoutType[] {
   if (runCount === 1) return ["vo2max"];
-  if (runCount === 2) return ["easy", "workout"];
-  if (runCount === 3) return ["workout", "easy", "long"];
-  if (runCount === 4) return ["workout", "easy", "easy", "long"];
+  if (runCount === 2) return ["easy", "vo2max"];
+  if (runCount === 3) return ["vo2max", "easy", "long"];
+  if (runCount === 4) return ["vo2max", "easy", "easy", "long"];
   return ["vo2max", "easy", "threshold", "long", ...Array.from({ length: runCount - 4 }, () => "easy" as const)];
 }
 
@@ -105,10 +105,9 @@ function spaceKeyWorkouts(days: number[], types: WorkoutType[]): WorkoutType[] {
 }
 
 export function workoutLabel(type: WorkoutType): string {
-  if (type === "vo2max") return "VO₂ max workout";
+  if (type === "vo2max" || type === "workout") return "VO₂ max workout";
   if (type === "threshold") return "Threshold workout";
   if (type === "long") return "Long run";
-  if (type === "workout") return "Workout";
   return "Easy run";
 }
 
@@ -138,6 +137,7 @@ export function workoutSessionPlan(
   const intensityAdjustment = typeof adjustment === "boolean"
     ? adjustment ? 1 : legacyIntensityDecreased ? -1 : 0
     : adjustment;
+  if (type === "workout") return workoutSessionPlan("vo2max", vdot, durationMinutes, intensityAdjustment);
   if (type === "vo2max") {
     if (durationMinutes < 20) {
       return {

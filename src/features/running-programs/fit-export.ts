@@ -23,10 +23,6 @@ function getFitSteps(workout: Workout, vdot: number): FitStep[] {
       paceFractions: [0.59, 0.74],
     }];
   }
-  if (type === "workout") {
-    return [{ name: "Run", durationMinutes: workout.durationMinutes, intensity: "active" }];
-  }
-
   const plan = workoutSessionPlan(
     type,
     vdot,
@@ -36,11 +32,16 @@ function getFitSteps(workout: Workout, vdot: number): FitStep[] {
   return plan?.steps ?? [{ name: "Run", durationMinutes: workout.durationMinutes, intensity: "active" }];
 }
 
+// Garmin watch fonts don't render characters such as "₂", so FIT text is limited to ASCII.
+function fitText(text: string): string {
+  return text.normalize("NFKD").replace(/[–—]/g, "-").replace(/[^\x20-\x7E]/g, "");
+}
+
 function workoutStepMessage(step: FitStep, index: number, vdot: number): Encodable<WorkoutStepMesg> {
   const message: Encodable<WorkoutStepMesg> = {
     mesgNum: Profile.MesgNum.WORKOUT_STEP,
     messageIndex: index,
-    wktStepName: step.name,
+    wktStepName: fitText(step.name),
     durationType: "time",
     durationValue: step.durationMinutes * 60 * 1000,
     targetType: "open",
@@ -60,7 +61,7 @@ export function createWorkoutFit(week: TrainingWeek, workout: Workout): Uint8Arr
   const type = workout.type ?? "easy";
   const steps = getFitSteps(workout, week.profile.vdot);
   const weekday = WEEKDAYS[workout.day].slice(0, 3);
-  const name = `${weekday} ${workoutLabel(type).replace(" workout", "")}`;
+  const name = fitText(`${weekday} ${workoutLabel(type).replace(" workout", "")}`);
   const encoder = new Encoder();
   const fileId: Encodable<FileIdMesg> = {
     mesgNum: Profile.MesgNum.FILE_ID,
