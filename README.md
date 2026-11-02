@@ -46,12 +46,14 @@ src/
       domain.ts           Pure VDOT, schedule and workout generation functions
       storage.ts          Versioned localStorage validation
       use-planner-store.ts Hydration-safe browser store
+    garmin/               Garmin Connect client hook and server-only API code
 public/                   Static assets
 ```
 
 The home page supports performance/profile setup and a current-week plan. Profile
 and the current week are saved only in this browser's localStorage. There is no
-account, backend, database or cross-device sync.
+account, database or cross-device sync. The only server code is the optional
+Garmin Connect integration described below.
 Clearing browser data deletes the planner. Failed writes show an in-memory-only
 warning; invalid saved data is not silently overwritten. System fonts keep builds
 independent of external font services.
@@ -98,6 +100,38 @@ and VDOT-derived pace targets where available. Transfer the downloaded file to
 a compatible Garmin device using Garmin Connect or the device's supported
 file-transfer method. Easy runs do not have FIT downloads; files are generated
 in the browser and are not uploaded automatically.
+
+## Garmin Connect
+
+When configured, the week view can send runs to the Garmin Connect calendar:
+the whole week (workouts and long run, or all runs) or a single day from the
+day dialog. Each run becomes a Garmin workout scheduled on its date. Sending a
+day again replaces the workout previously sent from this browser for that date
+(the sent workout IDs are kept in localStorage, `run-week.garmin.v1`).
+
+The integration uses Garmin's Training API, which requires an approved
+[Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/)
+application with the workout import permission. Copy `.env.example` to
+`.env.local` and set these environment variables:
+
+| Variable | Description |
+| --- | --- |
+| `GARMIN_CLIENT_ID` | Application consumer key |
+| `GARMIN_CLIENT_SECRET` | Application consumer secret |
+| `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt the session cookie |
+| `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Register it with Garmin. |
+
+Without them, the Garmin controls are hidden. Authorization uses OAuth 2.0 with
+PKCE. Tokens are stored only in an encrypted, httpOnly cookie; there is no
+database. Disconnecting deletes the cookie; revoke access in Garmin Connect
+account settings.
+
+Route handlers in `src/app/api/garmin`: `connect`, `callback`, `status`,
+`disconnect` and `workouts`. Garmin's API documentation is available only to
+approved developers; the endpoints and payload format in
+`src/features/garmin/server` follow public implementations and were not tested
+against a live account. Check them against the official documentation, in
+particular the scheduling endpoint.
 
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.

@@ -2,17 +2,12 @@
 
 import { useSyncExternalStore } from "react";
 import { DEFAULT_LOCALE, detectLocale, isLocale, type Locale } from "./locales";
-import { de } from "./messages/de";
-import { en, type Messages } from "./messages/en";
-import { es } from "./messages/es";
-import { fr } from "./messages/fr";
-import { it } from "./messages/it";
-import { pl } from "./messages/pl";
-import { pt } from "./messages/pt";
-import { ru } from "./messages/ru";
+import type { Messages } from "./messages/en";
+import { MESSAGES } from "./messages";
+
+export { MESSAGES };
 
 const STORAGE_KEY = "run-week-locale";
-export const MESSAGES: Record<Locale, Messages> = { en, fr, de, es, pt, pl, ru, it };
 
 let current: Locale | null = null;
 const listeners = new Set<() => void>();

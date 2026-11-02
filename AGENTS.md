@@ -18,9 +18,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   browser APIs. Follow the installed Next.js documentation under
   `node_modules/next/dist/docs/` before changing framework APIs.
 - The running-program planner saves its profile and week history in browser
-  localStorage. It has no server-side storage, account system, or backend.
+  localStorage. It has no database or account system. The only server code is
+  the optional Garmin Connect integration (`src/app/api/garmin`,
+  `src/features/garmin`), which keeps OAuth tokens in an encrypted cookie.
   Generated weeks use disclosed heuristics, not personalized training advice.
-- Do not add a backend, authentication, database, or server-side persistence
-  without an explicit requirement.
+- Do not add other server code, authentication, a database, or server-side
+  persistence without an explicit requirement.
 - Use `npm run lint`, `npm run typecheck`, and `npm run build` for applicable
   checks. There is currently no test script or configured test framework.

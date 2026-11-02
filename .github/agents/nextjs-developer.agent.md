@@ -23,6 +23,9 @@ framework unless the user explicitly requests it.
 - The running-program feature is a browser-local planner. Profile and week
   history are saved in localStorage; generated schedules use disclosed
   heuristics, not personalized training advice.
+- The only server code is the optional Garmin Connect integration: route
+  handlers in `src/app/api/garmin` and server-only modules in
+  `src/features/garmin/server`. OAuth tokens are kept in an encrypted cookie.
 
 ## Before coding
 
@@ -45,8 +48,8 @@ framework unless the user explicitly requests it.
   composition in `src/app` and feature UI in its feature directory.
 - Build responsive, semantic, keyboard-accessible browser UI.
 - Keep components focused and preserve existing behavior and metadata.
-- Do not add a backend, database, authentication, or server-side persistence
-  without an explicit requirement.
+- Do not add other server code, a database, authentication, or server-side
+  persistence without an explicit requirement.
 - Disclose the localStorage scope and schedule-generation limitations. Do not
   invent training rules or imply plans are personalized.
 

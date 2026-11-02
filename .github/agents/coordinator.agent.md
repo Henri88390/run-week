@@ -12,7 +12,8 @@ You coordinate implementation and verification for Run Week, a frontend-first
 web app built with Next.js App Router, React, TypeScript, and Tailwind CSS.
 
 The running planner stores its profile and week history in browser localStorage.
-There is no backend, account system, database, or server-side persistence.
+There is no account system, database, or server-side persistence. The only
+server code is the optional Garmin Connect integration (`src/app/api/garmin`).
 Generated schedules use disclosed heuristics, not personalized training advice.
 Do not add server-side services without user approval.
 

@@ -1,57 +1,18 @@
 import { Encoder, Profile } from "@garmin/fitsdk";
 import type { Encodable, FileIdMesg, WorkoutMesg, WorkoutStepMesg } from "@garmin/fitsdk";
 import type { Locale } from "@/features/i18n/locales";
-import { weekdayName } from "@/features/i18n/locales";
-import { MESSAGES } from "@/features/i18n/use-i18n";
-import { paceAtFraction, WEEKDAYS, workoutLabelKey, workoutSessionPlan } from "./domain";
+import { paceAtFraction, WEEKDAYS } from "./domain";
 import type { WorkoutSessionStep } from "./domain";
-import type { TrainingWeek, Workout, WorkoutType } from "./types";
+import type { TrainingWeek, Workout } from "./types";
+import { watchStepName, watchWorkoutName, workoutExportSteps } from "./workout-export";
 
 type FitStep = WorkoutSessionStep;
-
-function getFitSteps(workout: Workout, vdot: number): FitStep[] {
-  const type: WorkoutType = workout.type ?? "easy";
-  if (type === "easy") {
-    throw new Error("Easy runs cannot be exported as FIT workouts.");
-  }
-  if (type === "long") {
-    return [{
-      kind: "longRun",
-      durationMinutes: workout.durationMinutes,
-      intensity: "active",
-      paceFractions: [0.59, 0.74],
-    }];
-  }
-  const plan = workoutSessionPlan(
-    type,
-    vdot,
-    workout.durationMinutes,
-    workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0),
-  );
-  return plan?.steps ?? [{ kind: "easyRun", durationMinutes: workout.durationMinutes, intensity: "active" }];
-}
-
-// Garmin watch fonts don't render characters such as "₂", so FIT text is limited to ASCII.
-const TRANSLITERATIONS: Record<string, string> = { ł: "l", Ł: "L", ß: "ss", œ: "oe", Œ: "OE", æ: "ae", Æ: "AE" };
-
-function fitText(text: string): string {
-  return text
-    .replace(/[łŁßœŒæÆ]/g, (char) => TRANSLITERATIONS[char])
-    .normalize("NFKD")
-    .replace(/[–—]/g, "-")
-    .replace(/[^\x20-\x7E]/g, "");
-}
-
-// Cyrillic cannot be transliterated reliably for watch fonts, so Russian falls back to English.
-function fitLocale(locale: Locale): Locale {
-  return locale === "ru" ? "en" : locale;
-}
 
 function workoutStepMessage(step: FitStep, index: number, vdot: number, locale: Locale): Encodable<WorkoutStepMesg> {
   const message: Encodable<WorkoutStepMesg> = {
     mesgNum: Profile.MesgNum.WORKOUT_STEP,
     messageIndex: index,
-    wktStepName: fitText(MESSAGES[locale].steps[step.kind]),
+    wktStepName: watchStepName(step, locale),
     durationType: "time",
     durationValue: step.durationMinutes * 60 * 1000,
     targetType: "open",
@@ -67,12 +28,10 @@ function workoutStepMessage(step: FitStep, index: number, vdot: number, locale: 
   return message;
 }
 
-export function createWorkoutFit(week: TrainingWeek, workout: Workout, displayLocale: Locale): Uint8Array {
-  const locale = fitLocale(displayLocale);
-  const type = workout.type ?? "easy";
-  const steps = getFitSteps(workout, week.profile.vdot);
-  const weekday = weekdayName(locale, workout.day, "short").replace(/\.$/, "");
-  const name = fitText(`${weekday} ${MESSAGES[locale].workoutsShort[workoutLabelKey(type)]}`);
+export function createWorkoutFit(week: TrainingWeek, workout: Workout, locale: Locale): Uint8Array {
+  if ((workout.type ?? "easy") === "easy") throw new Error("Easy runs cannot be exported as FIT workouts.");
+  const steps = workoutExportSteps(workout, week.profile.vdot);
+  const name = watchWorkoutName(workout, locale);
   const encoder = new Encoder();
   const fileId: Encodable<FileIdMesg> = {
     mesgNum: Profile.MesgNum.FILE_ID,

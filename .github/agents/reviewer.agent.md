@@ -17,8 +17,10 @@ Check:
 - Tests or verification gaps, regressions, and whether the sample running plan
   remains clearly identified as a heuristic rather than personalized advice.
 
-Do not assume a backend, database, authentication, or server-side persistence
-exists. Profile and week history use browser localStorage. Do not treat schedule
+Do not assume a database, account system, or server-side persistence exists.
+Profile and week history use browser localStorage. The only server code is the
+optional Garmin Connect integration (`src/app/api/garmin`), which keeps OAuth
+tokens in an encrypted httpOnly cookie. Do not treat schedule
 generation as personalized training logic.
 
 Return actionable findings with severity and file references. If no significant

@@ -8,6 +8,7 @@ import { addDays, estimatedWorkoutDistanceKm, formatPace, paceAtFraction, workou
 import type { TrainingWeek } from "../types";
 import type { WorkoutSessionStep } from "../domain";
 import { downloadWorkoutFit } from "../fit-export";
+import { useGarmin, type GarminSendResult } from "@/features/garmin/use-garmin";
 
 type WorkoutDetailLine = {
   key: string;
@@ -91,6 +92,10 @@ export function WeekView({ week }: {
   const workoutDialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const garmin = useGarmin();
+  const [garminScope, setGarminScope] = useState<"workouts" | "all">("workouts");
+  const [garminSending, setGarminSending] = useState<"week" | number | null>(null);
+  const [garminResult, setGarminResult] = useState<{ target: "week" | number; message: string } | null>(null);
   const vdot = week.profile.vdot;
   const total = week.workouts.reduce((sum, workout) => sum + workout.durationMinutes, 0);
   const minKm = (total * 60) / paceAtFraction(vdot, 0.59);
@@ -109,6 +114,30 @@ export function WeekView({ week }: {
     : null;
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  function garminMessage({ count, error }: GarminSendResult): string {
+    const sent = count > 0 ? `${t.garmin.sent}: ${count}.` : "";
+    return [sent, error ? t.garmin[error] : ""].filter(Boolean).join(" ");
+  }
+
+  async function sendToGarmin(target: "week" | number) {
+    const workouts = target === "week"
+      ? week.workouts.filter((workout) => garminScope === "all" || (workout.type && workout.type !== "easy"))
+      : week.workouts.filter((workout) => workout.day === target);
+    if (workouts.length === 0) {
+      setGarminResult({ target, message: t.garmin.nothingToSend });
+      return;
+    }
+    setGarminSending(target);
+    setGarminResult(null);
+    const result = await garmin.send(week, workouts, locale);
+    setGarminSending(null);
+    setGarminResult({ target, message: garminMessage(result) });
+  }
+
+  const garminNotice = garmin.notice === "connected" ? t.garmin.connected
+    : garmin.notice === "error" ? t.garmin.connectFailed
+      : garmin.notice === "unavailable" ? t.garmin.unavailable : null;
 
   useEffect(() => {
     if (selectedDay === null) return;
@@ -168,6 +197,26 @@ export function WeekView({ week }: {
         </li>;
       })}
     </ol>
+    {(garmin.configured || garminNotice) && <div className="mt-4 border-t border-stone-200 pt-4">
+      {garmin.configured && (garmin.connected ? <div className="flex flex-wrap items-end gap-2">
+        <label className="min-w-48 flex-1 sm:flex-none">
+          <span className="field-label">{t.garmin.scope}</span>
+          <select className="field" value={garminScope} onChange={(event) => setGarminScope(event.target.value as "workouts" | "all")}>
+            <option value="workouts">{t.garmin.scopeWorkouts}</option>
+            <option value="all">{t.garmin.scopeAll}</option>
+          </select>
+        </label>
+        <button type="button" className="button-primary" disabled={garminSending !== null} onClick={() => sendToGarmin("week")}>
+          {garminSending === "week" ? t.garmin.sending : t.garmin.sendWeek}
+        </button>
+        <button type="button" className="button-secondary" onClick={() => { setGarminResult(null); void garmin.disconnect(); }}>
+          {t.garmin.disconnect}
+        </button>
+      </div> : <a href="/api/garmin/connect" className="button-secondary">{t.garmin.connect}</a>)}
+      <p role="status" className="mt-2 text-sm text-stone-600 empty:hidden">
+        {garminResult?.target === "week" ? garminResult.message : garminNotice}
+      </p>
+    </div>}
     {selectedDay !== null && <dialog ref={workoutDialog} aria-labelledby={dialogTitleId}
       onCancel={(event) => { event.preventDefault(); setSelectedDay(null); }}
       onClick={(event) => {
@@ -208,14 +257,24 @@ export function WeekView({ week }: {
               {step.description}
             </li>)}
           </ol>}
+        <div className="mt-6 flex flex-wrap gap-2 empty:hidden">
         {selectedWorkout.type && selectedWorkout.type !== "easy" && <button type="button"
-          className="mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
+          className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
           onClick={() => downloadWorkoutFit(week, selectedWorkout, locale)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" />
           </svg>
           {t.week.downloadFit}
         </button>}
+        {garmin.configured && garmin.connected && <button type="button" disabled={garminSending !== null}
+            className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
+            onClick={() => sendToGarmin(selectedWorkout.day)}>
+            {garminSending === selectedWorkout.day ? t.garmin.sending : t.garmin.sendDay}
+          </button>}
+        </div>
+        {garmin.configured && garmin.connected && <p role="status" className="mt-2 text-sm text-stone-600 empty:hidden">
+            {garminResult?.target === selectedWorkout.day ? garminResult.message : ""}
+          </p>}
       </> : <p className="mt-4 text-sm text-stone-600">{t.week.restDay}</p>}
     </dialog>}
   </section>;
