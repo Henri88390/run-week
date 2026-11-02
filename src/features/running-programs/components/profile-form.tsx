@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { calculateVdot, DISTANCES, WEEKDAYS } from "../domain";
+import { weekdayName } from "@/features/i18n/locales";
+import { useI18n } from "@/features/i18n/use-i18n";
+import { calculateVdot, distanceLabel, DISTANCES } from "../domain";
 import type { Profile, Schedule } from "../types";
-import { profileFormSchema, type ProfileFormValues } from "./profile-form.schema";
+import { createProfileFormSchema, type ProfileFormValues } from "./profile-form.schema";
 
 function profilesMatch(a: Profile, b: Profile): boolean {
   const schedulesMatch = a.schedule.mode === b.schedule.mode && (
@@ -30,9 +33,11 @@ export function ProfileForm({ profile, onSave }: {
   profile?: Profile;
   onSave: (profile: Profile) => void;
 }) {
+  const { locale, t } = useI18n();
+  const schema = useMemo(() => createProfileFormSchema(t.validation, locale), [t, locale]);
   const defaultSchedule: Schedule = profile?.schedule ?? { mode: "count", count: 3 };
-  const { control, register, setValue, handleSubmit, formState: { errors } } = useForm<ProfileFormValues>({
-    resolver: zodResolver(profileFormSchema),
+  const { control, register, setValue, handleSubmit, trigger, formState: { errors, isSubmitted } } = useForm<ProfileFormValues>({
+    resolver: zodResolver(schema),
     mode: "onSubmit",
     reValidateMode: "onChange",
     defaultValues: {
@@ -138,6 +143,12 @@ export function ProfileForm({ profile, onSave }: {
     });
   };
 
+  useEffect(() => {
+    if (isSubmitted) void trigger();
+    // Re-translate shown errors only when the language changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema]);
+
   const errorMessages = [
     errors.distanceMeters?.message,
     errors.hours?.message,
@@ -153,9 +164,9 @@ export function ProfileForm({ profile, onSave }: {
   return <form noValidate className="mt-4 space-y-4" onSubmit={handleSubmit(onSubmit)}>
     <div className="grid items-start gap-3 sm:grid-cols-2">
       <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-1 min-h-5 text-sm font-medium">Recent performance distance</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">{t.form.performanceDistance}</h3>
         <label className="block">
-          <span className="sr-only">Recent performance distance</span>
+          <span className="sr-only">{t.form.performanceDistance}</span>
           <select
             value={customDistance ? "custom" : distanceValue}
             onChange={(event) => {
@@ -165,12 +176,12 @@ export function ProfileForm({ profile, onSave }: {
             }}
             className="field pr-5"
           >
-            {DISTANCES.map((item) => <option key={item.meters} value={item.meters}>{item.label}</option>)}
-            <option value="custom">Custom distance (metres)</option>
+            {DISTANCES.map((item) => <option key={item.meters} value={item.meters}>{distanceLabel(item.meters, t.distances)}</option>)}
+            <option value="custom">{t.form.customDistance}</option>
           </select>
         </label>
         {customDistance && <label className="mt-2 block">
-          <span className="field-label">Distance in metres (1500–42,195)</span>
+          <span className="field-label">{t.form.distanceInMetres}</span>
           <input
             {...register("distanceMeters", { onChange: (event) => updateDistance(event.target.value) })}
             className="field"
@@ -185,23 +196,23 @@ export function ProfileForm({ profile, onSave }: {
       </div>
 
       <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-1 min-h-5 text-sm font-medium">Race time ({usesHours ? "hours : minutes : seconds" : "minutes : seconds"})</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">{usesHours ? t.form.raceTimeWithHours : t.form.raceTimeWithoutHours}</h3>
         <fieldset>
-          <legend className="sr-only">Race time</legend>
+          <legend className="sr-only">{t.form.raceTime}</legend>
           <div className={`grid ${usesHours ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
             {usesHours && <input
               {...register("hours")}
               className="field"
-              aria-label="Hours"
+              aria-label={t.form.hours}
               type="number"
               min="0"
               max="8"
               step="1"
-              placeholder="h"
+              placeholder={t.form.hoursPlaceholder}
               aria-invalid={Boolean(errors.hours)}
             />}
-            <input {...register("minutes")} className="field" aria-label="Minutes" type="number" min="0" max="59" step="1" placeholder="m" aria-invalid={Boolean(errors.minutes)} />
-            <input {...register("seconds")} className="field" aria-label="Seconds" type="number" min="0" max="59" step="1" placeholder="s" aria-invalid={Boolean(errors.seconds)} />
+            <input {...register("minutes")} className="field" aria-label={t.form.minutes} type="number" min="0" max="59" step="1" placeholder={t.form.minutesPlaceholder} aria-invalid={Boolean(errors.minutes)} />
+            <input {...register("seconds")} className="field" aria-label={t.form.seconds} type="number" min="0" max="59" step="1" placeholder={t.form.secondsPlaceholder} aria-invalid={Boolean(errors.seconds)} />
           </div>
           <ErrorMessage>{errors.hours?.message}</ErrorMessage>
           <ErrorMessage>{errors.minutes?.message ?? errors.seconds?.message}</ErrorMessage>
@@ -209,19 +220,19 @@ export function ProfileForm({ profile, onSave }: {
       </div>
 
       <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
-        <h3 className="mb-1 min-h-5 text-sm font-medium">Schedule</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">{t.form.schedule}</h3>
         <fieldset>
-          <legend className="sr-only">Schedule</legend>
+          <legend className="sr-only">{t.form.schedule}</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-            <label className="flex items-center gap-2"><input type="radio" value="days" {...register("scheduleMode")} />Choose exact weekdays</label>
-            <label className="flex items-center gap-2"><input type="radio" value="count" {...register("scheduleMode")} />Choose runs per week</label>
+            <label className="flex items-center gap-2"><input type="radio" value="days" {...register("scheduleMode")} />{t.form.chooseWeekdays}</label>
+            <label className="flex items-center gap-2"><input type="radio" value="count" {...register("scheduleMode")} />{t.form.chooseRunCount}</label>
           </div>
           {scheduleMode === "days" ? <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-            {WEEKDAYS.map((day, index) => <label key={day} className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border p-2 text-sm ${scheduleDays.includes(index) ? "border-emerald-700 bg-emerald-50" : "border-stone-300"}`}>
-              <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
+            {Array.from({ length: 7 }, (_, index) => <label key={index} className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border p-2 text-sm ${scheduleDays.includes(index) ? "border-emerald-700 bg-emerald-50" : "border-stone-300"}`}>
+              <span aria-hidden="true">{weekdayName(locale, index, "short")}</span>
               <input
                 type="checkbox"
-                aria-label={day}
+                aria-label={weekdayName(locale, index)}
                 checked={scheduleDays.includes(index)}
                 onChange={(event) => {
                   const days = event.target.checked
@@ -232,7 +243,7 @@ export function ProfileForm({ profile, onSave }: {
               />
             </label>)}
           </div> : <label className="mt-2 block max-w-xs">
-            <span className="field-label">Runs per week</span>
+            <span className="field-label">{t.form.runsPerWeek}</span>
             <select {...register("scheduleCount")} className="field pr-5">
               {[1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}
             </select>
@@ -242,23 +253,23 @@ export function ProfileForm({ profile, onSave }: {
       </div>
 
       <div className="min-w-0 p-3">
-        <h3 className="mb-1 min-h-5 text-sm font-medium">Weekly target</h3>
+        <h3 className="mb-1 min-h-5 text-sm font-medium">{t.form.weeklyTarget}</h3>
         <fieldset className="space-y-2">
-          <legend className="sr-only">Weekly target</legend>
+          <legend className="sr-only">{t.form.weeklyTarget}</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-            <label className="flex items-center gap-2"><input type="radio" value="distance" {...register("weeklyTargetMode")} />Distance</label>
-            <label className="flex items-center gap-2"><input type="radio" value="time" {...register("weeklyTargetMode")} />Time</label>
-            <label className="flex items-center gap-2"><input type="radio" value="unspecified" {...register("weeklyTargetMode")} />Don’t specify</label>
+            <label className="flex items-center gap-2"><input type="radio" value="distance" {...register("weeklyTargetMode")} />{t.form.distance}</label>
+            <label className="flex items-center gap-2"><input type="radio" value="time" {...register("weeklyTargetMode")} />{t.form.time}</label>
+            <label className="flex items-center gap-2"><input type="radio" value="unspecified" {...register("weeklyTargetMode")} />{t.form.unspecified}</label>
           </div>
           {weeklyTargetMode === "distance" && <label className="block max-w-sm">
-            <span className="field-label">Desired weekly distance (km, whole number)</span>
+            <span className="field-label">{t.form.weeklyDistance}</span>
             <input {...register("recentWeeklyVolume")} className="field" type="number" min="1" step="1" aria-invalid={Boolean(errors.recentWeeklyVolume)} />
           </label>}
           {weeklyTargetMode === "time" && <fieldset>
-            <legend className="field-label">Desired weekly time (hours : minutes)</legend>
+            <legend className="field-label">{t.form.weeklyTime}</legend>
             <div className="grid max-w-sm grid-cols-2 gap-2">
-              <input {...register("weeklyHours")} className="field" aria-label="Weekly hours" type="number" min="0" max="168" step="1" placeholder="h" aria-invalid={Boolean(errors.weeklyHours)} />
-              <input {...register("weeklyMinutes")} className="field" aria-label="Weekly minutes" type="number" min="0" max="59" step="1" placeholder="m" aria-invalid={Boolean(errors.weeklyMinutes)} />
+              <input {...register("weeklyHours")} className="field" aria-label={t.form.weeklyHours} type="number" min="0" max="168" step="1" placeholder={t.form.hoursPlaceholder} aria-invalid={Boolean(errors.weeklyHours)} />
+              <input {...register("weeklyMinutes")} className="field" aria-label={t.form.weeklyMinutes} type="number" min="0" max="59" step="1" placeholder={t.form.minutesPlaceholder} aria-invalid={Boolean(errors.weeklyMinutes)} />
             </div>
           </fieldset>}
           <ErrorMessage>{errors.recentWeeklyVolume?.message ?? errors.weeklyHours?.message ?? errors.weeklyMinutes?.message}</ErrorMessage>
@@ -271,7 +282,7 @@ export function ProfileForm({ profile, onSave }: {
     </div>}
     <div className="flex flex-wrap gap-3">
       <button className="button-primary" type="submit" disabled={Boolean(profile && !hasChanges)}>
-        {profile ? "Save and regenerate week" : "Create training week"}
+        {profile ? t.form.save : t.form.create}
       </button>
     </div>
   </form>;

@@ -4,10 +4,12 @@ import { useSyncExternalStore } from "react";
 import { parsePlanner, STORAGE_KEY } from "./storage";
 import type { PlannerState } from "./types";
 
+export type StorageWarning = "" | "unreadable" | "unavailable" | "saveFailed";
+
 type Snapshot = {
   loaded: boolean;
   state: PlannerState | null;
-  warning: string;
+  warning: StorageWarning;
   unreadable: boolean;
 };
 
@@ -24,13 +26,13 @@ function readStorage() {
     } catch {
       snapshot = {
         loaded: true, state: null, unreadable: true,
-        warning: "Saved data could not be read. It has not been overwritten. Reset local data to start again.",
+        warning: "unreadable",
       };
     }
   } catch {
     snapshot = {
       loaded: true, state: null, unreadable: false,
-      warning: "Browser storage is unavailable. Changes can only last for this open page.",
+      warning: "unavailable",
     };
   }
 }
@@ -55,12 +57,12 @@ function subscribe(listener: () => void) {
 }
 
 export function savePlanner(state: PlannerState | null) {
-  let warning = "";
+  let warning: StorageWarning = "";
   try {
     if (state) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     else window.localStorage.removeItem(STORAGE_KEY);
   } catch {
-    warning = "Could not save to browser storage. Changes are in memory only and may be lost on reload.";
+    warning = "saveFailed";
   }
   snapshot = { loaded: true, state, warning, unreadable: false };
   emit();

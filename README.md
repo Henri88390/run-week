@@ -39,6 +39,7 @@ On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 src/
   app/                    Routes, root layout, metadata, global styles
   features/
+    i18n/                 Locales, translated messages, language selector
     running-programs/
       components/         Running-program UI
       types.ts            Domain types independent of React
@@ -93,6 +94,20 @@ in the browser and are not uploaded automatically.
 
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.
+
+## Languages
+
+The UI is available in English, French, German, Spanish, Portuguese, Polish,
+Russian and Italian. The default language is the first supported language in
+the browser's language settings, with English as the fallback. The language
+selector overrides it and stores the choice in localStorage (`run-week-locale`).
+Translations live in `src/features/i18n/messages`; `en.ts` defines the message
+shape and the other locales must satisfy it.
+
+Language is resolved in the browser rather than through locale URL segments,
+because the app is a single static page with browser-only data. FIT workout
+names are converted to ASCII for Garmin watch fonts; Russian FIT files use
+English names.
 
 ## Architecture
 

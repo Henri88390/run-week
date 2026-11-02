@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { addDays, easyPace, estimatedWorkoutDistanceKm, formatPace, paceAtFraction, WEEKDAYS, workoutLabel, workoutSessionPlan } from "../domain";
+import { formatDate, formatDecimal, weekdayName, type Locale } from "@/features/i18n/locales";
+import type { Messages } from "@/features/i18n/messages/en";
+import { useI18n } from "@/features/i18n/use-i18n";
+import { addDays, estimatedWorkoutDistanceKm, formatPace, paceAtFraction, workoutLabelKey, workoutSessionPlan } from "../domain";
 import type { TrainingWeek } from "../types";
 import type { WorkoutSessionStep } from "../domain";
 import { downloadWorkoutFit } from "../fit-export";
@@ -11,7 +14,11 @@ type WorkoutDetailLine = {
   description: string;
 };
 
-function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number): WorkoutDetailLine[] {
+function paceRange(vdot: number, slowFraction: number, fastFraction: number, t: Messages): string {
+  return `${formatPace(paceAtFraction(vdot, fastFraction))}–${formatPace(paceAtFraction(vdot, slowFraction))} ${t.units.perKm}`;
+}
+
+function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number, t: Messages): WorkoutDetailLine[] {
   const lines: WorkoutDetailLine[] = [];
   let index = 0;
 
@@ -24,7 +31,7 @@ function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number): WorkoutD
       while (
         next + 1 < steps.length
         && steps[next].intensity === "recovery"
-        && steps[next + 1].name === step.name
+        && steps[next + 1].kind === step.kind
         && steps[next + 1].paceFractions?.join(",") === step.paceFractions.join(",")
       ) {
         recoveries.push(steps[next].durationMinutes);
@@ -32,27 +39,25 @@ function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number): WorkoutD
         next += 2;
       }
 
-      const pace = `${formatPace(paceAtFraction(vdot, step.paceFractions[1]))}–${formatPace(paceAtFraction(vdot, step.paceFractions[0]))} min/km`;
+      const pace = paceRange(vdot, step.paceFractions[0], step.paceFractions[1], t);
       const intervals = durations.length > 1 && durations.every((duration) => duration === durations[0])
-        ? `${durations.length}x ${durations[0]}min`
-        : durations.map((duration) => `${duration}min`).join(", ");
+        ? `${durations.length}x ${t.week.compactMinutes(durations[0])}`
+        : durations.map((duration) => t.week.compactMinutes(duration)).join(", ");
       const recovery = recoveries.length > 0 && recoveries.every((duration) => duration === recoveries[0])
-        ? `, ${recoveries[0]}min easy jog recovery`
+        ? `, ${t.week.recovery(t.week.compactMinutes(recoveries[0]))}`
         : recoveries.length > 0
-          ? `, ${recoveries.map((duration) => `${duration}min`).join(", ")} easy jog recoveries`
+          ? `, ${t.week.recoveries(recoveries.map((duration) => t.week.compactMinutes(duration)).join(", "))}`
           : "";
 
-      lines.push({ key: `${step.name}-${index}`, description: `${intervals} at ${pace}${recovery}` });
+      lines.push({ key: `${step.kind}-${index}`, description: `${intervals} ${t.week.atPace(pace)}${recovery}` });
       index = next;
       continue;
     }
 
-    const pace = step.paceFractions
-      ? `${formatPace(paceAtFraction(vdot, step.paceFractions[1]))}–${formatPace(paceAtFraction(vdot, step.paceFractions[0]))} min/km`
-      : null;
+    const pace = step.paceFractions ? paceRange(vdot, step.paceFractions[0], step.paceFractions[1], t) : null;
     lines.push({
-      key: `${step.name}-${index}`,
-      description: `${step.name} · ${step.durationMinutes} min${pace ? ` at ${pace}` : step.intensity === "recovery" ? " · Easy effort" : ""}`,
+      key: `${step.kind}-${index}`,
+      description: `${t.steps[step.kind]} · ${step.durationMinutes} ${t.units.min}${pace ? ` ${t.week.atPace(pace)}` : step.intensity === "recovery" ? ` · ${t.week.easyEffort}` : ""}`,
     });
     index++;
   }
@@ -60,14 +65,14 @@ function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number): WorkoutD
   return lines;
 }
 
-export function dateLabel(date: string): string {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function formatDuration(totalMinutes: number): string {
+function formatDuration(totalMinutes: number, t: Messages): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return [hours ? `${hours} h` : "", minutes ? `${minutes} min` : ""].filter(Boolean).join(" ");
+  return [hours ? `${hours} ${t.units.h}` : "", minutes ? `${minutes} ${t.units.min}` : ""].filter(Boolean).join(" ");
+}
+
+function distanceRange(locale: Locale, min: number, max: number, t: Messages): string {
+  return `${formatDecimal(locale, min)}–${formatDecimal(locale, max)} ${t.units.km}`;
 }
 
 function workoutCardColor(type: string | undefined): string {
@@ -80,25 +85,27 @@ function workoutCardColor(type: string | undefined): string {
 export function WeekView({ week }: {
   week: TrainingWeek;
 }) {
+  const { locale, t } = useI18n();
   const headingId = useId();
   const dialogTitleId = useId();
   const workoutDialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const vdot = week.profile.vdot;
   const total = week.workouts.reduce((sum, workout) => sum + workout.durationMinutes, 0);
-  const minKm = (total * 60) / paceAtFraction(week.profile.vdot, 0.59);
-  const maxKm = (total * 60) / paceAtFraction(week.profile.vdot, 0.74);
-  const distanceEstimate = `${minKm.toFixed(1)}–${maxKm.toFixed(1)} km`;
+  const minKm = (total * 60) / paceAtFraction(vdot, 0.59);
+  const maxKm = (total * 60) / paceAtFraction(vdot, 0.74);
+  const easyPace = paceRange(vdot, 0.59, 0.74, t);
   const selectedWorkout = week.workouts.find((workout) => workout.day === selectedDay);
   const selectedSessionPlan = selectedWorkout?.type
-    ? workoutSessionPlan(selectedWorkout.type, week.profile.vdot, selectedWorkout.durationMinutes,
+    ? workoutSessionPlan(selectedWorkout.type, vdot, selectedWorkout.durationMinutes,
       selectedWorkout.intensityAdjustment ?? (selectedWorkout.intensityIncreased ? 1 : selectedWorkout.intensityDecreased ? -1 : 0))
     : null;
   const sessionDetailLines = selectedSessionPlan
-    ? workoutDetailLines(selectedSessionPlan.steps, week.profile.vdot)
+    ? workoutDetailLines(selectedSessionPlan.steps, vdot, t)
     : null;
   const selectedDistance = selectedWorkout
-    ? estimatedWorkoutDistanceKm(selectedWorkout, week.profile.vdot)
+    ? estimatedWorkoutDistanceKm(selectedWorkout, vdot)
     : null;
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -117,47 +124,46 @@ export function WeekView({ week }: {
 
   return <section className="panel" aria-labelledby={headingId}>
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <h2 id={headingId} className="sr-only">Weekly running plan</h2>
+      <h2 id={headingId} className="sr-only">{t.week.heading}</h2>
       <div className="flex flex-wrap gap-2">
         <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm">
-          <span className="sr-only">Weekly time: </span>{formatDuration(total)}
+          <span className="sr-only">{t.week.weeklyTime}: </span>{formatDuration(total, t)}
         </p>
         <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm">
-          <span className="sr-only">Estimated weekly distance: </span>~{distanceEstimate}
-          <span className="sr-only"> based on the VDOT easy pace range</span>
+          <span className="sr-only">{t.week.estimatedWeeklyDistance}: </span>~{distanceRange(locale, minKm, maxKm, t)}
+          <span className="sr-only"> {t.week.basedOnEasyPace}</span>
         </p>
         <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm">
-          VDOT {week.profile.vdot.toFixed(1)}
-          <span className="sr-only"> at generation</span>
+          VDOT {formatDecimal(locale, vdot)}
+          <span className="sr-only"> {t.week.atGeneration}</span>
         </p>
       </div>
     </div>
-    <ol aria-label="Week calendar" className="mt-4 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-      {WEEKDAYS.map((day, i) => {
+    <ol aria-label={t.week.calendar} className="mt-4 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      {Array.from({ length: 7 }, (_, i) => {
         const workout = week.workouts.find((entry) => entry.day === i);
         const workoutDistance = workout
-          ? estimatedWorkoutDistanceKm(workout, week.profile.vdot)
+          ? estimatedWorkoutDistanceKm(workout, vdot)
           : null;
-        const isToday = addDays(week.startDate, i) === today;
         const calendarDate = addDays(week.startDate, i);
-        return <li key={day} aria-current={isToday ? "date" : undefined}
+        const isToday = calendarDate === today;
+        const dayName = weekdayName(locale, i);
+        const dayHeader = <span className="flex items-center justify-between gap-2 text-sm font-medium">
+          <span><span aria-hidden="true">{weekdayName(locale, i, "short")}</span><span className="sr-only">{dayName}</span></span>
+          {isToday && <span className="text-xs font-semibold text-emerald-800">{t.week.today}</span>}
+        </span>;
+        return <li key={i} aria-current={isToday ? "date" : undefined}
           className={`rounded-lg border ${workout ? workoutCardColor(workout.type) : "border-stone-200 bg-stone-50"} ${isToday ? "ring-2 ring-emerald-700 ring-offset-1" : ""}`}>
           {workout ? <button type="button"
-            aria-label={`${day}, ${dateLabel(calendarDate)}: ${workout.durationMinutes} minutes, ${workoutLabel(workout.type ?? "easy")}`}
+            aria-label={`${dayName}, ${formatDate(locale, calendarDate)}: ${t.week.minutesLong(workout.durationMinutes)}, ${t.workouts[workoutLabelKey(workout.type ?? "easy")]}`}
             onClick={() => setSelectedDay(i)}
             className="flex h-full min-h-24 w-full flex-col rounded-lg p-2.5 text-left hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
-            <span className="flex items-center justify-between gap-2 text-sm font-medium">
-              <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
-              {isToday && <span className="text-xs font-semibold text-emerald-800">Today</span>}
-            </span>
-            <span className="mt-1.5 block text-sm">{workout.durationMinutes} min · {workoutLabel(workout.type ?? "easy")}</span>
-            {workoutDistance && <span className="mt-auto block pt-1 text-xs text-stone-600">~{workoutDistance.min.toFixed(1)}–{workoutDistance.max.toFixed(1)} km</span>}
+            {dayHeader}
+            <span className="mt-1.5 block text-sm">{workout.durationMinutes} {t.units.min} · {t.workouts[workoutLabelKey(workout.type ?? "easy")]}</span>
+            {workoutDistance && <span className="mt-auto block pt-1 text-xs text-stone-600">~{distanceRange(locale, workoutDistance.min, workoutDistance.max, t)}</span>}
           </button> : <div className="min-h-20 rounded-lg p-2.5">
-            <span className="flex items-center justify-between gap-2 text-sm font-medium">
-              <span>{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></span>
-              {isToday && <span className="text-xs font-semibold text-emerald-800">Today</span>}
-            </span>
-            <span className="mt-1.5 block text-sm">Rest</span>
+            {dayHeader}
+            <span className="mt-1.5 block text-sm">{t.week.rest}</span>
           </div>}
         </li>;
       })}
@@ -170,15 +176,15 @@ export function WeekView({ week }: {
       className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-stone-300 bg-white p-6 text-stone-900 shadow-xl backdrop:bg-stone-950/40">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 id={dialogTitleId} className="text-xl font-semibold">{WEEKDAYS[selectedDay]} · {dateLabel(addDays(week.startDate, selectedDay))}</h2>
+          <h2 id={dialogTitleId} className="text-xl font-semibold">{weekdayName(locale, selectedDay)} · {formatDate(locale, addDays(week.startDate, selectedDay))}</h2>
           {selectedWorkout && <p className="mt-2 text-sm text-stone-600">
-            {selectedWorkout.durationMinutes} minutes · {workoutLabel(selectedWorkout.type ?? "easy")}
+            {t.week.minutesLong(selectedWorkout.durationMinutes)} · {t.workouts[workoutLabelKey(selectedWorkout.type ?? "easy")]}
           </p>}
           {selectedDistance && <p className="mt-2 inline-flex rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium">
-            <span className="sr-only">Estimated distance: </span>~{selectedDistance.min.toFixed(1)}–{selectedDistance.max.toFixed(1)} km
+            <span className="sr-only">{t.week.estimatedDistance}: </span>~{distanceRange(locale, selectedDistance.min, selectedDistance.max, t)}
           </p>}
         </div>
-        <button ref={closeButton} type="button" aria-label="Close workout details"
+        <button ref={closeButton} type="button" aria-label={t.week.close}
           className="rounded-lg p-2 text-stone-600 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
           onClick={() => setSelectedDay(null)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-5">
@@ -189,28 +195,28 @@ export function WeekView({ week }: {
       {selectedWorkout ? <>
         {selectedWorkout.type === undefined || selectedWorkout.type === "easy" ?
           <div className="mt-4 space-y-2">
-            <p className="text-sm font-medium text-emerald-900">Keep the effort easy and conversational; effort matters more than pace.</p>
-            <p className="text-sm text-stone-600">Estimated easy pace: {easyPace(week.profile.vdot)}</p>
+            <p className="text-sm font-medium text-emerald-900">{t.week.easyNote}</p>
+            <p className="text-sm text-stone-600">{t.week.estimatedEasyPace}: {easyPace}</p>
           </div> :
           selectedWorkout.type === "long" ?
           <div className="mt-4">
-            <p className="text-sm font-medium text-emerald-900">{easyPace(week.profile.vdot)}</p>
-            <p className="mt-2 text-sm leading-6 text-stone-600">Estimated pace; adjust or skip if uncomfortable.</p>
+            <p className="text-sm font-medium text-emerald-900">{easyPace}</p>
+            <p className="mt-2 text-sm leading-6 text-stone-600">{t.week.longRunNote}</p>
           </div> :
-          sessionDetailLines && <ol aria-label="Workout steps" className="mt-4 space-y-2">
+          sessionDetailLines && <ol aria-label={t.week.steps} className="mt-4 space-y-2">
             {sessionDetailLines.map((step) => <li key={step.key} className="border-b border-stone-100 pb-2 text-sm last:border-0">
               {step.description}
             </li>)}
           </ol>}
         {selectedWorkout.type && selectedWorkout.type !== "easy" && <button type="button"
           className="mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
-          onClick={() => downloadWorkoutFit(week, selectedWorkout)}>
+          onClick={() => downloadWorkoutFit(week, selectedWorkout, locale)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" />
           </svg>
-          Download FIT workout
+          {t.week.downloadFit}
         </button>}
-      </> : <p className="mt-4 text-sm text-stone-600">Rest day</p>}
+      </> : <p className="mt-4 text-sm text-stone-600">{t.week.restDay}</p>}
     </dialog>}
   </section>;
 }

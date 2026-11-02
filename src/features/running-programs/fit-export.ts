@@ -1,14 +1,13 @@
 import { Encoder, Profile } from "@garmin/fitsdk";
 import type { Encodable, FileIdMesg, WorkoutMesg, WorkoutStepMesg } from "@garmin/fitsdk";
-import { paceAtFraction, WEEKDAYS, workoutLabel, workoutSessionPlan } from "./domain";
+import type { Locale } from "@/features/i18n/locales";
+import { weekdayName } from "@/features/i18n/locales";
+import { MESSAGES } from "@/features/i18n/use-i18n";
+import { paceAtFraction, WEEKDAYS, workoutLabelKey, workoutSessionPlan } from "./domain";
+import type { WorkoutSessionStep } from "./domain";
 import type { TrainingWeek, Workout, WorkoutType } from "./types";
 
-type FitStep = {
-  name: string;
-  durationMinutes: number;
-  intensity: "active" | "warmup" | "recovery" | "interval" | "cooldown";
-  paceFractions?: [slow: number, fast: number];
-};
+type FitStep = WorkoutSessionStep;
 
 function getFitSteps(workout: Workout, vdot: number): FitStep[] {
   const type: WorkoutType = workout.type ?? "easy";
@@ -17,7 +16,7 @@ function getFitSteps(workout: Workout, vdot: number): FitStep[] {
   }
   if (type === "long") {
     return [{
-      name: "Long run",
+      kind: "longRun",
       durationMinutes: workout.durationMinutes,
       intensity: "active",
       paceFractions: [0.59, 0.74],
@@ -29,19 +28,30 @@ function getFitSteps(workout: Workout, vdot: number): FitStep[] {
     workout.durationMinutes,
     workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0),
   );
-  return plan?.steps ?? [{ name: "Run", durationMinutes: workout.durationMinutes, intensity: "active" }];
+  return plan?.steps ?? [{ kind: "easyRun", durationMinutes: workout.durationMinutes, intensity: "active" }];
 }
 
 // Garmin watch fonts don't render characters such as "₂", so FIT text is limited to ASCII.
+const TRANSLITERATIONS: Record<string, string> = { ł: "l", Ł: "L", ß: "ss", œ: "oe", Œ: "OE", æ: "ae", Æ: "AE" };
+
 function fitText(text: string): string {
-  return text.normalize("NFKD").replace(/[–—]/g, "-").replace(/[^\x20-\x7E]/g, "");
+  return text
+    .replace(/[łŁßœŒæÆ]/g, (char) => TRANSLITERATIONS[char])
+    .normalize("NFKD")
+    .replace(/[–—]/g, "-")
+    .replace(/[^\x20-\x7E]/g, "");
 }
 
-function workoutStepMessage(step: FitStep, index: number, vdot: number): Encodable<WorkoutStepMesg> {
+// Cyrillic cannot be transliterated reliably for watch fonts, so Russian falls back to English.
+function fitLocale(locale: Locale): Locale {
+  return locale === "ru" ? "en" : locale;
+}
+
+function workoutStepMessage(step: FitStep, index: number, vdot: number, locale: Locale): Encodable<WorkoutStepMesg> {
   const message: Encodable<WorkoutStepMesg> = {
     mesgNum: Profile.MesgNum.WORKOUT_STEP,
     messageIndex: index,
-    wktStepName: fitText(step.name),
+    wktStepName: fitText(MESSAGES[locale].steps[step.kind]),
     durationType: "time",
     durationValue: step.durationMinutes * 60 * 1000,
     targetType: "open",
@@ -57,11 +67,12 @@ function workoutStepMessage(step: FitStep, index: number, vdot: number): Encodab
   return message;
 }
 
-export function createWorkoutFit(week: TrainingWeek, workout: Workout): Uint8Array {
+export function createWorkoutFit(week: TrainingWeek, workout: Workout, displayLocale: Locale): Uint8Array {
+  const locale = fitLocale(displayLocale);
   const type = workout.type ?? "easy";
   const steps = getFitSteps(workout, week.profile.vdot);
-  const weekday = WEEKDAYS[workout.day].slice(0, 3);
-  const name = fitText(`${weekday} ${workoutLabel(type).replace(" workout", "")}`);
+  const weekday = weekdayName(locale, workout.day, "short").replace(/\.$/, "");
+  const name = fitText(`${weekday} ${MESSAGES[locale].workoutsShort[workoutLabelKey(type)]}`);
   const encoder = new Encoder();
   const fileId: Encodable<FileIdMesg> = {
     mesgNum: Profile.MesgNum.FILE_ID,
@@ -82,12 +93,12 @@ export function createWorkoutFit(week: TrainingWeek, workout: Workout): Uint8Arr
 
   encoder.writeMesg(fileId);
   encoder.writeMesg(workoutMessage);
-  steps.forEach((step, index) => encoder.writeMesg(workoutStepMessage(step, index, week.profile.vdot)));
+  steps.forEach((step, index) => encoder.writeMesg(workoutStepMessage(step, index, week.profile.vdot, locale)));
   return encoder.close();
 }
 
-export function downloadWorkoutFit(week: TrainingWeek, workout: Workout): void {
-  const bytes = createWorkoutFit(week, workout);
+export function downloadWorkoutFit(week: TrainingWeek, workout: Workout, locale: Locale): void {
+  const bytes = createWorkoutFit(week, workout, locale);
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
   const blob = new Blob([buffer], { type: "application/vnd.ant.fit" });

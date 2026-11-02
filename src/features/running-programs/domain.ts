@@ -1,18 +1,21 @@
 import type { AdjustmentLevel, PlannerState, Profile, Schedule, TrainingWeek, Workout, WorkoutType } from "./types";
 
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-export const DISTANCES = [
+export type NamedDistance = "mile" | "halfMarathon" | "marathon";
+export const DISTANCES: { meters: number; label: string; name?: NamedDistance }[] = [
   { meters: 1500, label: "1500 m" },
-  { meters: 1609.344, label: "1 mile" },
+  { meters: 1609.344, label: "1 mile", name: "mile" },
   { meters: 3000, label: "3000 m" },
   { meters: 5000, label: "5 km" },
   { meters: 10000, label: "10 km" },
-  { meters: 21097.5, label: "Half marathon" },
-  { meters: 42195, label: "Marathon" },
+  { meters: 21097.5, label: "Half marathon", name: "halfMarathon" },
+  { meters: 42195, label: "Marathon", name: "marathon" },
 ];
 
-export function distanceLabel(meters: number): string {
-  return DISTANCES.find((distance) => distance.meters === meters)?.label ?? `${meters} m`;
+export function distanceLabel(meters: number, names?: Record<NamedDistance, string>): string {
+  const distance = DISTANCES.find((entry) => entry.meters === meters);
+  if (!distance) return `${meters} m`;
+  return distance.name && names ? names[distance.name] : distance.label;
 }
 
 /** Daniels–Gilbert race-performance equations: distance in metres, time in minutes. */
@@ -46,7 +49,11 @@ export function averageEasyPaceSecondsPerKm(vdot: number): number {
 }
 
 export function easyRunDuration(vdot: number): number {
-  return Math.round(15 + vdot * 0.4);
+  return workoutRunDuration(vdot) + 10;
+}
+
+function workoutRunDuration(vdot: number): number {
+  return Math.round(20 + vdot * 0.55);
 }
 
 export function weeklyWorkoutTypes(runCount: number): WorkoutType[] {
@@ -104,19 +111,23 @@ function spaceKeyWorkouts(days: number[], types: WorkoutType[]): WorkoutType[] {
   return best;
 }
 
-export function workoutLabel(type: WorkoutType): string {
-  if (type === "vo2max" || type === "workout") return "VO₂ max workout";
-  if (type === "threshold") return "Threshold workout";
-  if (type === "long") return "Long run";
-  return "Easy run";
+export type WorkoutLabelKey = "easy" | "long" | "vo2max" | "threshold";
+
+export function workoutLabelKey(type: WorkoutType): WorkoutLabelKey {
+  if (type === "vo2max" || type === "workout") return "vo2max";
+  if (type === "threshold") return "threshold";
+  if (type === "long") return "long";
+  return "easy";
 }
 
 function paceRange(vdot: number, slowFraction: number, fastFraction: number): string {
   return `${formatPace(paceAtFraction(vdot, fastFraction))}-${formatPace(paceAtFraction(vdot, slowFraction))} min/km`;
 }
 
+export type WorkoutStepKind = "warmup" | "cooldown" | "vo2Interval" | "threshold" | "recovery" | "easyRun" | "longRun";
+
 export type WorkoutSessionStep = {
-  name: string;
+  kind: WorkoutStepKind;
   durationMinutes: number;
   intensity: "active" | "warmup" | "recovery" | "interval" | "cooldown";
   paceFractions?: [slow: number, fast: number];
@@ -142,7 +153,7 @@ export function workoutSessionPlan(
     if (durationMinutes < 20) {
       return {
         description: "Keep this short session easy; it is too short for a structured interval set with warm-up and cool-down.",
-        steps: [{ name: "Easy run", durationMinutes, intensity: "active" }],
+        steps: [{ kind: "easyRun", durationMinutes, intensity: "active" }],
       };
     }
     const standardRepeats = Math.min(5, Math.max(1, Math.floor((durationMinutes - 10) / 5)));
@@ -157,14 +168,14 @@ export function workoutSessionPlan(
     const easyTime = durationMinutes - intervalTime;
     const warmup = Math.floor(easyTime / 2);
     const cooldown = easyTime - warmup;
-    const steps: WorkoutSessionStep[] = [{ name: "Warm-up", durationMinutes: warmup, intensity: "warmup" }];
+    const steps: WorkoutSessionStep[] = [{ kind: "warmup", durationMinutes: warmup, intensity: "warmup" }];
     for (let index = 0; index < repeats; index++) {
-      steps.push({ name: "VO₂ max interval", durationMinutes: 3, intensity: "interval", paceFractions: [0.97, 1] });
+      steps.push({ kind: "vo2Interval", durationMinutes: 3, intensity: "interval", paceFractions: [0.97, 1] });
       if (index < repeats - 1) {
-        steps.push({ name: "Easy jog recovery", durationMinutes: recoveryDuration, intensity: "recovery" });
+        steps.push({ kind: "recovery", durationMinutes: recoveryDuration, intensity: "recovery" });
       }
     }
-    steps.push({ name: "Cool-down", durationMinutes: cooldown, intensity: "cooldown" });
+    steps.push({ kind: "cooldown", durationMinutes: cooldown, intensity: "cooldown" });
     return {
       description: `${warmup} min easy warm-up; ${repeats} x 3min at ${paceRange(vdot, 0.97, 1.0)}, with ${recoveryDuration} min easy jog recovery; ${cooldown} min easy cool-down.`,
       steps,
@@ -175,7 +186,7 @@ export function workoutSessionPlan(
     if (durationMinutes < 20) {
       return {
         description: "Keep this short session easy; it is too short for a structured threshold set with warm-up and cool-down.",
-        steps: [{ name: "Easy run", durationMinutes, intensity: "active" }],
+        steps: [{ kind: "easyRun", durationMinutes, intensity: "active" }],
       };
     }
     const pace = paceRange(vdot, 0.83, 0.88);
@@ -189,9 +200,9 @@ export function workoutSessionPlan(
       return {
         description: `${warmup} min easy warm-up; ${work}min continuous at ${pace}; ${easyTime - warmup} min easy cool-down.`,
         steps: [
-          { name: "Warm-up", durationMinutes: warmup, intensity: "warmup" },
-          { name: "Threshold", durationMinutes: work, intensity: "active", paceFractions: [0.83, 0.88] },
-          { name: "Cool-down", durationMinutes: easyTime - warmup, intensity: "cooldown" },
+          { kind: "warmup", durationMinutes: warmup, intensity: "warmup" },
+          { kind: "threshold", durationMinutes: work, intensity: "active", paceFractions: [0.83, 0.88] },
+          { kind: "cooldown", durationMinutes: easyTime - warmup, intensity: "cooldown" },
         ],
       };
     }
@@ -214,14 +225,14 @@ export function workoutSessionPlan(
       : repeatLengths.map((minutes) => `${minutes}min`).join(" + ");
     const easyTime = durationMinutes - recoveryMinutes - workMinutes;
     const warmup = Math.floor(easyTime / 2);
-    const steps: WorkoutSessionStep[] = [{ name: "Warm-up", durationMinutes: warmup, intensity: "warmup" }];
+    const steps: WorkoutSessionStep[] = [{ kind: "warmup", durationMinutes: warmup, intensity: "warmup" }];
     repeatLengths.forEach((minutes, index) => {
-      steps.push({ name: "Threshold", durationMinutes: minutes, intensity: "active", paceFractions: [0.83, 0.88] });
+      steps.push({ kind: "threshold", durationMinutes: minutes, intensity: "active", paceFractions: [0.83, 0.88] });
       if (index < repeatLengths.length - 1) {
-        steps.push({ name: "Easy jog recovery", durationMinutes: 2, intensity: "recovery" });
+        steps.push({ kind: "recovery", durationMinutes: 2, intensity: "recovery" });
       }
     });
-    steps.push({ name: "Cool-down", durationMinutes: easyTime - warmup, intensity: "cooldown" });
+    steps.push({ kind: "cooldown", durationMinutes: easyTime - warmup, intensity: "cooldown" });
     return {
       description: `${warmup} min easy warm-up; ${set} at ${pace}, with 2 min easy jog recoveries; ${easyTime - warmup} min easy cool-down.`,
       steps,
@@ -261,9 +272,10 @@ export function estimatedWorkoutDistanceKm(workout: Workout, vdot: number): { mi
 
 function plannedWorkoutDurations(vdot: number, workoutTypes: WorkoutType[]): number[] {
   const easyMinutes = easyRunDuration(vdot);
+  const workoutMinutes = workoutRunDuration(vdot);
   return workoutTypes.map((type, index) => {
-    if (type === "long") return Math.round(easyMinutes * 1.5);
-    if (type !== "easy") return easyMinutes;
+    if (type === "long") return Math.round(workoutMinutes * 1.5);
+    if (type !== "easy") return workoutMinutes;
 
     const adjacentSessions = [workoutTypes[index - 1], workoutTypes[index + 1]];
     const nearHardSession = adjacentSessions.some((neighbor) =>
@@ -292,15 +304,19 @@ export function selectDays(schedule: Schedule): number[] {
     .sort((a, b) => a - b);
 }
 
+export function isSupportedPerformance(distanceMeters: number, raceSeconds: number): boolean {
+  const speed = distanceMeters / (raceSeconds / 60);
+  const vdot = calculateVdot(distanceMeters, raceSeconds);
+  return Number.isFinite(vdot) && vdot >= 10 && vdot <= 85 && speed >= 50 && speed <= 450;
+}
+
 export function validatePerformance(distanceMeters: number, raceSeconds: number): string[] {
   const errors: string[] = [];
   if (!Number.isFinite(distanceMeters) || distanceMeters < 1500 || distanceMeters > 42195)
     errors.push("Performance distance must be between 1500 and 42,195 metres.");
   if (!Number.isInteger(raceSeconds) || raceSeconds < 180 || raceSeconds > 28800)
     errors.push("Race time must be between 3 minutes and 8 hours, in whole seconds.");
-  const speed = distanceMeters / (raceSeconds / 60);
-  const vdot = calculateVdot(distanceMeters, raceSeconds);
-  if (!Number.isFinite(vdot) || vdot < 10 || vdot > 85 || speed < 50 || speed > 450)
+  if (!isSupportedPerformance(distanceMeters, raceSeconds))
     errors.push("This performance is outside the supported estimate range (VDOT 10–85). Check distance and time.");
   return errors;
 }

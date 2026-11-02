@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef } from "react";
 
-export function ConfirmationDialog({ title, children, confirmLabel, onConfirm, onCancel }: {
+export function ConfirmationDialog({ title, children, confirmLabel, cancelLabel, onConfirm, onCancel }: {
   title: string;
   children: React.ReactNode;
   confirmLabel: string;
+  cancelLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -28,7 +29,7 @@ export function ConfirmationDialog({ title, children, confirmLabel, onConfirm, o
       <h2 id={titleId} className="text-xl font-semibold">{title}</h2>
       <div id={descriptionId} className="mt-3 space-y-3 text-sm leading-6 text-stone-600">{children}</div>
       <div className="mt-6 flex flex-wrap justify-end gap-3">
-        <button ref={cancel} className="button-secondary" onClick={onCancel}>Cancel</button>
+        <button ref={cancel} className="button-secondary" onClick={onCancel}>{cancelLabel}</button>
         <button className="button-primary" onClick={onConfirm}>{confirmLabel}</button>
       </div>
     </dialog>

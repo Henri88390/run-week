@@ -1,7 +1,11 @@
 import { z } from "zod";
-import { averageEasyPaceSecondsPerKm, calculateVdot, validatePerformance } from "../domain";
+import type { Locale } from "@/features/i18n/locales";
+import type { Messages } from "@/features/i18n/messages/en";
+import { averageEasyPaceSecondsPerKm, calculateVdot, isSupportedPerformance } from "../domain";
 
-export const profileFormSchema = z.object({
+export function createProfileFormSchema(messages: Messages["validation"], locale: Locale) {
+  const { fields } = messages;
+  return z.object({
   distanceMeters: z.string(),
   customDistance: z.boolean(),
   hours: z.string(),
@@ -25,7 +29,7 @@ export const profileFormSchema = z.object({
   ): number | undefined => {
     if (value === "" && !required) return undefined;
     if (!/^\d+$/.test(value)) {
-      context.addIssue({ code: "custom", path: [path], message: `${label}: enter a whole number.` });
+      context.addIssue({ code: "custom", path: [path], message: messages.wholeNumber(label) });
       return undefined;
     }
     const number = Number(value);
@@ -34,36 +38,34 @@ export const profileFormSchema = z.object({
         code: "custom",
         path: [path],
         message: maximum === null
-          ? `${label}: enter a whole number of at least ${minimum.toLocaleString("en-GB")}.`
-          : `${label}: enter a whole number from ${minimum.toLocaleString("en-GB")} to ${maximum.toLocaleString("en-GB")}.`,
+          ? messages.wholeNumberMin(label, minimum.toLocaleString(locale))
+          : messages.wholeNumberRange(label, minimum.toLocaleString(locale), maximum.toLocaleString(locale)),
       });
       return undefined;
     }
     return number;
   };
 
-  const distance = wholeNumber(values.distanceMeters, "distanceMeters", "Distance", 1500, 42195, true);
+  const distance = wholeNumber(values.distanceMeters, "distanceMeters", fields.distance, 1500, 42195, true);
   const hours = distance !== undefined && distance > 5000
-    ? wholeNumber(values.hours, "hours", "Hours", 0, 8, false) ?? 0
+    ? wholeNumber(values.hours, "hours", fields.hours, 0, 8, false) ?? 0
     : 0;
-  const minutes = wholeNumber(values.minutes, "minutes", "Minutes", 0, 59, false) ?? 0;
-  const seconds = wholeNumber(values.seconds, "seconds", "Seconds", 0, 59, false) ?? 0;
+  const minutes = wholeNumber(values.minutes, "minutes", fields.minutes, 0, 59, false) ?? 0;
+  const seconds = wholeNumber(values.seconds, "seconds", fields.seconds, 0, 59, false) ?? 0;
   const raceSeconds = hours * 3600 + minutes * 60 + seconds;
   const raceTimeValid = raceSeconds >= 180 && raceSeconds <= 28800;
   if (!raceTimeValid) {
     context.addIssue({
       code: "custom",
       path: ["minutes"],
-      message: "Race time must be between 3 minutes and 8 hours.",
+      message: messages.raceTimeRange,
     });
   }
 
   let vdot: number | undefined;
   if (distance !== undefined && raceTimeValid) {
-    const supportedEstimateError = validatePerformance(distance, raceSeconds)
-      .find((error) => error.includes("supported estimate range"));
-    if (supportedEstimateError) {
-      context.addIssue({ code: "custom", path: ["distanceMeters"], message: supportedEstimateError });
+    if (!isSupportedPerformance(distance, raceSeconds)) {
+      context.addIssue({ code: "custom", path: ["distanceMeters"], message: messages.unsupportedPerformance });
     } else {
       vdot = calculateVdot(distance, raceSeconds);
     }
@@ -72,29 +74,29 @@ export const profileFormSchema = z.object({
   let weeklyDistance: number | null = null;
   let weeklyDuration: number | null = null;
   if (values.weeklyTargetMode === "distance") {
-    weeklyDistance = wholeNumber(values.recentWeeklyVolume, "recentWeeklyVolume", "Desired weekly distance", 1, null, true) ?? null;
+    weeklyDistance = wholeNumber(values.recentWeeklyVolume, "recentWeeklyVolume", fields.weeklyDistance, 1, null, true) ?? null;
   } else if (values.weeklyTargetMode === "time") {
     const weeklyHours = values.weeklyHours === ""
       ? 0
-      : wholeNumber(values.weeklyHours, "weeklyHours", "Weekly hours", 0, 168, false);
-    const weeklyMinutes = wholeNumber(values.weeklyMinutes, "weeklyMinutes", "Weekly minutes", 0, 59, false) ?? 0;
+      : wholeNumber(values.weeklyHours, "weeklyHours", fields.weeklyHours, 0, 168, false);
+    const weeklyMinutes = wholeNumber(values.weeklyMinutes, "weeklyMinutes", fields.weeklyMinutes, 0, 59, false) ?? 0;
     if (weeklyHours !== undefined) {
       weeklyDuration = weeklyHours * 60 + weeklyMinutes;
       if (weeklyDuration === 0) {
-        context.addIssue({ code: "custom", path: ["weeklyHours"], message: "Desired weekly time must be greater than 0." });
+        context.addIssue({ code: "custom", path: ["weeklyHours"], message: messages.weeklyTimePositive });
       }
     }
   }
 
   const parsedRunCount = values.scheduleMode === "count"
-    ? wholeNumber(values.scheduleCount, "scheduleCount", "Runs per week", 1, 7, true)
+    ? wholeNumber(values.scheduleCount, "scheduleCount", fields.runsPerWeek, 1, 7, true)
     : values.scheduleDays.length;
   const runCount = parsedRunCount ?? 0;
   const validRunCount = runCount >= 1 && runCount <= 7;
   if (values.scheduleMode === "days" &&
     (!validRunCount || new Set(values.scheduleDays).size !== runCount ||
       values.scheduleDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6))) {
-    context.addIssue({ code: "custom", path: ["scheduleDays"], message: "Choose at least one valid weekday." });
+    context.addIssue({ code: "custom", path: ["scheduleDays"], message: messages.chooseWeekday });
   }
 
   if (validRunCount && weeklyDistance !== null && vdot !== undefined &&
@@ -102,16 +104,17 @@ export const profileFormSchema = z.object({
     context.addIssue({
       code: "custom",
       path: ["recentWeeklyVolume"],
-      message: "Desired weekly distance is too low to assign at least 10 minutes to each scheduled run.",
+      message: messages.weeklyDistanceTooLow,
     });
   }
   if (validRunCount && weeklyDuration !== null && weeklyDuration < runCount * 10) {
     context.addIssue({
       code: "custom",
       path: ["weeklyHours"],
-      message: "Desired weekly time must allow at least 10 minutes for each scheduled run.",
+      message: messages.weeklyTimeTooLow,
     });
   }
 });
+}
 
-export type ProfileFormValues = z.infer<typeof profileFormSchema>;
+export type ProfileFormValues = z.infer<ReturnType<typeof createProfileFormSchema>>;
