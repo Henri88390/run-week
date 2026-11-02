@@ -6,14 +6,22 @@ import { savePlanner, usePlannerStore } from "../use-planner-store";
 import { ConfirmationDialog } from "./confirmation-dialog";
 import { ProfileForm } from "./profile-form";
 import { WeekView } from "./week-view";
-import type { GenerationPreferences, Profile } from "../types";
+import type { AdjustmentLevel, GenerationPreferences, Profile } from "../types";
 
 type Action = "generate" | "update-setup" | "regenerate-current" | "advance" | "reset" | null;
 const defaultGenerationPreferences: GenerationPreferences = {
-  increaseVolume: false,
-  increaseIntensity: false,
+  volumeAdjustment: 0,
+  intensityAdjustment: 0,
   runCountAdjustment: 0,
 };
+
+function parseAdjustmentLevel(value: string): AdjustmentLevel {
+  if (value === "-2") return -2;
+  if (value === "-1") return -1;
+  if (value === "1") return 1;
+  if (value === "2") return 2;
+  return 0;
+}
 
 export function RunningPlanner() {
   const { loaded, state, warning, unreadable } = usePlannerStore();
@@ -145,23 +153,33 @@ export function RunningPlanner() {
           action === "regenerate-current" ? <p>This replaces the current week and clears its workout feedback and any next-week preview. Previous weeks remain unchanged.</p> :
             action === "update-setup" ? <p>Saving these changes will regenerate the current week using the updated profile. This clears current-week feedback and any next-week preview. Previous weeks remain unchanged.</p> :
               action === "generate" ? <>
-                <p>Choose optional changes for this week. They will not change the saved setup.</p>
                 <fieldset className="space-y-3 rounded-lg border border-stone-200 p-3">
                   <legend className="px-1 font-semibold">Next-week preferences</legend>
-                  <label className="flex items-start gap-2">
-                    <input type="checkbox" checked={generationPreferences.increaseVolume}
-                      disabled={currentHadDifficulty}
-                      onChange={(event) => setGenerationPreferences((value) => ({ ...value, increaseVolume: event.target.checked }))} />
-                    <span><span className="block font-medium">Increase volume</span>
-                      <span className="block text-xs leading-5">Calculated from this week’s volume and VDOT. Usually 2–30%; it can reach 100% for high VDOT at low volume (20 to 40 km) and is about 5% near 100 km.</span>
+                  <label className="block">
+                    <span className="text-sm font-semibold">Volume</span>
+                    <input className="mt-2 block w-full accent-emerald-800" type="range" min="-2" max={currentHadDifficulty ? 0 : 2} step="1"
+                      value={generationPreferences.volumeAdjustment}
+                      aria-label="Weekly volume adjustment"
+                      onChange={(event) => setGenerationPreferences((value) => ({
+                        ...value, volumeAdjustment: parseAdjustmentLevel(event.target.value),
+                      }))} />
+                    <span className="grid grid-cols-5 text-center text-xs text-stone-600">
+                      <span>−10%</span><span>−5%</span><span>No change</span><span>½ increase</span><span>Full increase</span>
                     </span>
+                    <span className="mt-1 block text-xs leading-5 text-stone-600">Increases are calculated from this week’s volume and VDOT; full increase is usually 2–30%, and about 5% near 100 km.</span>
                   </label>
-                  <label className="flex items-start gap-2">
-                    <input type="checkbox" checked={generationPreferences.increaseIntensity}
-                      disabled={currentHadDifficulty}
-                      onChange={(event) => setGenerationPreferences((value) => ({ ...value, increaseIntensity: event.target.checked }))} />
-                    <span><span className="block font-medium">Increase intensity</span>
-                      <span className="block text-xs leading-5">Add quality work to VO₂ max and threshold sessions without extending the planned duration.</span></span>
+                  <label className="block">
+                    <span className="text-sm font-semibold">Intensity</span>
+                    <input className="mt-2 block w-full accent-emerald-800" type="range" min="-2" max={currentHadDifficulty ? 0 : 2} step="1"
+                      value={generationPreferences.intensityAdjustment}
+                      aria-label="Workout intensity adjustment"
+                      onChange={(event) => setGenerationPreferences((value) => ({
+                        ...value, intensityAdjustment: parseAdjustmentLevel(event.target.value),
+                      }))} />
+                    <span className="grid grid-cols-5 text-center text-xs text-stone-600">
+                      <span>−2 reps</span><span>−1 rep</span><span>No change</span><span>+1 rep</span><span>+2 reps</span>
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-stone-600">Each step changes VO₂ max reps by one or threshold work by two minutes, within the planned duration.</span>
                   </label>
                   <label className="block">
                     <span className="field-label">Runs this week</span>
@@ -176,9 +194,9 @@ export function RunningPlanner() {
                       <option value={-1} disabled={(current?.workouts.length ?? 1) <= 1}>Remove one run</option>
                     </select>
                   </label>
-                  {currentHadDifficulty && <p className="text-xs leading-5 text-amber-900">Difficult or skipped feedback prevents increases to volume, intensity, or run count for this week. Removing a run remains available.</p>}
+                  {currentHadDifficulty && <p className="text-xs leading-5 text-amber-900">Difficult or skipped feedback already reduces volume and prevents increases to intensity or run count for this week. You can still choose to reduce volume, intensity, or run count further.</p>}
                 </fieldset>
-                <p>{next ? "The existing next-week preview will be replaced. " : ""}Current and historical weeks remain unchanged. Review the generated assumptions before using the plan.</p>
+                {next && <p>The existing next-week preview will be replaced.</p>}
               </> :
                 <><p>Durations are based on VDOT, volume, workout type, and neighboring sessions. Difficult or skipped feedback reduces the next volume by 5%.</p><p>Current and historical weeks remain unchanged. Review the generated assumptions before using the plan.</p></>}
     </ConfirmationDialog>}

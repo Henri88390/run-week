@@ -81,11 +81,14 @@ definitions](https://vdoto2.com/Calculator). These are illustrative sessions,
 not individualized coaching advice.
 
 Next-week generation offers optional, one-week-only volume, intensity and run
-count preferences. Volume increases use current-week estimated distance and
+count preferences. Five-point volume and intensity sliders make finer adjustments.
+Volume increases use current-week estimated distance and
 VDOT: the heuristic scales from 2–30% at higher volumes, and can approach 100%
-for high VDOT at low volume. Difficult or skipped feedback suppresses increases.
-Intensity adds VO₂ max or threshold work within the planned session duration;
-run-count changes do not alter the saved schedule.
+for high VDOT at low volume. The two decrease settings reduce volume by 5% or
+10%, while the increase settings apply half or all of the calculated increase.
+Intensity changes VO₂ max repetitions or threshold work within the planned
+session duration. Difficult or skipped feedback suppresses increases; run-count
+changes do not alter the saved schedule.
 
 Generate next week to preview it; regenerate to incorporate later feedback or
 setup edits. Ending the week explicitly promotes the preview and archives the

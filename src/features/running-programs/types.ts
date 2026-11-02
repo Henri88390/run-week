@@ -22,18 +22,21 @@ export type Feedback = {
 };
 
 export type WorkoutType = "easy" | "long" | "workout" | "vo2max" | "threshold";
+export type AdjustmentLevel = -2 | -1 | 0 | 1 | 2;
 
 export type Workout = {
   day: number;
   durationMinutes: number;
   type?: WorkoutType;
+  intensityAdjustment?: AdjustmentLevel;
   intensityIncreased?: boolean;
+  intensityDecreased?: boolean;
   feedback: Feedback;
 };
 
 export type GenerationPreferences = {
-  increaseVolume: boolean;
-  increaseIntensity: boolean;
+  volumeAdjustment: AdjustmentLevel;
+  intensityAdjustment: AdjustmentLevel;
   runCountAdjustment: -1 | 0 | 1;
 };
 

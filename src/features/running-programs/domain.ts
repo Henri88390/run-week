@@ -1,4 +1,4 @@
-import type { Feedback, GenerationPreferences, PlannerState, Profile, Schedule, TrainingWeek, WorkoutType } from "./types";
+import type { AdjustmentLevel, Feedback, GenerationPreferences, PlannerState, Profile, Schedule, TrainingWeek, WorkoutType } from "./types";
 
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 export const DISTANCES = [
@@ -116,16 +116,31 @@ function paceRange(vdot: number, slowFraction: number, fastFraction: number): st
   return `${formatPace(paceAtFraction(vdot, fastFraction))}-${formatPace(paceAtFraction(vdot, slowFraction))} min/km`;
 }
 
-export function workoutSessionDetails(type: WorkoutType, vdot: number, durationMinutes: number, intensityIncreased = false): string | null {
+export function workoutSessionDetails(
+  type: WorkoutType,
+  vdot: number,
+  durationMinutes: number,
+  adjustment: AdjustmentLevel | boolean = 0,
+  legacyIntensityDecreased = false,
+): string | null {
+  const intensityAdjustment = typeof adjustment === "boolean"
+    ? adjustment ? 1 : legacyIntensityDecreased ? -1 : 0
+    : adjustment;
   if (type === "vo2max") {
     if (durationMinutes < 20) return "Keep this short session easy; it is too short for a structured interval set with warm-up and cool-down.";
     const standardRepeats = Math.min(5, Math.max(1, Math.floor((durationMinutes - 10) / 5)));
-    const repeats = Math.min(6, standardRepeats + (intensityIncreased ? 1 : 0));
-    const intervalTime = repeats * 3 + (repeats - 1) * 2;
+    const maxRepeats = Math.floor((durationMinutes - 8) / 5);
+    const requestedRepeats = standardRepeats + Math.sign(intensityAdjustment) * Math.min(2, Math.abs(intensityAdjustment));
+    const repeats = Math.min(maxRepeats, Math.max(1, requestedRepeats));
+    const adjustmentWasCapped = repeats !== requestedRepeats;
+    const recoveryDuration = adjustmentWasCapped && intensityAdjustment !== 0
+      ? intensityAdjustment > 0 ? 1 : 3
+      : 2;
+    const intervalTime = repeats * 3 + (repeats - 1) * recoveryDuration;
     const easyTime = durationMinutes - intervalTime;
     const warmup = Math.floor(easyTime / 2);
     const cooldown = easyTime - warmup;
-    return `${warmup} min easy warm-up; ${repeats} x 3min at ${paceRange(vdot, 0.97, 1.0)}, with 2 min easy jog recovery; ${cooldown} min easy cool-down.`;
+    return `${warmup} min easy warm-up; ${repeats} x 3min at ${paceRange(vdot, 0.97, 1.0)}, with ${recoveryDuration} min easy jog recovery; ${cooldown} min easy cool-down.`;
   }
 
   if (type === "threshold") {
@@ -133,8 +148,9 @@ export function workoutSessionDetails(type: WorkoutType, vdot: number, durationM
     const pace = paceRange(vdot, 0.83, 0.88);
     if (durationMinutes <= 30) {
       const standardWork = durationMinutes - 10;
-      const extraWork = intensityIncreased ? Math.min(4, standardWork - 5) : 0;
-      const work = standardWork + Math.max(0, extraWork);
+      const workChange = Math.sign(intensityAdjustment)
+        * Math.min(Math.abs(intensityAdjustment) * 2, standardWork - 5);
+      const work = standardWork + workChange;
       const easyTime = durationMinutes - work;
       const warmup = Math.floor(easyTime / 2);
       return `${warmup} min easy warm-up; ${work}min continuous at ${pace}; ${easyTime - warmup} min easy cool-down.`;
@@ -144,10 +160,12 @@ export function workoutSessionDetails(type: WorkoutType, vdot: number, durationM
     const recoveryMinutes = 2 * (repeats - 1);
     const standardWorkMinutes = durationMinutes - 10 - recoveryMinutes;
     const easyBudget = durationMinutes - recoveryMinutes - standardWorkMinutes;
-    const extraWorkMinutes = intensityIncreased
-      ? Math.max(0, Math.min(4, easyBudget - 6, repeats * 15 - standardWorkMinutes))
-      : 0;
-    const workMinutes = standardWorkMinutes + extraWorkMinutes;
+    const workChange = intensityAdjustment > 0
+      ? Math.min(intensityAdjustment * 2, easyBudget - 6, repeats * 15 - standardWorkMinutes)
+      : intensityAdjustment < 0
+        ? -Math.min(Math.abs(intensityAdjustment) * 2, standardWorkMinutes - repeats * 5)
+        : 0;
+    const workMinutes = standardWorkMinutes + workChange;
     const repeatDuration = Math.floor(workMinutes / repeats);
     const longerRepeats = workMinutes % repeats;
     const repeatLengths = Array.from({ length: repeats }, (_, index) => repeatDuration + (index < longerRepeats ? 1 : 0));
@@ -298,7 +316,7 @@ export function generateWeek(
   profile: Profile,
   startDate: string,
   previous?: TrainingWeek,
-  preferences: GenerationPreferences = { increaseVolume: false, increaseIntensity: false, runCountAdjustment: 0 },
+  preferences: GenerationPreferences = { volumeAdjustment: 0, intensityAdjustment: 0, runCountAdjustment: 0 },
 ): TrainingWeek {
   const previousHadDifficulty = previous?.workouts.some((workout) => feedbackNeedsReduction(workout.feedback)) ?? false;
   const runCountAdjustment = previousHadDifficulty && preferences.runCountAdjustment === 1
@@ -306,16 +324,24 @@ export function generateWeek(
   const days = adjustRunDays(selectDays(profile.schedule), runCountAdjustment);
   const workoutTypes = spaceKeyWorkouts(days, weeklyWorkoutTypes(days.length));
   const durationWeights = plannedWorkoutDurations(profile.vdot, workoutTypes);
-  const increaseVolumeApplied = preferences.increaseVolume && previous !== undefined && !previousHadDifficulty;
-  const increaseIntensityApplied = preferences.increaseIntensity && !previousHadDifficulty;
+  const volumeAdjustment = previousHadDifficulty && preferences.volumeAdjustment > 0 ? 0 : preferences.volumeAdjustment;
+  const intensityAdjustment = previousHadDifficulty && preferences.intensityAdjustment > 0 ? 0 : preferences.intensityAdjustment;
+  const increaseVolumeApplied = volumeAdjustment > 0 && previous !== undefined;
+  const decreaseVolumeApplied = volumeAdjustment < 0 && previous !== undefined && !previousHadDifficulty;
+  const increaseIntensityApplied = intensityAdjustment > 0;
+  const decreaseIntensityApplied = intensityAdjustment < 0;
   const baseVolumeKm = previous ? estimatedWeekKm(previous) : profile.recentWeeklyVolumeKm;
-  const increasePercent = increaseVolumeApplied && baseVolumeKm !== null
+  const fullIncreasePercent = increaseVolumeApplied && baseVolumeKm !== null
     ? volumeIncreasePercent(baseVolumeKm, profile.vdot) : 0;
+  const increasePercent = volumeAdjustment === 1 ? Math.max(1, Math.round(fullIncreasePercent / 2)) : fullIncreasePercent;
+  const volumeReductionPercent = volumeAdjustment === -2 ? 10 : 5;
   const targetWeeklyVolumeKm = previousHadDifficulty
     ? baseVolumeKm === null ? null : baseVolumeKm * 0.95
     : increaseVolumeApplied && baseVolumeKm !== null
       ? baseVolumeKm * (1 + increasePercent / 100)
-      : profile.recentWeeklyVolumeKm;
+      : decreaseVolumeApplied && baseVolumeKm !== null
+        ? baseVolumeKm * (1 - volumeReductionPercent / 100)
+        : profile.recentWeeklyVolumeKm;
   const reduce = previousHadDifficulty;
   const targetMinutes = targetWeeklyVolumeKm === null
     ? null
@@ -333,13 +359,15 @@ export function generateWeek(
       day,
       durationMinutes: durations[i],
       type: workoutTypes[i],
-      intensityIncreased: increaseIntensityApplied && (workoutTypes[i] === "vo2max" || workoutTypes[i] === "threshold"),
+      intensityAdjustment: workoutTypes[i] === "vo2max" || workoutTypes[i] === "threshold" ? intensityAdjustment : 0,
       feedback: {},
     })),
     targetWeeklyVolumeKm,
     rationale: [
       increaseVolumeApplied && baseVolumeKm !== null
         ? `Volume increased by ${increasePercent}% from the previous week’s estimated ${baseVolumeKm.toFixed(1)} km.`
+        : decreaseVolumeApplied && baseVolumeKm !== null
+          ? `Volume reduced by ${volumeReductionPercent}% from the previous week’s estimated ${baseVolumeKm.toFixed(1)} km.`
         : targetWeeklyVolumeKm === null
         ? "No weekly volume was entered; session durations use the VDOT-based baseline and workout type."
         : `The four-week average is ${profile.recentWeeklyVolumeKm} km/week; this plan targets ${targetWeeklyVolumeKm.toFixed(1)} km.`,
@@ -348,7 +376,8 @@ export function generateWeek(
         : "Target distance is converted to time using the midpoint of the VDOT easy-pace range, rounded to 10-minute session increments, and distributed by workout type and nearby sessions.",
       runCountAdjustment === 1 ? "One run was added for this week only; the saved schedule is unchanged."
         : runCountAdjustment === -1 ? "One run was removed for this week only; the saved schedule is unchanged." : "",
-      increaseIntensityApplied ? "VO₂ max and threshold sessions include additional quality work within the planned duration." : "",
+      increaseIntensityApplied ? `VO₂ max and threshold sessions use intensity adjustment level +${intensityAdjustment}.` : "",
+      decreaseIntensityApplied ? `VO₂ max and threshold sessions use intensity adjustment level ${intensityAdjustment}.` : "",
       "Workout and long runs are spaced as evenly as the selected weekdays allow; a weekend long run is preferred when spacing is equal.",
       reduce ? "At least one tired/unwell, hard, low-strength, too-fast or skipped response: target volume reduced by 5%." :
         "No reduction signal recorded. Missing feedback is unknown; no feedback-based adjustment applied.",

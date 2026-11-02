@@ -15,6 +15,14 @@ function formatDuration(totalMinutes: number): string {
   return [hours ? `${hours} h` : "", minutes ? `${minutes} min` : ""].filter(Boolean).join(" ");
 }
 
+function workoutCardColor(type: string | undefined): string {
+  if (type === "long") return "border-sky-300 bg-sky-50";
+  if (type === "vo2max") return "border-rose-300 bg-rose-50";
+  if (type === "threshold") return "border-amber-300 bg-amber-50";
+  if (type === "workout") return "border-violet-300 bg-violet-50";
+  return "border-emerald-300 bg-emerald-50";
+}
+
 function FeedbackSelect<K extends keyof Feedback>({ label, field, feedback, options, onChange }: {
   label: string;
   field: K;
@@ -60,7 +68,6 @@ function FeedbackForm({ feedback, onChange }: { feedback: Feedback; onChange: (f
         { value: "manageable", label: "Manageable" }, { value: "too-fast", label: "Too fast" }, { value: "too-slow", label: "Too slow" },
       ]} />
     </fieldset>
-    <p className="text-xs text-stone-600">Saved on change. Difficult or skipped responses reduce the next generated budget; positive responses do not raise it.</p>
   </div>;
 }
 
@@ -88,24 +95,27 @@ export function WeekView({ week, status, onFeedback }: {
         <span className="sr-only"> distance estimate based on the VDOT easy pace range</span>
       </p>
     </div>
-    <ol aria-label="Week calendar" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+    <ol aria-label="Week calendar" className="mt-6 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {WEEKDAYS.map((day, i) => {
         const workout = week.workouts.find((entry) => entry.day === i);
-        return <li key={day} className={`rounded-lg border p-3 ${workout ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-stone-50"}`}>
+        return <li key={day} className={`rounded-lg border p-3 ${workout ? workoutCardColor(workout.type) : "border-stone-200 bg-stone-50"}`}>
           <p className="text-sm font-medium">{day.slice(0, 3)}<span className="sr-only">{day.slice(3)}</span></p>
           <p className="mt-2 text-sm">{workout ? `${workout.durationMinutes} min · ${workoutLabel(workout.type ?? "easy")}` : "Rest"}</p>
         </li>;
       })}
     </ol>
-    <div className="mt-6 grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-6 grid auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-3">
       {week.workouts.map((workout) => {
         const sessionDetails = workout.type
-          ? workoutSessionDetails(workout.type, week.profile.vdot, workout.durationMinutes, workout.intensityIncreased)
+          ? workoutSessionDetails(workout.type, week.profile.vdot, workout.durationMinutes,
+            workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0))
           : null;
-        return <article key={workout.day} className="flex flex-col rounded-xl border border-stone-200 p-4">
+        return <article key={workout.day} className={`flex flex-col rounded-xl border p-4 ${workoutCardColor(workout.type)}`}>
           <h3 className="font-semibold">{WEEKDAYS[workout.day]} · {dateLabel(addDays(week.startDate, workout.day))}</h3>
           <p className="mt-2 text-sm">{workout.durationMinutes} minutes · {workoutLabel(workout.type ?? "easy")}</p>
-          {(workout.type === undefined || workout.type === "easy" || workout.type === "long") ?
+          {(workout.type === undefined || workout.type === "easy") ?
+            <p className="mt-2 text-xs leading-5 text-stone-600">Run at a comfortable, conversational effort.</p> :
+            workout.type === "long" ?
             <><p className="mt-1 text-sm font-medium text-emerald-900">{easyPace(week.profile.vdot)}</p>
               <p className="mt-2 text-xs leading-5 text-stone-600">Estimated pace; adjust or skip if uncomfortable.</p></> :
             sessionDetails
@@ -113,7 +123,7 @@ export function WeekView({ week, status, onFeedback }: {
               : <p className="mt-2 text-xs leading-5 text-stone-600">Session details are not defined.</p>}
           {onFeedback ? <button className="mt-auto border-t border-stone-200 pt-3 text-left text-sm font-semibold"
             onClick={() => setFeedbackDay(workout.day)}>
-            Workout feedback {Object.keys(workout.feedback).length ? `(${Object.keys(workout.feedback).length}/5 recorded)` : "(not recorded)"}
+            Workout feedback ({Object.keys(workout.feedback).length}/5 recorded)
           </button> : <div className="mt-auto border-t border-stone-200 pt-3 text-sm text-stone-600">
             {status === "next" ? "Feedback opens when this becomes the current week." :
               <dl className="space-y-1">

@@ -49,7 +49,11 @@ function isWeek(value: unknown): value is TrainingWeek {
       || workout.day < 0 || workout.day > 6 || days.has(workout.day)
       || typeof workout.durationMinutes !== "number" || !Number.isInteger(workout.durationMinutes)
       || workout.durationMinutes < 1
+      || (workout.intensityAdjustment !== undefined && (typeof workout.intensityAdjustment !== "number"
+        || !Number.isInteger(workout.intensityAdjustment)
+        || workout.intensityAdjustment < -2 || workout.intensityAdjustment > 2))
       || (workout.intensityIncreased !== undefined && typeof workout.intensityIncreased !== "boolean")
+      || (workout.intensityDecreased !== undefined && typeof workout.intensityDecreased !== "boolean")
       || (workout.type !== undefined && !["easy", "long", "workout", "vo2max", "threshold"].includes(String(workout.type)))
       || !isFeedback(workout.feedback)) return false;
     days.add(workout.day);
