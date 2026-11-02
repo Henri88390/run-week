@@ -12,6 +12,7 @@
   "dependencies": {
     "@garmin/fitsdk": "^21.218.0",
     "@hookform/resolvers": "^7.0.1",
+    "country-flag-icons": "^1.6.20",
     "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",

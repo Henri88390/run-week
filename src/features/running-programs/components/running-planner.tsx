@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
 import { savePlanner, usePlannerStore } from "../use-planner-store";
@@ -61,40 +62,46 @@ export function RunningPlanner() {
     <p role="status" className="text-sm text-emerald-900">{notice && t.notices[notice]}</p>
 
     {unreadable ? <section className="panel">
-      <h1 className="text-xl font-semibold">{t.unavailable.title}</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-xl font-semibold">{t.unavailable.title}</h1>
+        <LanguageSelect />
+      </div>
       <p className="mt-2 text-sm text-stone-600">{t.unavailable.body}</p>
       <button className="button-secondary mt-4" onClick={() => setAction("reset")}>{t.unavailable.reset}</button>
     </section> : <>
-      <details className="group rounded-2xl border border-stone-200 bg-white" open={!state}>
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5">
-          <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open:rotate-180">
-            <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-          </svg>
-          {state && <span className="text-sm text-stone-600">
-            {distanceLabel(state.profile.distanceMeters, t.distances)}
-          </span>}
-          {state && <span className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-900">
-            <span className="sr-only">{t.summary.performanceTime}: </span>{performanceTime}
-          </span>}
-          {weeklyTarget && <span className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-900">
-            <span className="sr-only">{t.summary.weeklyTarget}: </span>{weeklyTarget}
-          </span>}
-          {state && <span className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-900">
-            <span className="sr-only">{t.summary.schedule}: </span>{t.runsPerWeek(selectDays(state.profile.schedule).length)}
-          </span>}
-        </summary>
-        <div className="border-t border-stone-200 px-4 pb-4 sm:px-5 sm:pb-5">
-          <ProfileForm key={current?.id ?? "new"} profile={state?.profile} onSave={(profile) => {
-            if (state) {
-              setPendingProfile(profile);
-              setAction("update-setup");
-            } else {
-              savePlanner(createPlanner(profile, new Date()));
-              setNotice("created");
-            }
-          }} />
-        </div>
-      </details>
+      <div className="relative">
+        <details className="group rounded-2xl border border-stone-200 bg-white" open={!state}>
+          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 pr-44 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5 sm:pr-48">
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open:rotate-180">
+              <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+            </svg>
+            {state && <span className="text-sm text-stone-600">
+              {distanceLabel(state.profile.distanceMeters, t.distances)}
+            </span>}
+            {state && <span className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-900">
+              <span className="sr-only">{t.summary.performanceTime}: </span>{performanceTime}
+            </span>}
+            {weeklyTarget && <span className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-900">
+              <span className="sr-only">{t.summary.weeklyTarget}: </span>{weeklyTarget}
+            </span>}
+            {state && <span className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-900">
+              <span className="sr-only">{t.summary.schedule}: </span>{t.runsPerWeek(selectDays(state.profile.schedule).length)}
+            </span>}
+          </summary>
+          <div className="border-t border-stone-200 px-4 pb-4 sm:px-5 sm:pb-5">
+            <ProfileForm key={current?.id ?? "new"} profile={state?.profile} onSave={(profile) => {
+              if (state) {
+                setPendingProfile(profile);
+                setAction("update-setup");
+              } else {
+                savePlanner(createPlanner(profile, new Date()));
+                setNotice("created");
+              }
+            }} />
+          </div>
+        </details>
+        <LanguageSelect className="absolute top-4 right-4 sm:top-5 sm:right-5" />
+      </div>
       {current && <WeekView key={current.id} week={current} />}
     </>}
 
