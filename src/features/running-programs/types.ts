@@ -11,14 +11,7 @@ export type Profile = {
   goalDistanceMeters: number;
   schedule: Schedule;
   recentWeeklyVolumeKm: number | null;
-};
-
-export type Feedback = {
-  readiness?: "ready" | "tired" | "unwell";
-  effort?: "easy" | "moderate" | "hard";
-  strength?: "strong" | "normal" | "low";
-  pace?: "manageable" | "too-fast" | "too-slow";
-  outcome?: "completed" | "skipped";
+  desiredWeeklyDurationMinutes: number | null;
 };
 
 export type WorkoutType = "easy" | "long" | "workout" | "vo2max" | "threshold";
@@ -31,13 +24,6 @@ export type Workout = {
   intensityAdjustment?: AdjustmentLevel;
   intensityIncreased?: boolean;
   intensityDecreased?: boolean;
-  feedback: Feedback;
-};
-
-export type GenerationPreferences = {
-  volumeAdjustment: AdjustmentLevel;
-  intensityAdjustment: AdjustmentLevel;
-  runCountAdjustment: -1 | 0 | 1;
 };
 
 export type TrainingWeek = {
@@ -51,8 +37,7 @@ export type TrainingWeek = {
 };
 
 export type PlannerState = {
-  version: 1;
+  version: 2;
   profile: Profile;
-  currentWeekId: string;
-  weeks: TrainingWeek[];
+  currentWeek: TrainingWeek;
 };

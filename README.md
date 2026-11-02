@@ -36,31 +36,29 @@ src/
     running-programs/
       components/         Running-program UI
       types.ts            Domain types independent of React
-      domain.ts           Pure VDOT, schedule, feedback and generation functions
+      domain.ts           Pure VDOT, schedule and workout generation functions
       storage.ts          Versioned localStorage validation
       use-planner-store.ts Hydration-safe browser store
 public/                   Static assets
 ```
 
-The home page supports performance/profile setup, current/next week previews,
-per-run feedback and read-only week history. Profile, preferences and weeks are
-saved only in this browser's localStorage. There is no account, backend, database
-or cross-device sync. Clearing browser data deletes the planner. Failed writes
-show an in-memory-only warning; invalid saved data is not silently overwritten.
-System fonts keep builds independent of external font services.
+The home page supports performance/profile setup and a current-week plan. Profile
+and the current week are saved only in this browser's localStorage. There is no
+account, backend, database or cross-device sync.
+Clearing browser data deletes the planner. Failed writes show an in-memory-only
+warning; invalid saved data is not silently overwritten. System fonts keep builds
+independent of external font services.
 
-VDOT uses the Daniels–Gilbert race-performance equations. Setup includes the
-average weekly distance over the last four weeks. This value is optional. When
-provided, generated weekly volume targets that average and does not increase
-automatically. VDOT easy pace converts that distance to total duration, which is
-distributed among workouts by type and neighboring sessions. Without a volume
-value, session durations use the VDOT-based baseline. Difficult or skipped
-feedback reduces the next target or baseline by 5%. Existing local planner data
-is migrated by estimating volume from its saved workout durations and VDOT pace.
+VDOT uses the Daniels–Gilbert race-performance equations. Setup can use an optional desired weekly distance or desired weekly time. A
+distance target is converted to duration using VDOT easy pace; a time target is
+used directly. The resulting duration is distributed among workouts by type and
+neighboring sessions. Without a target, session durations use the VDOT-based
+baseline. Existing local planner data is migrated by estimating volume from its
+saved workout durations and VDOT pace.
 
 Easy pace estimates invert the oxygen-cost equation at 59–74% of VDOT. Full
-equations and limits are shown in the UI. Each generated week retains its own
-VDOT/profile snapshot. These are illustrative estimates, not personalized
+equations and limits are shown in the UI. The plan retains the VDOT/profile
+snapshot used to create it. These are illustrative estimates, not personalized
 training or medical advice.
 
 Generated workout categories follow the selected run count: one VO₂ max workout;
@@ -70,8 +68,8 @@ easy runs). The total weekly duration is allocated in proportion to workout-type
 and neighboring-session weights. Workout and long runs are spaced as evenly as
 the selected weekdays allow, with the long run favored for a weekend when
 spacing is otherwise equal. The displayed distance is a separate estimate based
-on the VDOT easy-pace range. Missing feedback is unknown. These are product
-heuristics, not scientifically validated training rules.
+on the VDOT easy-pace range. These are product heuristics, not scientifically
+validated training rules.
 
 VO₂ max sessions use VDOT-derived I-pace estimates and 3-minute repeats with
 2-minute easy jog recoveries. Threshold sessions use VDOT-derived T-pace
@@ -80,20 +78,14 @@ duration. The pace ranges and example formats follow the [VDOT2 training
 definitions](https://vdoto2.com/Calculator). These are illustrative sessions,
 not individualized coaching advice.
 
-Next-week generation offers optional, one-week-only volume, intensity and run
-count preferences. Five-point volume and intensity sliders make finer adjustments.
-Volume increases use current-week estimated distance and
-VDOT: the heuristic scales from 2–30% at higher volumes, and can approach 100%
-for high VDOT at low volume. The two decrease settings reduce volume by 5% or
-10%, while the increase settings apply half or all of the calculated increase.
-Intensity changes VO₂ max repetitions or threshold work within the planned
-session duration. Difficult or skipped feedback suppresses increases; run-count
-changes do not alter the saved schedule.
+Each non-easy workout card can download a Garmin FIT workout file. Files contain
+timed workout steps and VDOT-derived pace targets where available. Transfer the
+downloaded file to a compatible Garmin device using Garmin Connect or the device's
+supported file-transfer method. Easy runs do not have FIT downloads; files are
+generated in the browser and are not uploaded automatically.
 
-Generate next week to preview it; regenerate to incorporate later feedback or
-setup edits. Ending the week explicitly promotes the preview and archives the
-current week. Weeks do not automatically advance with the clock. Confirmation
-dialogs protect preview replacement, advancement and deletion.
+Edit setup to update the current plan. Confirmation dialogs protect plan
+replacement and deletion.
 
 ## Architecture
 

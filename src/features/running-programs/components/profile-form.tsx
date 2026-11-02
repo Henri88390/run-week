@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { calculateVdot, DISTANCES, validatePerformance, validateProfile, WEEKDAYS } from "../domain";
-import type { Goal, Profile, Schedule } from "../types";
+import type { Profile, Schedule } from "../types";
 
 function profilesMatch(a: Profile, b: Profile): boolean {
   const schedulesMatch = a.schedule.mode === b.schedule.mode && (
@@ -14,6 +14,7 @@ function profilesMatch(a: Profile, b: Profile): boolean {
   return a.distanceMeters === b.distanceMeters
     && a.raceSeconds === b.raceSeconds
     && a.recentWeeklyVolumeKm === b.recentWeeklyVolumeKm
+    && a.desiredWeeklyDurationMinutes === b.desiredWeeklyDurationMinutes
     && a.goal === b.goal
     && a.goalDistanceMeters === b.goalDistanceMeters
     && schedulesMatch;
@@ -51,18 +52,24 @@ export function ProfileForm({ profile, onSave, onCancel }: {
   const [hours, setHours] = useState(profile ? Math.floor(profile.raceSeconds / 3600).toString() : "");
   const [minutes, setMinutes] = useState(profile ? Math.floor(profile.raceSeconds % 3600 / 60).toString() : "");
   const [seconds, setSeconds] = useState(profile ? (profile.raceSeconds % 60).toString() : "");
-  const [volumeUnspecified, setVolumeUnspecified] = useState(profile?.recentWeeklyVolumeKm == null);
+  const [weeklyTargetMode, setWeeklyTargetMode] = useState<"distance" | "time" | "unspecified">(
+    profile?.desiredWeeklyDurationMinutes != null ? "time" : profile?.recentWeeklyVolumeKm != null ? "distance" : "unspecified",
+  );
   const [recentWeeklyVolume, setRecentWeeklyVolume] = useState(profile?.recentWeeklyVolumeKm?.toString() ?? "");
-  const [goal, setGoal] = useState<Goal>(profile?.goal ?? "none");
-  const [goalDistance, setGoalDistance] = useState(profile?.goalDistanceMeters ?? 5000);
+  const [weeklyHours, setWeeklyHours] = useState(profile?.desiredWeeklyDurationMinutes != null
+    ? Math.floor(profile.desiredWeeklyDurationMinutes / 60).toString() : "");
+  const [weeklyMinutes, setWeeklyMinutes] = useState(profile?.desiredWeeklyDurationMinutes != null
+    ? (profile.desiredWeeklyDurationMinutes % 60).toString() : "");
   const [schedule, setSchedule] = useState<Schedule>(profile?.schedule ?? { mode: "count", count: 3 });
   const [errors, setErrors] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const raceSeconds = Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
   const draft: Profile = {
     distanceMeters: distance, raceSeconds, vdot: calculateVdot(distance, raceSeconds),
-    goal, goalDistanceMeters: goalDistance, schedule,
-    recentWeeklyVolumeKm: volumeUnspecified ? null : Number(recentWeeklyVolume),
+    goal: profile?.goal ?? "none", goalDistanceMeters: profile?.goalDistanceMeters ?? 5000, schedule,
+    recentWeeklyVolumeKm: weeklyTargetMode === "distance" ? Number(recentWeeklyVolume) : null,
+    desiredWeeklyDurationMinutes: weeklyTargetMode === "time"
+      ? Number(weeklyHours) * 60 + Number(weeklyMinutes) : null,
   };
   const hoursValid = !hours || (/^\d+$/.test(hours) && Number(hours) <= 8);
   const minutesValid = !minutes || (/^\d+$/.test(minutes) && Number(minutes) <= 59);
@@ -74,14 +81,15 @@ export function ProfileForm({ profile, onSave, onCancel }: {
   const performanceError = submitted && timePartsValid && !raceTimeError && raceSeconds > 0
     ? validatePerformance(distance, raceSeconds).find((error) => error.includes("supported estimate range")) ?? ""
     : "";
-  const volumeError = submitted
-    ? validateProfile(draft).find((error) => error.toLowerCase().includes("volume")) ?? ""
+  const weeklyHoursValid = weeklyTargetMode !== "time" || (/^\d+$/.test(weeklyHours) && Number(weeklyHours) <= 168);
+  const weeklyMinutesValid = weeklyTargetMode !== "time" || (/^\d+$/.test(weeklyMinutes) && Number(weeklyMinutes) <= 59);
+  const weeklyTargetError = submitted
+    ? validateProfile(draft).find((error) => error.toLowerCase().includes("desired weekly") || error.toLowerCase().includes("choose either")) ?? ""
     : "";
   const hasChanges = !profile || !profilesMatch(profile, draft);
   return (
     <section className="panel" aria-labelledby="setup-heading">
       <h1 id="setup-heading" className="text-xl font-semibold">{profile ? "Edit setup" : "Set up your week"}</h1>
-      <p className="mt-2 text-sm text-stone-600">Enter a recent race or comparable all-out performance.</p>
       <form noValidate className="mt-6 space-y-6" onSubmit={(event) => {
         event.preventDefault();
         const issues = validateProfile(draft);
@@ -109,28 +117,34 @@ export function ProfileForm({ profile, onSave, onCancel }: {
           </fieldset>
         </div>
         <div className="max-w-2xl">
-          <label className="block">
-            <span className="field-label">Average weekly distance over the last 4 weeks (km, whole number)</span>
-            <div className="flex flex-wrap items-center gap-4">
-              <input className={`field max-w-sm ${volumeError ? "border-red-600" : ""}`} type="number" min="1" step="1"
-                required={!volumeUnspecified} disabled={volumeUnspecified} value={recentWeeklyVolume} aria-invalid={Boolean(volumeError)}
-                aria-describedby={volumeError ? "recent-volume-error" : undefined}
-                onChange={(event) => setRecentWeeklyVolume(event.target.value)} />
-              <span className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={volumeUnspecified} onChange={(event) => setVolumeUnspecified(event.target.checked)} />
-                Don’t specify
-              </span>
+          <fieldset className="space-y-3">
+            <legend className="field-label">Weekly target</legend>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "distance"} onChange={() => setWeeklyTargetMode("distance")} />Distance</label>
+              <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "time"} onChange={() => setWeeklyTargetMode("time")} />Time</label>
+              <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "unspecified"} onChange={() => setWeeklyTargetMode("unspecified")} />Don’t specify</label>
             </div>
-            {volumeError && <span id="recent-volume-error" className="mt-1 block text-sm text-red-700">{volumeError}</span>}
-          </label>
-        </div>
-        <div className="grid gap-6 sm:grid-cols-2">
-          <label><span className="field-label">Goal</span>
-            <select className="field" value={goal} onChange={(event) => setGoal(event.target.value as Goal)}>
-              <option value="none">No specific goal</option><option value="maintain">Maintain current level</option><option value="improve">Improve selected distance</option>
-            </select>
-          </label>
-          {goal === "improve" && <DistanceInput label="Goal distance" value={goalDistance} onChange={setGoalDistance} />}
+            {weeklyTargetMode === "distance" && <label className="block max-w-sm">
+              <span className="field-label">Desired weekly distance (km, whole number)</span>
+              <input className={`field ${weeklyTargetError ? "border-red-600" : ""}`} type="number" min="1" step="1" required
+                value={recentWeeklyVolume} aria-invalid={Boolean(weeklyTargetError)}
+                aria-describedby={weeklyTargetError ? "weekly-target-error" : undefined}
+                onChange={(event) => setRecentWeeklyVolume(event.target.value)} />
+            </label>}
+            {weeklyTargetMode === "time" && <fieldset>
+              <legend className="field-label">Desired weekly time (hours : minutes)</legend>
+              <div className="grid max-w-sm grid-cols-2 gap-2">
+                <label><span className="sr-only">Weekly hours</span><input className={`field ${submitted && !weeklyHoursValid ? "border-red-600" : ""}`}
+                  aria-label="Weekly hours" type="number" min="0" max="168" step="1" placeholder="h" required
+                  value={weeklyHours} aria-invalid={submitted && !weeklyHoursValid} onChange={(event) => setWeeklyHours(event.target.value)} /></label>
+                <label><span className="sr-only">Weekly minutes</span><input className={`field ${submitted && !weeklyMinutesValid ? "border-red-600" : ""}`}
+                  aria-label="Weekly minutes" type="number" min="0" max="59" step="1" placeholder="m" required
+                  value={weeklyMinutes} aria-invalid={submitted && !weeklyMinutesValid} onChange={(event) => setWeeklyMinutes(event.target.value)} /></label>
+              </div>
+              {submitted && (!weeklyHoursValid || !weeklyMinutesValid) && <p className="mt-1 text-sm text-red-700" role="alert">Enter whole hours from 0 to 168 and minutes from 0 to 59.</p>}
+            </fieldset>}
+            {weeklyTargetError && <span id="weekly-target-error" className="block text-sm text-red-700" role="alert">{weeklyTargetError}</span>}
+          </fieldset>
         </div>
         <fieldset>
           <legend className="field-label">Schedule</legend>
@@ -149,7 +163,7 @@ export function ProfileForm({ profile, onSave, onCancel }: {
             </select>
           </label>}
         </fieldset>
-        {profile && <p className="text-sm text-stone-600">Saving changes regenerates the current week after confirmation. Earlier weeks remain unchanged.</p>}
+        {profile && <p className="text-sm text-stone-600">Saving changes replaces the current week after confirmation.</p>}
         {errors.length > 0 && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900"><ul className="list-inside list-disc">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
         <div className="flex flex-wrap gap-3">
           <button className="button-primary" type="submit" disabled={Boolean(profile && !hasChanges)}>{profile ? "Save setup" : "Create current week"}</button>

@@ -1,4 +1,4 @@
-import type { AdjustmentLevel, Feedback, GenerationPreferences, PlannerState, Profile, Schedule, TrainingWeek, WorkoutType } from "./types";
+import type { AdjustmentLevel, PlannerState, Profile, Schedule, TrainingWeek, WorkoutType } from "./types";
 
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 export const DISTANCES = [
@@ -116,18 +116,35 @@ function paceRange(vdot: number, slowFraction: number, fastFraction: number): st
   return `${formatPace(paceAtFraction(vdot, fastFraction))}-${formatPace(paceAtFraction(vdot, slowFraction))} min/km`;
 }
 
-export function workoutSessionDetails(
+export type WorkoutSessionStep = {
+  name: string;
+  durationMinutes: number;
+  intensity: "active" | "warmup" | "recovery" | "interval" | "cooldown";
+  paceFractions?: [slow: number, fast: number];
+};
+
+export type WorkoutSessionPlan = {
+  description: string;
+  steps: WorkoutSessionStep[];
+};
+
+export function workoutSessionPlan(
   type: WorkoutType,
   vdot: number,
   durationMinutes: number,
   adjustment: AdjustmentLevel | boolean = 0,
   legacyIntensityDecreased = false,
-): string | null {
+): WorkoutSessionPlan | null {
   const intensityAdjustment = typeof adjustment === "boolean"
     ? adjustment ? 1 : legacyIntensityDecreased ? -1 : 0
     : adjustment;
   if (type === "vo2max") {
-    if (durationMinutes < 20) return "Keep this short session easy; it is too short for a structured interval set with warm-up and cool-down.";
+    if (durationMinutes < 20) {
+      return {
+        description: "Keep this short session easy; it is too short for a structured interval set with warm-up and cool-down.",
+        steps: [{ name: "Easy run", durationMinutes, intensity: "active" }],
+      };
+    }
     const standardRepeats = Math.min(5, Math.max(1, Math.floor((durationMinutes - 10) / 5)));
     const maxRepeats = Math.floor((durationMinutes - 8) / 5);
     const requestedRepeats = standardRepeats + Math.sign(intensityAdjustment) * Math.min(2, Math.abs(intensityAdjustment));
@@ -140,11 +157,27 @@ export function workoutSessionDetails(
     const easyTime = durationMinutes - intervalTime;
     const warmup = Math.floor(easyTime / 2);
     const cooldown = easyTime - warmup;
-    return `${warmup} min easy warm-up; ${repeats} x 3min at ${paceRange(vdot, 0.97, 1.0)}, with ${recoveryDuration} min easy jog recovery; ${cooldown} min easy cool-down.`;
+    const steps: WorkoutSessionStep[] = [{ name: "Warm-up", durationMinutes: warmup, intensity: "warmup" }];
+    for (let index = 0; index < repeats; index++) {
+      steps.push({ name: "VO₂ max interval", durationMinutes: 3, intensity: "interval", paceFractions: [0.97, 1] });
+      if (index < repeats - 1) {
+        steps.push({ name: "Easy jog recovery", durationMinutes: recoveryDuration, intensity: "recovery" });
+      }
+    }
+    steps.push({ name: "Cool-down", durationMinutes: cooldown, intensity: "cooldown" });
+    return {
+      description: `${warmup} min easy warm-up; ${repeats} x 3min at ${paceRange(vdot, 0.97, 1.0)}, with ${recoveryDuration} min easy jog recovery; ${cooldown} min easy cool-down.`,
+      steps,
+    };
   }
 
   if (type === "threshold") {
-    if (durationMinutes < 20) return "Keep this short session easy; it is too short for a structured threshold set with warm-up and cool-down.";
+    if (durationMinutes < 20) {
+      return {
+        description: "Keep this short session easy; it is too short for a structured threshold set with warm-up and cool-down.",
+        steps: [{ name: "Easy run", durationMinutes, intensity: "active" }],
+      };
+    }
     const pace = paceRange(vdot, 0.83, 0.88);
     if (durationMinutes <= 30) {
       const standardWork = durationMinutes - 10;
@@ -153,7 +186,14 @@ export function workoutSessionDetails(
       const work = standardWork + workChange;
       const easyTime = durationMinutes - work;
       const warmup = Math.floor(easyTime / 2);
-      return `${warmup} min easy warm-up; ${work}min continuous at ${pace}; ${easyTime - warmup} min easy cool-down.`;
+      return {
+        description: `${warmup} min easy warm-up; ${work}min continuous at ${pace}; ${easyTime - warmup} min easy cool-down.`,
+        steps: [
+          { name: "Warm-up", durationMinutes: warmup, intensity: "warmup" },
+          { name: "Threshold", durationMinutes: work, intensity: "active", paceFractions: [0.83, 0.88] },
+          { name: "Cool-down", durationMinutes: easyTime - warmup, intensity: "cooldown" },
+        ],
+      };
     }
 
     const repeats = Math.ceil((durationMinutes - 8) / 17);
@@ -174,10 +214,31 @@ export function workoutSessionDetails(
       : repeatLengths.map((minutes) => `${minutes}min`).join(" + ");
     const easyTime = durationMinutes - recoveryMinutes - workMinutes;
     const warmup = Math.floor(easyTime / 2);
-    return `${warmup} min easy warm-up; ${set} at ${pace}, with 2 min easy jog recoveries; ${easyTime - warmup} min easy cool-down.`;
+    const steps: WorkoutSessionStep[] = [{ name: "Warm-up", durationMinutes: warmup, intensity: "warmup" }];
+    repeatLengths.forEach((minutes, index) => {
+      steps.push({ name: "Threshold", durationMinutes: minutes, intensity: "active", paceFractions: [0.83, 0.88] });
+      if (index < repeatLengths.length - 1) {
+        steps.push({ name: "Easy jog recovery", durationMinutes: 2, intensity: "recovery" });
+      }
+    });
+    steps.push({ name: "Cool-down", durationMinutes: easyTime - warmup, intensity: "cooldown" });
+    return {
+      description: `${warmup} min easy warm-up; ${set} at ${pace}, with 2 min easy jog recoveries; ${easyTime - warmup} min easy cool-down.`,
+      steps,
+    };
   }
 
   return null;
+}
+
+export function workoutSessionDetails(
+  type: WorkoutType,
+  vdot: number,
+  durationMinutes: number,
+  adjustment: AdjustmentLevel | boolean = 0,
+  legacyIntensityDecreased = false,
+): string | null {
+  return workoutSessionPlan(type, vdot, durationMinutes, adjustment, legacyIntensityDecreased)?.description ?? null;
 }
 
 function plannedWorkoutDurations(vdot: number, workoutTypes: WorkoutType[]): number[] {
@@ -213,44 +274,6 @@ export function selectDays(schedule: Schedule): number[] {
     .sort((a, b) => a - b);
 }
 
-function adjustRunDays(days: number[], adjustment: -1 | 0 | 1): number[] {
-  if (adjustment === 0 || (adjustment === -1 && days.length <= 1) || (adjustment === 1 && days.length >= 7))
-    return days;
-  const candidates = adjustment === 1
-    ? Array.from({ length: 7 }, (_, day) => day).filter((day) => !days.includes(day)).map((day) => [...days, day])
-    : days.map((removedDay) => days.filter((day) => day !== removedDay));
-
-  function spacing(candidate: number[]) {
-    const sorted = [...candidate].sort((a, b) => a - b);
-    const gaps = sorted.map((day, index) => (sorted[(index + 1) % sorted.length] - day + 7) % 7 || 7);
-    const target = 7 / gaps.length;
-    return {
-      minimum: Math.min(...gaps),
-      variance: gaps.reduce((sum, gap) => sum + (gap - target) ** 2, 0),
-    };
-  }
-
-  return candidates.reduce((best, candidate) => {
-    const candidateScore = spacing(candidate);
-    const bestScore = spacing(best);
-    return candidateScore.minimum > bestScore.minimum ||
-      (candidateScore.minimum === bestScore.minimum && candidateScore.variance < bestScore.variance)
-      ? candidate : best;
-  });
-}
-
-export function volumeIncreasePercent(currentKm: number, vdot: number): number {
-  const regularIncrease = Math.min(30, Math.max(2, 30 - (currentKm - 20) * 25 / 80));
-  const fitnessFactor = Math.min(1, Math.max(0, (vdot - 60) / 4));
-  const lowVolumeFactor = Math.min(1, Math.max(0, (30 - currentKm) / 10));
-  return Math.round(regularIncrease + (100 - regularIncrease) * fitnessFactor * lowVolumeFactor);
-}
-
-function estimatedWeekKm(week: TrainingWeek): number {
-  const minutes = week.workouts.reduce((sum, workout) => sum + workout.durationMinutes, 0);
-  return week.targetWeeklyVolumeKm ?? minutes * 60 / averageEasyPaceSecondsPerKm(week.profile.vdot);
-}
-
 export function validatePerformance(distanceMeters: number, raceSeconds: number): string[] {
   const errors: string[] = [];
   if (!Number.isFinite(distanceMeters) || distanceMeters < 1500 || distanceMeters > 42195)
@@ -269,12 +292,21 @@ export function validateProfile(profile: Profile): string[] {
   const vdot = calculateVdot(profile.distanceMeters, profile.raceSeconds);
   if (profile.recentWeeklyVolumeKm !== null &&
     (!Number.isInteger(profile.recentWeeklyVolumeKm) || profile.recentWeeklyVolumeKm <= 0))
-    errors.push("Enter a whole-number recent average weekly volume greater than 0 km.");
+    errors.push("Enter a whole-number desired weekly distance greater than 0 km.");
+  if (profile.desiredWeeklyDurationMinutes !== null &&
+    (!Number.isInteger(profile.desiredWeeklyDurationMinutes) || profile.desiredWeeklyDurationMinutes <= 0
+      || profile.desiredWeeklyDurationMinutes > 10080))
+    errors.push("Enter a desired weekly time greater than 0 and no more than 168 hours.");
+  if (profile.recentWeeklyVolumeKm !== null && profile.desiredWeeklyDurationMinutes !== null)
+    errors.push("Choose either desired weekly distance or desired weekly time, not both.");
   const count = profile.schedule.mode === "count" ? profile.schedule.count : profile.schedule.days.length;
   const scheduleIsValid = Number.isInteger(count) && count >= 1 && count <= 7;
   if (scheduleIsValid && profile.recentWeeklyVolumeKm !== null && profile.recentWeeklyVolumeKm > 0
     && Math.round(profile.recentWeeklyVolumeKm * averageEasyPaceSecondsPerKm(vdot) / 600) * 10 < count * 10)
-    errors.push("Weekly volume is too low to assign at least 10 minutes to each scheduled run.");
+    errors.push("Desired weekly distance is too low to assign at least 10 minutes to each scheduled run.");
+  if (scheduleIsValid && profile.desiredWeeklyDurationMinutes !== null
+    && profile.desiredWeeklyDurationMinutes < count * 10)
+    errors.push("Desired weekly time must allow at least 10 minutes for each scheduled run.");
   if (!["none", "maintain", "improve"].includes(profile.goal))
     errors.push("Choose a goal.");
   if (!Number.isFinite(profile.goalDistanceMeters) || profile.goalDistanceMeters < 1500 || profile.goalDistanceMeters > 42195)
@@ -286,12 +318,6 @@ export function validateProfile(profile: Profile): string[] {
   if (!Number.isFinite(profile.vdot) || Math.abs(profile.vdot - vdot) > 0.000001)
     errors.push("VDOT must match the entered performance.");
   return errors;
-}
-
-export function feedbackNeedsReduction(feedback: Feedback): boolean {
-  return feedback.readiness === "tired" || feedback.readiness === "unwell"
-    || feedback.effort === "hard" || feedback.strength === "low"
-    || feedback.pace === "too-fast" || feedback.outcome === "skipped";
 }
 
 export function mondayOf(date: Date): string {
@@ -315,43 +341,24 @@ export function goalLabel(profile: Profile): string {
 export function generateWeek(
   profile: Profile,
   startDate: string,
-  previous?: TrainingWeek,
-  preferences: GenerationPreferences = { volumeAdjustment: 0, intensityAdjustment: 0, runCountAdjustment: 0 },
+  weekNumber = 1,
 ): TrainingWeek {
-  const previousHadDifficulty = previous?.workouts.some((workout) => feedbackNeedsReduction(workout.feedback)) ?? false;
-  const runCountAdjustment = previousHadDifficulty && preferences.runCountAdjustment === 1
-    ? 0 : preferences.runCountAdjustment;
-  const days = adjustRunDays(selectDays(profile.schedule), runCountAdjustment);
+  const days = selectDays(profile.schedule);
   const workoutTypes = spaceKeyWorkouts(days, weeklyWorkoutTypes(days.length));
   const durationWeights = plannedWorkoutDurations(profile.vdot, workoutTypes);
-  const volumeAdjustment = previousHadDifficulty && preferences.volumeAdjustment > 0 ? 0 : preferences.volumeAdjustment;
-  const intensityAdjustment = previousHadDifficulty && preferences.intensityAdjustment > 0 ? 0 : preferences.intensityAdjustment;
-  const increaseVolumeApplied = volumeAdjustment > 0 && previous !== undefined;
-  const decreaseVolumeApplied = volumeAdjustment < 0 && previous !== undefined && !previousHadDifficulty;
-  const increaseIntensityApplied = intensityAdjustment > 0;
-  const decreaseIntensityApplied = intensityAdjustment < 0;
-  const baseVolumeKm = previous ? estimatedWeekKm(previous) : profile.recentWeeklyVolumeKm;
-  const fullIncreasePercent = increaseVolumeApplied && baseVolumeKm !== null
-    ? volumeIncreasePercent(baseVolumeKm, profile.vdot) : 0;
-  const increasePercent = volumeAdjustment === 1 ? Math.max(1, Math.round(fullIncreasePercent / 2)) : fullIncreasePercent;
-  const volumeReductionPercent = volumeAdjustment === -2 ? 10 : 5;
-  const targetWeeklyVolumeKm = previousHadDifficulty
-    ? baseVolumeKm === null ? null : baseVolumeKm * 0.95
-    : increaseVolumeApplied && baseVolumeKm !== null
-      ? baseVolumeKm * (1 + increasePercent / 100)
-      : decreaseVolumeApplied && baseVolumeKm !== null
-        ? baseVolumeKm * (1 - volumeReductionPercent / 100)
-        : profile.recentWeeklyVolumeKm;
-  const reduce = previousHadDifficulty;
-  const targetMinutes = targetWeeklyVolumeKm === null
-    ? null
-    : Math.max(days.length * 10, Math.round(targetWeeklyVolumeKm * averageEasyPaceSecondsPerKm(profile.vdot) / 600) * 10);
+  const targetMinutes = profile.desiredWeeklyDurationMinutes !== null
+    ? Math.round(profile.desiredWeeklyDurationMinutes / 10) * 10
+    : profile.recentWeeklyVolumeKm === null
+      ? null
+      : Math.round(profile.recentWeeklyVolumeKm * averageEasyPaceSecondsPerKm(profile.vdot) / 600) * 10;
   const durations = targetMinutes === null
-    ? durationWeights.map((duration) => Math.max(10, Math.round(duration * (reduce ? 0.95 : 1) / 10) * 10))
+    ? durationWeights.map((duration) => Math.max(10, Math.round(duration / 10) * 10))
     : allocateDuration(durationWeights, targetMinutes);
+  const targetWeeklyVolumeKm = profile.recentWeeklyVolumeKm
+    ?? (targetMinutes === null ? null : targetMinutes * 60 / averageEasyPaceSecondsPerKm(profile.vdot));
   return {
     id: startDate,
-    number: (previous?.number ?? 0) + 1,
+    number: weekNumber,
     startDate,
     profile: { ...profile, schedule: profile.schedule.mode === "days"
       ? { mode: "days", days: [...profile.schedule.days] } : { ...profile.schedule } },
@@ -359,41 +366,25 @@ export function generateWeek(
       day,
       durationMinutes: durations[i],
       type: workoutTypes[i],
-      intensityAdjustment: workoutTypes[i] === "vo2max" || workoutTypes[i] === "threshold" ? intensityAdjustment : 0,
-      feedback: {},
+      intensityAdjustment: 0,
     })),
     targetWeeklyVolumeKm,
     rationale: [
-      increaseVolumeApplied && baseVolumeKm !== null
-        ? `Volume increased by ${increasePercent}% from the previous week’s estimated ${baseVolumeKm.toFixed(1)} km.`
-        : decreaseVolumeApplied && baseVolumeKm !== null
-          ? `Volume reduced by ${volumeReductionPercent}% from the previous week’s estimated ${baseVolumeKm.toFixed(1)} km.`
-        : targetWeeklyVolumeKm === null
-        ? "No weekly volume was entered; session durations use the VDOT-based baseline and workout type."
-        : `The four-week average is ${profile.recentWeeklyVolumeKm} km/week; this plan targets ${targetWeeklyVolumeKm.toFixed(1)} km.`,
-      targetWeeklyVolumeKm === null
+      targetMinutes === null
+        ? "No weekly distance or time target was entered; session durations use the VDOT-based baseline and workout type."
+        : profile.desiredWeeklyDurationMinutes !== null
+          ? `This plan targets ${Math.floor(targetMinutes / 60)} h ${targetMinutes % 60} min per week, distributed among the scheduled workouts.`
+          : `The desired weekly distance is ${profile.recentWeeklyVolumeKm} km; this plan targets approximately ${targetWeeklyVolumeKm?.toFixed(1)} km.`,
+      targetMinutes === null
         ? "Session durations are rounded to 10-minute increments and adjusted for workout type and nearby sessions."
-        : "Target distance is converted to time using the midpoint of the VDOT easy-pace range, rounded to 10-minute session increments, and distributed by workout type and nearby sessions.",
-      runCountAdjustment === 1 ? "One run was added for this week only; the saved schedule is unchanged."
-        : runCountAdjustment === -1 ? "One run was removed for this week only; the saved schedule is unchanged." : "",
-      increaseIntensityApplied ? `VO₂ max and threshold sessions use intensity adjustment level +${intensityAdjustment}.` : "",
-      decreaseIntensityApplied ? `VO₂ max and threshold sessions use intensity adjustment level ${intensityAdjustment}.` : "",
+        : "The weekly target is rounded to 10-minute session increments and distributed by workout type and nearby sessions.",
       "Workout and long runs are spaced as evenly as the selected weekdays allow; a weekend long run is preferred when spacing is equal.",
-      reduce ? "At least one tired/unwell, hard, low-strength, too-fast or skipped response: target volume reduced by 5%." :
-        "No reduction signal recorded. Missing feedback is unknown; no feedback-based adjustment applied.",
       "Workout categories follow the selected weekly structure. Session details are illustrative product rules, not validated coaching advice.",
     ].filter(Boolean).join(" "),
   };
 }
 
 export function createPlanner(profile: Profile, date: Date): PlannerState {
-  const week = generateWeek(profile, mondayOf(date));
-  return { version: 1, profile, currentWeekId: week.id, weeks: [week] };
-}
-
-export function updateFeedback(state: PlannerState, weekId: string, day: number, feedback: Feedback): PlannerState {
-  if (state.currentWeekId !== weekId) return state;
-  return { ...state, weeks: state.weeks.map((week) => week.id === weekId ? {
-    ...week, workouts: week.workouts.map((workout) => workout.day === day ? { ...workout, feedback } : workout),
-  } : week) };
+  const currentWeek = generateWeek(profile, mondayOf(date));
+  return { version: 2, profile, currentWeek };
 }
