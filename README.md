@@ -60,7 +60,10 @@ VDOT uses the Daniels–Gilbert race-performance equations. Setup can use an opt
 distance target is converted to duration using VDOT easy pace; a time target is
 used directly. The resulting duration is distributed among workouts by type and
 neighboring sessions. Without a target, session durations use the VDOT-based
-baseline. Existing local planner data is migrated by estimating volume from its
+baseline: the first easy run is the longest, and each additional easy run is
+shorter, by a larger step and down to a lower floor for lower VDOT values. Easy
+runs next to a key session or the long run get the shorter durations. Existing
+local planner data is migrated by estimating volume from its
 saved workout durations and VDOT pace.
 
 Easy pace estimates invert the oxygen-cost equation at 59–74% of VDOT. Full

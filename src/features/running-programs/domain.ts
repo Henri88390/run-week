@@ -270,17 +270,33 @@ export function estimatedWorkoutDistanceKm(workout: Workout, vdot: number): { mi
   }, { min: 0, max: 0 });
 }
 
+// Each additional easy run in the week is shorter; weaker runners get a larger reduction and a lower floor.
+function easyRunDurations(vdot: number, count: number): number[] {
+  const longest = easyRunDuration(vdot);
+  const step = Math.min(15, Math.max(0, (75 - vdot) / 3));
+  const shortest = Math.min(45, Math.max(20, vdot * 0.6 - 5));
+  return Array.from({ length: count }, (_, rank) => Math.max(shortest, longest - rank * step));
+}
+
 function plannedWorkoutDurations(vdot: number, workoutTypes: WorkoutType[]): number[] {
-  const easyMinutes = easyRunDuration(vdot);
   const workoutMinutes = workoutRunDuration(vdot);
+  const isHard = (type: WorkoutType | undefined) =>
+    type === "workout" || type === "vo2max" || type === "threshold" || type === "long";
+  const easyIndexes = workoutTypes
+    .map((type, index) => ({ type, index }))
+    .filter(({ type }) => type === "easy")
+    .map(({ index }) => ({
+      index,
+      nearHardSession: isHard(workoutTypes[index - 1]) || isHard(workoutTypes[index + 1]),
+    }))
+    .sort((a, b) => Number(a.nearHardSession) - Number(b.nearHardSession) || a.index - b.index);
+  const easyDurations = easyRunDurations(vdot, easyIndexes.length);
+  const easyByIndex = new Map(easyIndexes.map(({ index }, rank) => [index, easyDurations[rank]]));
+
   return workoutTypes.map((type, index) => {
     if (type === "long") return Math.round(workoutMinutes * 1.5);
     if (type !== "easy") return workoutMinutes;
-
-    const adjacentSessions = [workoutTypes[index - 1], workoutTypes[index + 1]];
-    const nearHardSession = adjacentSessions.some((neighbor) =>
-      neighbor === "workout" || neighbor === "vo2max" || neighbor === "threshold" || neighbor === "long");
-    return Math.max(10, easyMinutes - (nearHardSession ? 5 : 0));
+    return easyByIndex.get(index) ?? easyDurations[0];
   });
 }
 
