@@ -3,6 +3,12 @@
 A frontend-first browser-local running planner, built with Next.js
 App Router, React, TypeScript, Tailwind CSS, and ESLint.
 
+![Setup form](docs/screenshots/setup.png)
+
+![Weekly plan](docs/screenshots/week.png)
+
+![Workout details](docs/screenshots/workout-details.png)
+
 ## Getting started
 
 Use Node.js 24 LTS and npm. From this directory:
@@ -62,7 +68,7 @@ snapshot used to create it. These are illustrative estimates, not personalized
 training or medical advice.
 
 Generated workout categories follow the selected run count: one VO₂ max workout;
-two runs (easy and workout); three runs (workout, easy, long); four runs (workout,
+two runs (easy and VO₂ max); three runs (VO₂ max, easy, long); four runs (VO₂ max,
 two easy, long); five or more (VO₂ max, easy, threshold, long, then additional
 easy runs). The total weekly duration is allocated in proportion to workout-type
 and neighboring-session weights. Workout and long runs are spaced as evenly as
