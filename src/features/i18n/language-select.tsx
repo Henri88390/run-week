@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ComponentType, type KeyboardEvent } from "react";
-import { DE, ES, FR, GB, IT, PL, PT, RU } from "country-flag-icons/react/3x2";
+import { BY, DE, ES, FR, GB, IT, PL, PT, RU, UA } from "country-flag-icons/react/3x2";
 import { LOCALE_NAMES, LOCALES, type Locale } from "./locales";
 import { setLocale, useI18n } from "./use-i18n";
 
@@ -13,6 +13,8 @@ const FLAGS: Record<Locale, ComponentType<{ className?: string; "aria-hidden"?: 
   pt: PT,
   pl: PL,
   ru: RU,
+  uk: UA,
+  be: BY,
   it: IT,
 };
 

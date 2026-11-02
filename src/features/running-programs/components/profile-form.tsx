@@ -5,7 +5,9 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { weekdayName } from "@/features/i18n/locales";
 import { useI18n } from "@/features/i18n/use-i18n";
-import { activePreferredDays, calculateVdot, distanceLabel, DISTANCES, NO_PREFERRED_DAYS } from "../domain";
+import {
+  activePreferredDays, calculateVdot, distanceLabel, DISTANCES, equivalentRaceSeconds, isSupportedPerformance, NO_PREFERRED_DAYS,
+} from "../domain";
 import type { PreferredDays, Profile, Schedule } from "../types";
 import { createProfileFormSchema, preferredDaysFromForm, type ProfileFormValues } from "./profile-form.schema";
 
@@ -37,6 +39,25 @@ function profilesMatch(a: Profile, b: Profile): boolean {
     && schedulesMatch;
 }
 
+type Performance = { distanceMeters: number; raceSeconds: number };
+
+function wholeNumber(value: string, max: number): number | null {
+  return /^\d+$/.test(value.trim()) && Number(value) <= max ? Number(value) : null;
+}
+
+/** Returns the entered performance when it is complete and within the supported range. */
+function enteredPerformance(distanceValue: string, hours: string, minutes: string, seconds: string): Performance | null {
+  const distanceMeters = Number(distanceValue);
+  if (!Number.isFinite(distanceMeters) || distanceMeters < 1500 || distanceMeters > 42195) return null;
+  const parts = [distanceMeters > 5000 ? (hours.trim() === "" ? 0 : wholeNumber(hours, 8)) : 0,
+    wholeNumber(minutes, 59), wholeNumber(seconds, 59)];
+  if (parts.some((part) => part === null)) return null;
+  const [h, m, sec] = parts as number[];
+  const raceSeconds = h * 3600 + m * 60 + sec;
+  return raceSeconds >= 180 && raceSeconds <= 28800 && isSupportedPerformance(distanceMeters, raceSeconds)
+    ? { distanceMeters, raceSeconds } : null;
+}
+
 function ErrorMessage({ children }: { children?: string }) {
   return children ? <p className="mt-2 text-sm text-red-700" role="alert">{children}</p> : null;
 }
@@ -48,7 +69,7 @@ export function ProfileForm({ profile, onSave }: {
   const { locale, t } = useI18n();
   const schema = useMemo(() => createProfileFormSchema(t.validation, locale), [t, locale]);
   const defaultSchedule: Schedule = profile?.schedule ?? { mode: "count", count: 3 };
-  const { control, register, setValue, handleSubmit, trigger, formState: { errors, isSubmitted } } = useForm<ProfileFormValues>({
+  const { control, register, setValue, getValues, handleSubmit, trigger, formState: { errors, isSubmitted } } = useForm<ProfileFormValues>({
     resolver: zodResolver(schema),
     mode: "onSubmit",
     reValidateMode: "onChange",
@@ -155,18 +176,35 @@ export function ProfileForm({ profile, onSave }: {
   };
   const hasChanges = !profile || !profilesMatch(profile, draft);
 
+  // Last performance entered by the user; equivalent times are derived from it so they don't drift.
+  const [performanceAnchor, setPerformanceAnchor] = useState(() => {
+    const values = getValues();
+    return enteredPerformance(values.distanceMeters, values.hours, values.minutes, values.seconds);
+  });
+  const updatePerformanceAnchor = () => {
+    const values = getValues();
+    const entered = enteredPerformance(values.distanceMeters, values.hours, values.minutes, values.seconds);
+    if (entered) setPerformanceAnchor(entered);
+  };
+  const setRaceTime = (newDistance: number, totalSeconds: number | null) => {
+    const usesHourField = newDistance > 5000;
+    setValue("hours", totalSeconds !== null && usesHourField ? String(Math.floor(totalSeconds / 3600)) : "", { shouldDirty: true });
+    setValue("minutes", totalSeconds !== null ? String(Math.floor((usesHourField ? totalSeconds % 3600 : totalSeconds) / 60)) : "", { shouldDirty: true });
+    setValue("seconds", totalSeconds !== null ? String(totalSeconds % 60) : "", { shouldDirty: true });
+  };
+
   const updateDistance = (value: string) => {
     setValue("distanceMeters", value, { shouldDirty: true, shouldValidate: true });
     const newDistance = Number(value);
-    if (profile && newDistance === profile.distanceMeters) {
-      setValue("hours", newDistance > 5000 ? String(Math.floor(profile.raceSeconds / 3600)) : "", { shouldDirty: true });
-      setValue("minutes", String(Math.floor(profile.raceSeconds % 3600 / 60)), { shouldDirty: true });
-      setValue("seconds", String(profile.raceSeconds % 60), { shouldDirty: true });
-    } else {
-      setValue("hours", "", { shouldDirty: true });
-      setValue("minutes", "", { shouldDirty: true });
-      setValue("seconds", "", { shouldDirty: true });
+    if (!Number.isFinite(newDistance) || newDistance < 1500 || newDistance > 42195) return;
+    const anchor = performanceAnchor;
+    let totalSeconds = !anchor ? null : anchor.distanceMeters === newDistance ? anchor.raceSeconds
+      : equivalentRaceSeconds(calculateVdot(anchor.distanceMeters, anchor.raceSeconds), newDistance);
+    if (totalSeconds !== null && (totalSeconds < 180 || totalSeconds > 28800
+      || (newDistance <= 5000 && totalSeconds >= 3600) || !isSupportedPerformance(newDistance, totalSeconds))) {
+      totalSeconds = null;
     }
+    setRaceTime(newDistance, totalSeconds);
   };
 
   const onSubmit = (values: ProfileFormValues) => {
@@ -252,7 +290,7 @@ export function ProfileForm({ profile, onSave }: {
           <legend className="sr-only">{t.form.raceTime}</legend>
           <div className={`grid ${usesHours ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
             {usesHours && <input
-              {...register("hours")}
+              {...register("hours", { onChange: updatePerformanceAnchor })}
               className="field"
               aria-label={t.form.hours}
               type="number"
@@ -262,8 +300,8 @@ export function ProfileForm({ profile, onSave }: {
               placeholder={t.form.hoursPlaceholder}
               aria-invalid={Boolean(errors.hours)}
             />}
-            <input {...register("minutes")} className="field" aria-label={t.form.minutes} type="number" min="0" max="59" step="1" placeholder={t.form.minutesPlaceholder} aria-invalid={Boolean(errors.minutes)} />
-            <input {...register("seconds")} className="field" aria-label={t.form.seconds} type="number" min="0" max="59" step="1" placeholder={t.form.secondsPlaceholder} aria-invalid={Boolean(errors.seconds)} />
+            <input {...register("minutes", { onChange: updatePerformanceAnchor })} className="field" aria-label={t.form.minutes} type="number" min="0" max="59" step="1" placeholder={t.form.minutesPlaceholder} aria-invalid={Boolean(errors.minutes)} />
+            <input {...register("seconds", { onChange: updatePerformanceAnchor })} className="field" aria-label={t.form.seconds} type="number" min="0" max="59" step="1" placeholder={t.form.secondsPlaceholder} aria-invalid={Boolean(errors.seconds)} />
           </div>
           <ErrorMessage>{errors.hours?.message}</ErrorMessage>
           <ErrorMessage>{errors.minutes?.message ?? errors.seconds?.message}</ErrorMessage>

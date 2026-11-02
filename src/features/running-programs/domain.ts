@@ -374,6 +374,19 @@ export function planSessions(schedule: Schedule, preferredDays?: PreferredDays):
   return { days: best.days, types: best.types };
 }
 
+/** Race time (whole seconds) giving the same VDOT over another distance. */
+export function equivalentRaceSeconds(vdot: number, distanceMeters: number): number {
+  // VDOT decreases monotonically with race time, so bisection converges.
+  let fast = 60;
+  let slow = 12 * 3600;
+  for (let i = 0; i < 60; i++) {
+    const middle = (fast + slow) / 2;
+    if (calculateVdot(distanceMeters, middle) > vdot) fast = middle;
+    else slow = middle;
+  }
+  return Math.round((fast + slow) / 2);
+}
+
 export function isSupportedPerformance(distanceMeters: number, raceSeconds: number): boolean {
   const speed = distanceMeters / (raceSeconds / 60);
   const vdot = calculateVdot(distanceMeters, raceSeconds);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Locale } from "@/features/i18n/locales";
+import { formatInteger, type Locale } from "@/features/i18n/locales";
 import type { Messages } from "@/features/i18n/messages/en";
 import {
   activePreferredDays, averageEasyPaceSecondsPerKm, calculateVdot, DISTANCES, isSupportedPerformance,
@@ -57,8 +57,8 @@ export function createProfileFormSchema(messages: Messages["validation"], locale
           code: "custom",
           path: [path],
           message: maximum === null
-            ? messages.wholeNumberMin(label, minimum.toLocaleString(locale))
-            : messages.wholeNumberRange(label, minimum.toLocaleString(locale), maximum.toLocaleString(locale)),
+            ? messages.wholeNumberMin(label, formatInteger(locale, minimum))
+            : messages.wholeNumberRange(label, formatInteger(locale, minimum), formatInteger(locale, maximum)),
         });
         return undefined;
       }

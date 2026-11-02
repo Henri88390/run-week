@@ -56,7 +56,9 @@ Clearing browser data deletes the planner. Failed writes show an in-memory-only
 warning; invalid saved data is not silently overwritten. System fonts keep builds
 independent of external font services.
 
-VDOT uses the Daniels–Gilbert race-performance equations. Setup can use an optional desired weekly distance or desired weekly time. A
+VDOT uses the Daniels–Gilbert race-performance equations. Changing the
+performance distance prefills the race time with the equivalent time for the
+same VDOT, based on the last complete time entered. Setup can use an optional desired weekly distance or desired weekly time. A
 distance target is converted to duration using VDOT easy pace; a time target is
 used directly. The resulting duration is distributed among workouts by type and
 neighboring sessions. Without a target, session durations use the VDOT-based
@@ -105,7 +107,7 @@ replacement and deletion.
 ## Languages
 
 The UI is available in English, French, German, Spanish, Portuguese, Polish,
-Russian and Italian. The default language is the first supported language in
+Russian, Ukrainian, Belarusian and Italian. The default language is the first supported language in
 the browser's language settings, with English as the fallback. The language
 selector overrides it and stores the choice in localStorage (`run-week-locale`).
 Translations live in `src/features/i18n/messages`; `en.ts` defines the message
@@ -113,8 +115,8 @@ shape and the other locales must satisfy it.
 
 Language is resolved in the browser rather than through locale URL segments,
 because the app is a single static page with browser-only data. FIT workout
-names are converted to ASCII for Garmin watch fonts; Russian FIT files use
-English names.
+names are converted to ASCII for Garmin watch fonts; Russian, Ukrainian and
+Belarusian FIT files use English names.
 
 ## Architecture
 

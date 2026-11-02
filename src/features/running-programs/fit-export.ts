@@ -42,9 +42,11 @@ function fitText(text: string): string {
     .replace(/[^\x20-\x7E]/g, "");
 }
 
-// Cyrillic cannot be transliterated reliably for watch fonts, so Russian falls back to English.
+// Cyrillic cannot be transliterated reliably for watch fonts, so Cyrillic locales fall back to English.
+const CYRILLIC_LOCALES: Locale[] = ["ru", "uk", "be"];
+
 function fitLocale(locale: Locale): Locale {
-  return locale === "ru" ? "en" : locale;
+  return CYRILLIC_LOCALES.includes(locale) ? "en" : locale;
 }
 
 function workoutStepMessage(step: FitStep, index: number, vdot: number, locale: Locale): Encodable<WorkoutStepMesg> {
