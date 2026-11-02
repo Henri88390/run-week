@@ -271,7 +271,7 @@ export function ProfileForm({ profile, onSave }: {
     </div>}
     <div className="flex flex-wrap gap-3">
       <button className="button-primary" type="submit" disabled={Boolean(profile && !hasChanges)}>
-        {profile ? "Save and regenerate week" : "Create current week"}
+        {profile ? "Save and regenerate week" : "Create training week"}
       </button>
     </div>
   </form>;
