@@ -117,17 +117,14 @@ export function WeekView({ week }: {
 
   function weekAsText(): string {
     const lines = [
-      `${t.week.heading} · ${formatDate(locale, week.startDate)} – ${formatDate(locale, addDays(week.startDate, 6))}`,
-      `${t.week.weeklyTime}: ${formatDuration(total, t)} · ${t.week.estimatedWeeklyDistance}: ~${distanceRange(locale, minKm, maxKm, t)} · VDOT ${formatDecimal(locale, vdot)}`,
+      `${formatDate(locale, week.startDate, false)} – ${formatDate(locale, addDays(week.startDate, 6), false)}`,
+      `${formatDuration(total, t)} · ~${distanceRange(locale, minKm, maxKm, t)}`,
     ];
     for (let day = 0; day < 7; day++) {
       const workout = week.workouts.find((entry) => entry.day === day);
-      const date = `${weekdayName(locale, day)} ${formatDate(locale, addDays(week.startDate, day))}`;
+      const date = `${weekdayName(locale, day)} ${formatDate(locale, addDays(week.startDate, day), false)}`;
+      if (!workout) continue;
       lines.push("");
-      if (!workout) {
-        lines.push(`${date}: ${t.week.rest}`);
-        continue;
-      }
       const distance = estimatedWorkoutDistanceKm(workout, vdot);
       lines.push(`${date}: ${workout.durationMinutes} ${t.units.min} · ${t.workouts[workoutLabelKey(workout.type ?? "easy")]}${distance ? ` · ~${distanceRange(locale, distance.min, distance.max, t)}` : ""}`);
       const plan = workout.type && workout.type !== "easy" && workout.type !== "long"
@@ -135,7 +132,7 @@ export function WeekView({ week }: {
           workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0))
         : null;
       if (plan) lines.push(...workoutDetailLines(plan.steps, vdot, t).map((step) => `- ${step.description}`));
-      else lines.push(`- ${t.week.estimatedEasyPace}: ${easyPace}`);
+      else lines.push(`- ${easyPace}`);
     }
     return lines.join("\n");
   }

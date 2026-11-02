@@ -67,10 +67,10 @@ export function weekdayName(locale: Locale, index: number, width: "long" | "shor
   return capitalize(new Intl.DateTimeFormat(locale, { weekday: width, timeZone: "UTC" }).format(date));
 }
 
-export function formatDate(locale: Locale, isoDate: string): string {
+export function formatDate(locale: Locale, isoDate: string, withYear = true): string {
   if (locale === "be") {
     const [year, month, day] = isoDate.split("-").map(Number);
-    return `${day} ${BELARUSIAN_DATES.months[month - 1]} ${year} г.`;
+    return withYear ? `${day} ${BELARUSIAN_DATES.months[month - 1]} ${year} г.` : `${day} ${BELARUSIAN_DATES.months[month - 1]}`;
   }
-  return new Date(`${isoDate}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
+  return new Date(`${isoDate}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
 }
