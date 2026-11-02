@@ -44,8 +44,8 @@ export function ProfileForm({ profile, onSave }: {
       distanceMeters: String(profile?.distanceMeters ?? 5000),
       customDistance: !DISTANCES.some((distance) => distance.meters === (profile?.distanceMeters ?? 5000)),
       hours: profile && profile.distanceMeters > 5000 ? String(Math.floor(profile.raceSeconds / 3600)) : "",
-      minutes: profile ? String(Math.floor(profile.raceSeconds % 3600 / 60)) : "",
-      seconds: profile ? String(profile.raceSeconds % 60) : "",
+      minutes: profile ? String(Math.floor(profile.raceSeconds % 3600 / 60)) : "25",
+      seconds: profile ? String(profile.raceSeconds % 60) : "0",
       weeklyTargetMode: profile?.desiredWeeklyDurationMinutes != null ? "time"
         : profile?.recentWeeklyVolumeKm != null ? "distance" : "unspecified",
       recentWeeklyVolume: profile?.recentWeeklyVolumeKm?.toString() ?? "",
