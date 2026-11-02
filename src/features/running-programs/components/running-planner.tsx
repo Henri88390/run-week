@@ -63,8 +63,8 @@ export function RunningPlanner() {
       <p className="mt-2 text-sm text-stone-600">Reset only if you are willing to discard the saved data. You can also try another browser without changing this copy.</p>
       <button className="button-secondary mt-4" onClick={() => setAction("reset")}>Reset local data…</button>
     </section> : <>
-      <details className="panel group" open={!state}>
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+      <details className="group rounded-2xl border border-stone-200 bg-white" open={!state}>
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5">
           <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open:rotate-180">
             <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
           </svg>
@@ -81,7 +81,7 @@ export function RunningPlanner() {
             <span className="sr-only">Schedule: </span>{selectDays(state.profile.schedule).length} runs/week
           </span>}
         </summary>
-        <div className="mt-4 border-t border-stone-200 pt-4">
+        <div className="border-t border-stone-200 px-4 pb-4 sm:px-5 sm:pb-5">
           <ProfileForm key={current?.id ?? "new"} profile={state?.profile} onSave={(profile) => {
             if (state) {
               setPendingProfile(profile);
