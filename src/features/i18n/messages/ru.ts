@@ -128,6 +128,9 @@ export const ru = {
     recovery: (duration: string) => `${duration} восстановления лёгкой трусцой`,
     recoveries: (durations: string) => `${durations} восстановления лёгкой трусцой`,
     easyEffort: "Лёгкое усилие",
+    copyWeek: "Скопировать неделю как текст",
+    copied: "Неделя скопирована в буфер обмена.",
+    copyFailed: "Не удалось скопировать в буфер обмена.",
   },
   workouts: {
     easy: "Лёгкий бег",

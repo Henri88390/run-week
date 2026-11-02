@@ -128,6 +128,9 @@ export const es = {
     recovery: (duration: string) => `${duration} de recuperación trotando suave`,
     recoveries: (durations: string) => `${durations} de recuperación trotando suave`,
     easyEffort: "Esfuerzo suave",
+    copyWeek: "Copiar la semana como texto",
+    copied: "Semana copiada al portapapeles.",
+    copyFailed: "No se pudo copiar al portapapeles.",
   },
   workouts: {
     easy: "Rodaje suave",

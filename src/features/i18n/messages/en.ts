@@ -127,6 +127,9 @@ export const en = {
     recovery: (duration: string) => `${duration} easy jog recovery`,
     recoveries: (durations: string) => `${durations} easy jog recoveries`,
     easyEffort: "Easy effort",
+    copyWeek: "Copy week as text",
+    copied: "Week copied to the clipboard.",
+    copyFailed: "Could not copy to the clipboard.",
   },
   workouts: {
     easy: "Easy run",

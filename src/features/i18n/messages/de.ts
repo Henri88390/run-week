@@ -128,6 +128,9 @@ export const de = {
     recovery: (duration: string) => `${duration} lockere Trabpause`,
     recoveries: (durations: string) => `${durations} lockere Trabpausen`,
     easyEffort: "Lockere Belastung",
+    copyWeek: "Woche als Text kopieren",
+    copied: "Woche in die Zwischenablage kopiert.",
+    copyFailed: "Kopieren in die Zwischenablage fehlgeschlagen.",
   },
   workouts: {
     easy: "Lockerer Lauf",
