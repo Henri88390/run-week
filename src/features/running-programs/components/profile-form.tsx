@@ -25,11 +25,11 @@ function DistanceInput({ label, value, onChange }: { label: string; value: numbe
   return (
     <div className="space-y-2">
       <label className="block">
-        <span className="field-label">{label}</span>
+        <span className="sr-only">{label}</span>
         <select value={custom ? "custom" : value} onChange={(event) => {
           setCustom(event.target.value === "custom");
           if (event.target.value !== "custom") onChange(Number(event.target.value));
-        }} className="field">
+        }} className="field pr-5">
           {DISTANCES.map((distance) => <option key={distance.meters} value={distance.meters}>{distance.label}</option>)}
           <option value="custom">Custom distance (metres)</option>
         </select>
@@ -65,9 +65,15 @@ export function ProfileForm({ profile, onSave }: {
   const [submitted, setSubmitted] = useState(false);
   const updateDistance = (value: number) => {
     setDistance(value);
-    setHours("");
-    setMinutes("");
-    setSeconds("");
+    if (profile && value === profile.distanceMeters) {
+      setHours(value > 5000 ? Math.floor(profile.raceSeconds / 3600).toString() : "");
+      setMinutes(Math.floor(profile.raceSeconds % 3600 / 60).toString());
+      setSeconds((profile.raceSeconds % 60).toString());
+    } else {
+      setHours("");
+      setMinutes("");
+      setSeconds("");
+    }
   };
   const usesHours = distance > 5000;
   const raceSeconds = (usesHours ? Number(hours) * 3600 : 0) + Number(minutes) * 60 + Number(seconds);
@@ -105,10 +111,15 @@ export function ProfileForm({ profile, onSave }: {
         setErrors(issues);
         if (!issues.length) onSave(draft);
       }}>
-        <div className="grid items-start gap-4 sm:grid-cols-2">
-          <DistanceInput label="Recent performance distance" value={distance} onChange={updateDistance} />
-          <fieldset>
-            <legend className="field-label">Race time ({usesHours ? "hours : minutes : seconds" : "minutes : seconds"})</legend>
+        <div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+            <h3 className="mb-2 min-h-10 text-sm font-medium">{`Recent performance distance`}</h3>
+            <DistanceInput label="Recent performance distance" value={distance} onChange={updateDistance} />
+          </div>
+          <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+            <h3 className="mb-2 min-h-10 text-sm font-medium">Race time ({usesHours ? "hours : minutes : seconds" : "minutes : seconds"})</h3>
+            <fieldset>
+              <legend className="sr-only">Race time</legend>
             <div className={`grid ${usesHours ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
               {usesHours && <label><span className="sr-only">Hours</span><input className={`field ${submitted && !hoursValid ? "border-red-600" : ""}`} aria-label="Hours" aria-invalid={submitted && !hoursValid} aria-describedby={submitted && !hoursValid ? "hours-error" : undefined} type="number" min="0" max="8" step="1" placeholder="h" value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
               <label><span className="sr-only">Minutes</span><input className={`field ${submitted && !minutesValid ? "border-red-600" : ""}`} aria-label="Minutes" aria-invalid={submitted && !minutesValid} aria-describedby={submitted && !minutesValid ? "minutes-error" : undefined} type="number" min="0" max="59" step="1" placeholder="m" value={minutes} onChange={(event) => setMinutes(event.target.value)} /></label>
@@ -121,11 +132,12 @@ export function ProfileForm({ profile, onSave }: {
             </p>}
             {raceTimeError && <p className="mt-2 text-sm text-red-700" role="alert">{raceTimeError}</p>}
             {performanceError && <p className="mt-2 text-sm text-red-700" role="alert">{performanceError}</p>}
-          </fieldset>
-        </div>
-        <div className="grid items-start gap-4 sm:grid-cols-2">
-          <fieldset className="space-y-2">
-            <legend className="field-label">Weekly target</legend>
+            </fieldset>
+          </div>
+          <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+            <h3 className="mb-2 min-h-10 text-sm font-medium">Weekly target</h3>
+            <fieldset className="space-y-2">
+            <legend className="sr-only">Weekly target</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "distance"} onChange={() => setWeeklyTargetMode("distance")} />Distance</label>
               <label className="flex items-center gap-2"><input type="radio" name="weekly-target" checked={weeklyTargetMode === "time"} onChange={() => setWeeklyTargetMode("time")} />Time</label>
@@ -151,9 +163,12 @@ export function ProfileForm({ profile, onSave }: {
               {submitted && (!weeklyHoursValid || !weeklyMinutesValid) && <p className="mt-1 text-sm text-red-700" role="alert">Enter whole hours from 0 to 168 and minutes from 0 to 59.</p>}
             </fieldset>}
             {weeklyTargetError && <span id="weekly-target-error" className="block text-sm text-red-700" role="alert">{weeklyTargetError}</span>}
-          </fieldset>
-          <fieldset>
-            <legend className="field-label">Schedule</legend>
+            </fieldset>
+          </div>
+          <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+            <h3 className="mb-2 min-h-10 text-sm font-medium">Schedule</h3>
+            <fieldset>
+            <legend className="sr-only">Schedule</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <label className="flex items-center gap-2"><input type="radio" name="schedule" checked={schedule.mode === "days"} onChange={() => setSchedule({ mode: "days", days: [1, 3, 5] })} />Choose exact weekdays</label>
               <label className="flex items-center gap-2"><input type="radio" name="schedule" checked={schedule.mode === "count"} onChange={() => setSchedule({ mode: "count", count: 3 })} />Choose runs per week</label>
@@ -164,11 +179,12 @@ export function ProfileForm({ profile, onSave }: {
                 <input aria-label={day} type="checkbox" checked={schedule.days.includes(i)} onChange={(event) => setSchedule({ mode: "days", days: event.target.checked ? [...schedule.days, i] : schedule.days.filter((entry) => entry !== i) })} />
               </label>)}
             </div> : <label className="mt-2 block max-w-xs"><span className="field-label">Runs per week</span>
-              <select className="field" value={schedule.count} onChange={(event) => setSchedule({ mode: "count", count: Number(event.target.value) })}>
+              <select className="field pr-5" value={schedule.count} onChange={(event) => setSchedule({ mode: "count", count: Number(event.target.value) })}>
                 {[1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}
               </select>
             </label>}
-          </fieldset>
+            </fieldset>
+          </div>
         </div>
         {errors.length > 0 && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900"><ul className="list-inside list-disc">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
         <div className="flex flex-wrap gap-3">
