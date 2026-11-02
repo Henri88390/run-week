@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Run Week | Running programs",
+  title: "Run Week",
   description:
     "A home for your running goals. Build a running program, organize your week, and make room for recovery.",
 };
