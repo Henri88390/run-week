@@ -139,7 +139,7 @@ export function WeekView({ week }: {
         </p>
       </div>
     </div>
-    <ol aria-label={t.week.calendar} className="mt-4 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+    <ol aria-label={t.week.calendar} className="mt-4 grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {Array.from({ length: 7 }, (_, i) => {
         const workout = week.workouts.find((entry) => entry.day === i);
         const workoutDistance = workout
