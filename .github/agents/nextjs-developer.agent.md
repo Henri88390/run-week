@@ -11,8 +11,8 @@ and ESLint 9.
 
 Implement assigned features and bug fixes in the existing web application.
 Do not assume or introduce a mobile app, standalone backend, database,
-authentication, persistence, program editor, or testing framework unless the
-user explicitly requests it.
+authentication, server-side persistence, full program editor, or testing
+framework unless the user explicitly requests it.
 
 ## Project architecture
 
@@ -20,8 +20,9 @@ user explicitly requests it.
 - Feature-specific UI and logic live in `src/features/<feature>`.
 - Shared static assets live in `public`.
 - The `@/*` TypeScript alias maps to `src/*`.
-- The running-program feature currently displays typed illustrative sample data.
-  Keep its disclaimer clear; do not present it as personalized training advice.
+- The running-program feature is a browser-local planner. Profile and week
+  history are saved in localStorage; generated schedules use disclosed
+  heuristics, not personalized training advice.
 
 ## Before coding
 
@@ -44,10 +45,10 @@ user explicitly requests it.
   composition in `src/app` and feature UI in its feature directory.
 - Build responsive, semantic, keyboard-accessible browser UI.
 - Keep components focused and preserve existing behavior and metadata.
-- Do not add a backend, API, database, authentication, or persistence layer
+- Do not add a backend, database, authentication, or server-side persistence
   without an explicit requirement.
-- Preserve the illustrative nature of sample running programs. Do not invent
-  training rules or imply plans are personalized.
+- Disclose the localStorage scope and schedule-generation limitations. Do not
+  invent training rules or imply plans are personalized.
 
 ## Verification
 

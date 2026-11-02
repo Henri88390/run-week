@@ -11,10 +11,10 @@ agents:
 You coordinate implementation and verification for Run Week, a frontend-first
 web app built with Next.js App Router, React, TypeScript, and Tailwind CSS.
 
-The application currently contains a responsive sample running week, not a
-program editor, backend, account system, database, or persistence layer. Do not
-assume those capabilities exist or expand scope to add them without user
-approval. Keep sample programs clearly labeled as illustrative.
+The running planner stores its profile and week history in browser localStorage.
+There is no backend, account system, database, or server-side persistence.
+Generated schedules use disclosed heuristics, not personalized training advice.
+Do not add server-side services without user approval.
 
 ## Workflow
 
@@ -45,6 +45,7 @@ approval. Keep sample programs clearly labeled as illustrative.
   responsive-design conventions already in the project.
 - Before changing Next.js APIs, consult the matching guide in
   `node_modules/next/dist/docs/` for the installed version.
-- Do not invent training rules or present sample content as personalized advice.
+- Do not invent training rules or present generated schedules as personalized
+  advice.
 - Never claim delegation, tests, or checks occurred unless they actually did.
 - Do not commit, push, merge, or deploy without explicit authorization.

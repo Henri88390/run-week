@@ -15,11 +15,11 @@ Check:
 - Security and data handling, especially server/client boundaries and secrets.
 - Tailwind CSS conventions, performance, and unnecessary dependencies.
 - Tests or verification gaps, regressions, and whether the sample running plan
-  remains clearly illustrative rather than personalized advice.
+  remains clearly identified as a heuristic rather than personalized advice.
 
-Do not assume a backend, database, authentication, persistence, or a program
-editor exists. Do not treat illustrative running-program data as personalized
-training logic.
+Do not assume a backend, database, authentication, or server-side persistence
+exists. Profile and week history use browser localStorage. Do not treat schedule
+generation as personalized training logic.
 
 Return actionable findings with severity and file references. If no significant
 issues are found, say so explicitly.

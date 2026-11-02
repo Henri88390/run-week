@@ -17,8 +17,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Prefer Server Components; add Client Components only for interactivity or
   browser APIs. Follow the installed Next.js documentation under
   `node_modules/next/dist/docs/` before changing framework APIs.
-- The running-program screen currently uses illustrative sample data. There is
-  no editor, backend, authentication, database, or persistence; do not imply
-  otherwise or add these without an explicit requirement.
+- The running-program planner saves its profile and week history in browser
+  localStorage. It has no server-side storage, account system, or backend.
+  Generated weeks use disclosed heuristics, not personalized training advice.
+- Do not add a backend, authentication, database, or server-side persistence
+  without an explicit requirement.
 - Use `npm run lint`, `npm run typecheck`, and `npm run build` for applicable
   checks. There is currently no test script or configured test framework.
