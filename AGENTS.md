@@ -26,3 +26,76 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   persistence without an explicit requirement.
 - Use `npm run lint`, `npm run typecheck`, and `npm run build` for applicable
   checks. There is currently no test script or configured test framework.
+
+## Next.js and React
+
+- Use the installed framework's stable APIs and documentation, not patterns
+  from older Next.js releases. Do not upgrade dependencies or introduce
+  experimental features unless required by the task.
+- Keep Server Components as the default. Place `"use client"` at the smallest
+  interactive boundary; keep secrets, Node.js modules, and server-only
+  dependencies outside its transitive imports. Mark sensitive server modules
+  with `import "server-only"`.
+- Pass only React-serializable values across server/client boundaries. Share
+  pure types and domain logic through environment-independent modules.
+- Await asynchronous request APIs, including `cookies()`, `headers()`,
+  route `params`, and page `searchParams`, following their installed types.
+- This project enables Cache Components. Use `use cache` and `cacheLife` only
+  for deliberately reusable data; put request-time UI behind meaningful
+  `Suspense` boundaries. Do not introduce incompatible `dynamic`, `revalidate`,
+  or `fetchCache` route exports or disable validation to hide rendering errors.
+- Never put OAuth credentials, session state, or user-specific Garmin responses
+  in shared caches. Set appropriate no-store response headers for sensitive
+  endpoints; client fetch options alone do not control intermediary caching.
+- Fetch server data directly from server modules, not through the app's own
+  HTTP endpoints. Parallelize independent I/O and avoid request waterfalls.
+- Keep Route Handlers thin: validate input, enforce authorization, call feature
+  logic, and return explicit HTTP statuses. Treat Server Actions, if explicitly
+  required, as public endpoints with the same checks.
+- Use effects only to synchronize with external systems, not to compute
+  derived state or handle user actions. Clean up timers, listeners, and pending
+  requests; prevent stale asynchronous results from overwriting newer state.
+- Keep initial server and client renders consistent. Access localStorage and
+  other browser APIs after hydration or in event handlers, not during server
+  rendering. Do not hide hydration defects with suppression flags.
+- Use semantic HTML, accessible names, keyboard interaction, and visible focus
+  states. Use Next.js navigation and image primitives where appropriate.
+  Add memoization or lazy loading only for a demonstrated performance need.
+
+## TypeScript and Node.js
+
+- Preserve strict type checking. Model valid states with explicit types and
+  discriminated unions; use `import type` for type-only dependencies.
+- Treat request bodies, external API responses, environment variables, and
+  stored JSON as untrusted. Parse them as `unknown` and validate with existing
+  Zod schemas or type guards before use; TypeScript assertions are not validation.
+- Do not introduce `any`, double assertions, unchecked non-null assertions,
+  `@ts-ignore`, or lint/type-check bypasses to silence defects. Narrow values
+  and handle missing cases explicitly.
+- Prefer existing feature helpers and platform APIs over new dependencies.
+  Use `node:` imports for Node.js built-ins and asynchronous I/O in request
+  paths; do not rely on Edge support for Node-specific libraries.
+- Validate required server configuration before use. Keep credentials out of
+  `NEXT_PUBLIC_*`, client props, URLs, logs, and error responses.
+- Use bounded timeouts for outbound requests, check HTTP status, and validate
+  response shape. Retry only when safe; never automatically repeat a workout
+  upload or other mutation without an idempotency strategy.
+- Preserve OAuth state/PKCE, explicit consent, encrypted HttpOnly cookies, and
+  same-origin mutation checks. Use cryptographic randomness and established
+  crypto APIs; never invent credential storage or encryption schemes.
+- Catch errors at meaningful boundaries. Return localized, actionable user
+  feedback and sanitized server diagnostics; do not swallow errors or return
+  success-shaped fallback data.
+
+## Change verification
+
+- Keep changes scoped, preserve existing behavior, and update directly related
+  documentation. Add visible UI strings to every supported locale.
+- Run the smallest relevant lint/type checks and behavioral checks. Run the
+  production build for framework, rendering, routing, or server-boundary changes.
+  Never disable checks to make a change pass.
+- Verify changed UI in the browser, including mobile layout and keyboard use;
+  verify failure paths for network and storage changes. Use mocks for Garmin
+  checks rather than real authorization or uploads without explicit approval.
+- Do not add a test framework solely for a small change. Report checks actually
+  run and any unverified behavior; documentation-only edits need no build.
