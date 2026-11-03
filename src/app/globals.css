@@ -43,6 +43,10 @@ body {
   cursor: not-allowed;
 }
 
+button.field {
+  padding-right: 1.25rem;
+}
+
 :where(button, input, select, summary, a):focus-visible {
   outline: 2px solid #047857;
   outline-offset: 3px;

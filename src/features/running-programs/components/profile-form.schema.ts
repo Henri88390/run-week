@@ -2,7 +2,7 @@ import { z } from "zod";
 import { formatInteger, type Locale } from "@/features/i18n/locales";
 import type { Messages } from "@/features/i18n/messages/en";
 import {
-  activePreferredDays, averageEasyPaceSecondsPerKm, calculateVdot, DISTANCES, isSupportedPerformance,
+  activePreferredDays, averageEasyPaceSecondsPerKm, calculateVdot, DISTANCES, isSupportedPerformance, KEY_WORKOUT_TYPES,
 } from "../domain";
 import type { PreferredDays } from "../types";
 
@@ -37,6 +37,9 @@ export function createProfileFormSchema(messages: Messages["validation"], locale
     preferredVo2maxDay: z.string(),
     preferredThresholdDay: z.string(),
     preferredLongRunDay: z.string(),
+    intervalWorkout: z.enum(KEY_WORKOUT_TYPES),
+    thresholdWorkout: z.enum(KEY_WORKOUT_TYPES),
+    longWorkout: z.enum(KEY_WORKOUT_TYPES),
   }).superRefine((values, context) => {
     const wholeNumber = (
       value: string,
@@ -123,16 +126,16 @@ export function createProfileFormSchema(messages: Messages["validation"], locale
     }
 
     if (validRunCount) {
-      const preferred = activePreferredDays(preferredDaysFromForm(values), runCount);
+      const preferred = activePreferredDays(preferredDaysFromForm(values), runCount, {
+        vo2max: values.intervalWorkout, threshold: values.thresholdWorkout, long: values.longWorkout,
+      });
       const fieldFor = { vo2max: "preferredVo2maxDay", threshold: "preferredThresholdDay", long: "preferredLongRunDay" };
-      const seen = new Set<number>();
       for (const { type, day } of preferred) {
         if (values.scheduleMode === "days" && !values.scheduleDays.includes(day)) {
           context.addIssue({ code: "custom", path: [fieldFor[type]], message: messages.preferredDayNotScheduled });
-        } else if (seen.has(day)) {
+        } else if (preferred.some((session) => session.type !== type && session.day === day)) {
           context.addIssue({ code: "custom", path: [fieldFor[type]], message: messages.differentPreferredDays });
         }
-        seen.add(day);
       }
     }
 

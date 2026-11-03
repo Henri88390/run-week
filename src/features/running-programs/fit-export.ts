@@ -3,13 +3,13 @@ import type { Encodable, FileIdMesg, WorkoutMesg, WorkoutStepMesg } from "@garmi
 import type { Locale } from "@/features/i18n/locales";
 import { weekdayName } from "@/features/i18n/locales";
 import { MESSAGES } from "@/features/i18n/use-i18n";
-import { paceAtFraction, WEEKDAYS, workoutLabelKey, workoutSessionPlan } from "./domain";
+import { stepPaces, WEEKDAYS, workoutLabelKey, weekWorkoutSessionPlan } from "./domain";
 import type { WorkoutSessionStep } from "./domain";
 import type { TrainingWeek, Workout, WorkoutType } from "./types";
 
 type FitStep = WorkoutSessionStep;
 
-function getFitSteps(workout: Workout, vdot: number): FitStep[] {
+function getFitSteps(workout: Workout, week: TrainingWeek): FitStep[] {
   const type: WorkoutType = workout.type ?? "easy";
   if (type === "easy") {
     throw new Error("Easy runs cannot be exported as FIT workouts.");
@@ -22,12 +22,7 @@ function getFitSteps(workout: Workout, vdot: number): FitStep[] {
       paceFractions: [0.59, 0.74],
     }];
   }
-  const plan = workoutSessionPlan(
-    type,
-    vdot,
-    workout.durationMinutes,
-    workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0),
-  );
+  const plan = weekWorkoutSessionPlan(week, workout);
   return plan?.steps ?? [{ kind: "easyRun", durationMinutes: workout.durationMinutes, intensity: "active" }];
 }
 
@@ -53,18 +48,19 @@ function workoutStepMessage(step: FitStep, index: number, vdot: number, locale: 
   const message: Encodable<WorkoutStepMesg> = {
     mesgNum: Profile.MesgNum.WORKOUT_STEP,
     messageIndex: index,
-    wktStepName: fitText(MESSAGES[locale].steps[step.kind]),
-    durationType: "time",
-    durationValue: step.durationMinutes * 60 * 1000,
+    wktStepName: fitText(step.fullRecovery ? MESSAGES[locale].week.fullRecovery : MESSAGES[locale].steps[step.kind]),
+    durationType: step.distanceMeters !== undefined ? "distance" : "time",
+    durationValue: step.distanceMeters !== undefined ? step.distanceMeters * 100 : Math.round(step.durationMinutes * 60 * 1000),
     targetType: "open",
     targetValue: 0,
     intensity: step.intensity,
   };
-  if (step.paceFractions) {
-    const [slowFraction, fastFraction] = step.paceFractions;
+  const paces = stepPaces(step, vdot);
+  if (paces) {
+    const [slow, fast] = paces;
     message.targetType = "speed";
-    message.customTargetValueLow = Math.round(1_000_000 / paceAtFraction(vdot, slowFraction));
-    message.customTargetValueHigh = Math.round(1_000_000 / paceAtFraction(vdot, fastFraction));
+    message.customTargetValueLow = Math.round(1_000_000 / slow);
+    message.customTargetValueHigh = Math.round(1_000_000 / fast);
   }
   return message;
 }
@@ -72,7 +68,7 @@ function workoutStepMessage(step: FitStep, index: number, vdot: number, locale: 
 export function createWorkoutFit(week: TrainingWeek, workout: Workout, displayLocale: Locale): Uint8Array {
   const locale = fitLocale(displayLocale);
   const type = workout.type ?? "easy";
-  const steps = getFitSteps(workout, week.profile.vdot);
+  const steps = getFitSteps(workout, week);
   const weekday = weekdayName(locale, workout.day, "short").replace(/\.$/, "");
   const name = fitText(`${weekday} ${MESSAGES[locale].workoutsShort[workoutLabelKey(type)]}`);
   const encoder = new Encoder();

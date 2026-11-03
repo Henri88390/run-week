@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { weekdayName } from "@/features/i18n/locales";
 import { useI18n } from "@/features/i18n/use-i18n";
 import {
-  activePreferredDays, calculateVdot, distanceLabel, DISTANCES, equivalentRaceSeconds, isSupportedPerformance, NO_PREFERRED_DAYS,
+  activePreferredDays, calculateVdot, DEFAULT_WORKOUT_CHOICES, distanceLabel, DISTANCES, equivalentRaceSeconds,
+  isSupportedPerformance, KEY_WORKOUT_TYPES, NO_PREFERRED_DAYS,
 } from "../domain";
 import type { PreferredDays, Profile, Schedule } from "../types";
 import { createProfileFormSchema, preferredDaysFromForm, type ProfileFormValues } from "./profile-form.schema";
+import { SelectField } from "./select-field";
 
 type PreferredDayField = "preferredVo2maxDay" | "preferredThresholdDay" | "preferredLongRunDay";
+type WorkoutChoiceField = "intervalWorkout" | "thresholdWorkout" | "longWorkout";
 const PREFERRED_DAY_FIELDS: PreferredDayField[] = ["preferredVo2maxDay", "preferredThresholdDay", "preferredLongRunDay"];
 
 function scheduledPreferredDays(preferredDays: PreferredDays, runCount: number): PreferredDays {
@@ -36,6 +39,8 @@ function profilesMatch(a: Profile, b: Profile): boolean {
     && a.preferredDays.vo2max === b.preferredDays.vo2max
     && a.preferredDays.threshold === b.preferredDays.threshold
     && a.preferredDays.long === b.preferredDays.long
+    && (["vo2max", "threshold", "long"] as const).every((slot) =>
+      (a.workoutChoices ?? DEFAULT_WORKOUT_CHOICES)[slot] === (b.workoutChoices ?? DEFAULT_WORKOUT_CHOICES)[slot])
     && schedulesMatch;
 }
 
@@ -60,6 +65,27 @@ function enteredPerformance(distanceValue: string, hours: string, minutes: strin
 
 function ErrorMessage({ children }: { children?: string }) {
   return children ? <p className="mt-2 text-sm text-red-700" role="alert">{children}</p> : null;
+}
+
+function WorkoutTypeHelp({ name, definition }: { name: string; definition: string }) {
+  const tooltipId = useId();
+  const [open, setOpen] = useState(false);
+  return <span className="relative shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <button type="button" aria-label={name} aria-describedby={open ? tooltipId : undefined}
+      className="flex size-8 items-center justify-center rounded text-stone-500 hover:text-stone-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}
+      onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); event.stopPropagation(); } }}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-5">
+        <circle cx="12" cy="12" r="9" />
+        <path strokeLinecap="round" d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 4M12 16.5h.01" />
+      </svg>
+    </button>
+    {open && <span id={tooltipId} role="tooltip"
+      className="absolute right-0 top-full z-50 block w-72 max-w-[calc(100vw-4rem)] rounded-lg border border-stone-200 bg-white p-3 text-sm leading-6 text-stone-700 shadow-lg">
+      <span className="mb-1 block font-medium">{name}</span>
+      {definition}
+    </span>}
+  </span>;
 }
 
 export function ProfileForm({ profile, onSave }: {
@@ -92,6 +118,9 @@ export function ProfileForm({ profile, onSave }: {
       preferredVo2maxDay: String(profile?.preferredDays.vo2max ?? ""),
       preferredThresholdDay: String(profile?.preferredDays.threshold ?? ""),
       preferredLongRunDay: String(profile?.preferredDays.long ?? ""),
+      intervalWorkout: profile?.workoutChoices?.vo2max ?? "vo2max",
+      thresholdWorkout: profile?.workoutChoices?.threshold ?? "threshold",
+      longWorkout: profile?.workoutChoices?.long ?? "long",
     },
   });
 
@@ -111,6 +140,9 @@ export function ProfileForm({ profile, onSave }: {
     preferredVo2maxDay,
     preferredThresholdDay,
     preferredLongRunDay,
+    intervalWorkout,
+    thresholdWorkout,
+    longWorkout,
   ] = useWatch({
     control,
     name: [
@@ -129,6 +161,9 @@ export function ProfileForm({ profile, onSave }: {
       "preferredVo2maxDay",
       "preferredThresholdDay",
       "preferredLongRunDay",
+      "intervalWorkout",
+      "thresholdWorkout",
+      "longWorkout",
     ],
   });
 
@@ -142,19 +177,22 @@ export function ProfileForm({ profile, onSave }: {
   const preferredDayOptions = schedule.mode === "days"
     ? [...schedule.days].sort((a, b) => a - b)
     : [0, 1, 2, 3, 4, 5, 6];
-  const preferredDayInputs: { field: PreferredDayField; label: string; visible: boolean }[] = [
+  const preferredDayInputs: { field: PreferredDayField; workoutField: WorkoutChoiceField; visible: boolean }[] = [
     {
       field: "preferredVo2maxDay",
-      label: runCount >= 5 ? t.form.preferredVo2maxDay : t.form.preferredWorkoutDay,
+      workoutField: "intervalWorkout",
       visible: runCount >= 1,
     },
-    { field: "preferredThresholdDay", label: t.form.preferredThresholdDay, visible: runCount >= 5 },
-    { field: "preferredLongRunDay", label: t.form.preferredLongRunDay, visible: runCount >= 3 },
+    { field: "preferredThresholdDay", workoutField: "thresholdWorkout", visible: runCount >= 5 },
+    { field: "preferredLongRunDay", workoutField: "longWorkout", visible: runCount >= 3 },
   ];
   const [advancedOpen, setAdvancedOpen] = useState(
-    () => Boolean(profile && Object.values(profile.preferredDays).some((day) => day !== null)));
+    () => Boolean(profile && (Object.values(profile.preferredDays).some((day) => day !== null)
+      || (["vo2max", "threshold", "long"] as const).some((slot) =>
+        (profile.workoutChoices ?? DEFAULT_WORKOUT_CHOICES)[slot] !== DEFAULT_WORKOUT_CHOICES[slot]))));
   const hasPreferredDayErrors = Boolean(
     errors.preferredVo2maxDay || errors.preferredThresholdDay || errors.preferredLongRunDay);
+  const hasWorkoutErrors = Boolean(errors.intervalWorkout || errors.thresholdWorkout || errors.longWorkout);
   const clearPreferredDaysOutside = (days: number[]) => {
     for (const field of PREFERRED_DAY_FIELDS) {
       const value = { preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay }[field];
@@ -173,6 +211,7 @@ export function ProfileForm({ profile, onSave }: {
       ? Number(weeklyHours) * 60 + Number(weeklyMinutes) : null,
     preferredDays: scheduledPreferredDays(
       preferredDaysFromForm({ preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay }), runCount),
+    workoutChoices: { vo2max: intervalWorkout, threshold: thresholdWorkout, long: longWorkout },
   };
   const hasChanges = !profile || !profilesMatch(profile, draft);
 
@@ -226,6 +265,7 @@ export function ProfileForm({ profile, onSave }: {
         ? Number(values.weeklyHours) * 60 + Number(values.weeklyMinutes) : null,
       preferredDays: scheduledPreferredDays(preferredDaysFromForm(values),
         submittedSchedule.mode === "days" ? submittedSchedule.days.length : submittedSchedule.count),
+      workoutChoices: { vo2max: values.intervalWorkout, threshold: values.thresholdWorkout, long: values.longWorkout },
     });
   };
 
@@ -248,6 +288,9 @@ export function ProfileForm({ profile, onSave }: {
     errors.preferredVo2maxDay?.message,
     errors.preferredThresholdDay?.message,
     errors.preferredLongRunDay?.message,
+    errors.intervalWorkout?.message,
+    errors.thresholdWorkout?.message,
+    errors.longWorkout?.message,
   ].filter((message): message is string => Boolean(message));
 
   return <form noValidate className="mt-4 space-y-4" onSubmit={handleSubmit(onSubmit)}>
@@ -256,18 +299,19 @@ export function ProfileForm({ profile, onSave }: {
         <h3 className="mb-1 min-h-5 text-sm font-medium">{t.form.performanceDistance}</h3>
         <label className="block">
           <span className="sr-only">{t.form.performanceDistance}</span>
-          <select
+          <SelectField
+            aria-label={t.form.performanceDistance}
             value={customDistance ? "custom" : distanceValue}
-            onChange={(event) => {
-              const isCustom = event.target.value === "custom";
+            onValueChange={(value) => {
+              const isCustom = value === "custom";
               setValue("customDistance", isCustom, { shouldDirty: true });
-              if (!isCustom) updateDistance(event.target.value);
+              if (!isCustom) updateDistance(value);
             }}
-            className="field pr-5"
+            className="field"
           >
             {DISTANCES.map((item) => <option key={item.meters} value={item.meters}>{distanceLabel(item.meters, t.distances)}</option>)}
             <option value="custom">{t.form.customDistance}</option>
-          </select>
+          </SelectField>
         </label>
         {customDistance && <label className="mt-2 block">
           <span className="field-label">{t.form.distanceInMetres}</span>
@@ -334,14 +378,14 @@ export function ProfileForm({ profile, onSave }: {
             </label>)}
           </div> : <label className="mt-2 block max-w-xs">
             <span className="field-label">{t.form.runsPerWeek}</span>
-            <select {...register("scheduleCount")} className="field pr-5">
+            <SelectField {...register("scheduleCount")} value={scheduleCount} aria-label={t.form.runsPerWeek} className="field">
               {[1, 2, 3, 4, 5, 6, 7].map((count) => <option key={count} value={count}>{count}</option>)}
-            </select>
+            </SelectField>
           </label>}
           <ErrorMessage>{errors.scheduleDays?.message ?? errors.scheduleCount?.message}</ErrorMessage>
           {runCount >= 1 && <details
             className="group/advanced mt-3"
-            open={advancedOpen || hasPreferredDayErrors}
+            open={advancedOpen || hasPreferredDayErrors || hasWorkoutErrors}
             onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
           >
             <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded text-sm font-medium text-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 [&::-webkit-details-marker]:hidden">
@@ -351,16 +395,33 @@ export function ProfileForm({ profile, onSave }: {
               {t.form.advancedOptions}
             </summary>
             <div className="mt-2 grid gap-2">
-              {preferredDayInputs.filter(({ visible }) => visible).map(({ field, label }) => <label key={field} className="block max-w-xs">
-                <span className="field-label">{label}</span>
-                <select {...register(field)} className="field pr-5" aria-invalid={Boolean(errors[field])}>
-                  <option value="">{t.form.noPreference}</option>
-                  {preferredDayOptions.map((day) => <option key={day} value={day}>{weekdayName(locale, day)}</option>)}
-                </select>
-              </label>)}
+              {preferredDayInputs.filter(({ visible }) => visible).map(({ field, workoutField }, index) => <fieldset key={field} className="grid gap-2 rounded-lg border border-stone-200 p-2">
+                <legend className="px-1 text-sm font-medium">{t.form.workout} {index + 1}</legend>
+                <div className="flex items-center gap-1">
+                  <label className="block min-w-0 flex-1">
+                    <span className="sr-only">{t.form.workout} {index + 1}</span>
+                    <SelectField {...register(workoutField)} value={{ intervalWorkout, thresholdWorkout, longWorkout }[workoutField]}
+                      onValueChange={() => { if (isSubmitted) void trigger(PREFERRED_DAY_FIELDS); }}
+                      highlightedValue="easy" className="field" aria-label={`${t.form.workout} ${index + 1}`} aria-invalid={Boolean(errors[workoutField])}>
+                      {KEY_WORKOUT_TYPES.map((type) => <option key={type} value={type}>{type === "easy" ? t.form.skipWorkout : t.workouts[type]}</option>)}
+                    </SelectField>
+                  </label>
+                  <WorkoutTypeHelp name={t.workouts[{ intervalWorkout, thresholdWorkout, longWorkout }[workoutField]]}
+                    definition={t.workoutDefinitions[{ intervalWorkout, thresholdWorkout, longWorkout }[workoutField]]} />
+                </div>
+                <label className="block">
+                  <span className="field-label">{t.form.preferredWorkoutDay}</span>
+                  <SelectField {...register(field)} value={{ preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay }[field]}
+                    onValueChange={() => { if (isSubmitted) void trigger(PREFERRED_DAY_FIELDS); }}
+                    className="field" aria-label={t.form.preferredWorkoutDay} aria-invalid={Boolean(errors[field])}>
+                    <option value="">{t.form.noPreference}</option>
+                    {preferredDayOptions.map((day) => <option key={day} value={day}>{weekdayName(locale, day)}</option>)}
+                  </SelectField>
+                </label>
+                <ErrorMessage>{errors[workoutField]?.message ?? errors[field]?.message}</ErrorMessage>
+              </fieldset>)}
             </div>
           </details>}
-          <ErrorMessage>{errors.preferredVo2maxDay?.message ?? errors.preferredThresholdDay?.message ?? errors.preferredLongRunDay?.message}</ErrorMessage>
         </fieldset>
       </div>
 

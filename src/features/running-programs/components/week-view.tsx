@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { formatDate, formatDecimal, weekdayName, type Locale } from "@/features/i18n/locales";
 import type { Messages } from "@/features/i18n/messages/en";
 import { useI18n } from "@/features/i18n/use-i18n";
-import { addDays, estimatedWorkoutDistanceKm, formatPace, paceAtFraction, workoutLabelKey, workoutSessionPlan } from "../domain";
+import { addDays, estimatedWorkoutDistanceKm, formatPace, paceAtFraction, stepPaces, workoutLabelKey, weekWorkoutSessionPlan } from "../domain";
 import type { TrainingWeek } from "../types";
 import type { WorkoutSessionStep } from "../domain";
 import { downloadWorkoutFit } from "../fit-export";
@@ -24,6 +24,26 @@ function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number, t: Messag
 
   while (index < steps.length) {
     const step = steps[index];
+    if (step.kind === "repetition") {
+      let repeats = 1;
+      let next = index + 1;
+      while (next + 1 < steps.length && steps[next].intensity === "recovery"
+        && steps[next + 1].kind === "repetition"
+        && steps[next + 1].distanceMeters === step.distanceMeters
+        && steps[next + 1].paceSecondsPerKm === step.paceSecondsPerKm) {
+        repeats++;
+        next += 2;
+      }
+      const paces = stepPaces(step, vdot);
+      const recovery = steps[index + 1]?.fullRecovery
+        ? `, ${t.week.fullRecovery} · ${stepDuration(steps[index + 1].durationMinutes, t)}` : "";
+      lines.push({
+        key: `${step.kind}-${index}`,
+        description: `${repeats}x ${step.distanceMeters} m (${stepDuration(step.durationMinutes, t)})${paces ? ` ${t.week.atPace(`${formatPace(paces[0])} ${t.units.perKm}`)}` : ""}${recovery}`,
+      });
+      index = next;
+      continue;
+    }
     if (step.paceFractions && (step.intensity === "interval" || step.intensity === "active")) {
       const durations = [step.durationMinutes];
       const recoveries: number[] = [];
@@ -57,9 +77,15 @@ function workoutDetailLines(steps: WorkoutSessionStep[], vdot: number, t: Messag
     const pace = step.paceFractions ? paceRange(vdot, step.paceFractions[0], step.paceFractions[1], t) : null;
     lines.push({
       key: `${step.kind}-${index}`,
-      description: `${t.steps[step.kind]} · ${step.durationMinutes} ${t.units.min}${pace ? ` ${t.week.atPace(pace)}` : step.intensity === "recovery" ? ` · ${t.week.easyEffort}` : ""}`,
+      description: `${t.steps[step.kind]} · ${stepDuration(step.durationMinutes, t)}${pace ? ` ${t.week.atPace(pace)}` : step.intensity === "recovery" ? ` · ${t.week.easyEffort}` : ""}`,
     });
     index++;
+  }
+
+  function stepDuration(minutes: number, t: Messages): string {
+    const seconds = Math.round(minutes * 60);
+    return [seconds >= 60 ? `${Math.floor(seconds / 60)} ${t.units.min}` : "",
+      seconds % 60 ? `${seconds % 60} ${t.units.sec}` : ""].filter(Boolean).join(" ");
   }
 
   return lines;
@@ -79,6 +105,7 @@ function workoutCardColor(type: string | undefined): string {
   if (type === "long") return "border-sky-300 bg-sky-50";
   if (type === "vo2max" || type === "workout") return "border-rose-300 bg-rose-50";
   if (type === "threshold") return "border-amber-300 bg-amber-50";
+  if (type === "repetition") return "border-violet-300 bg-violet-50";
   return "border-emerald-300 bg-emerald-50";
 }
 
@@ -98,14 +125,13 @@ export function WeekView({ week }: {
   const easyPace = paceRange(vdot, 0.59, 0.74, t);
   const selectedWorkout = week.workouts.find((workout) => workout.day === selectedDay);
   const selectedSessionPlan = selectedWorkout?.type
-    ? workoutSessionPlan(selectedWorkout.type, vdot, selectedWorkout.durationMinutes,
-      selectedWorkout.intensityAdjustment ?? (selectedWorkout.intensityIncreased ? 1 : selectedWorkout.intensityDecreased ? -1 : 0))
+    ? weekWorkoutSessionPlan(week, selectedWorkout)
     : null;
   const sessionDetailLines = selectedSessionPlan
     ? workoutDetailLines(selectedSessionPlan.steps, vdot, t)
     : null;
   const selectedDistance = selectedWorkout
-    ? estimatedWorkoutDistanceKm(selectedWorkout, vdot)
+    ? estimatedWorkoutDistanceKm(selectedWorkout, vdot, week)
     : null;
   const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
 
@@ -125,14 +151,15 @@ export function WeekView({ week }: {
       const date = `${weekdayName(locale, day)} ${formatDate(locale, addDays(week.startDate, day), false)}`;
       if (!workout) continue;
       lines.push("");
-      const distance = estimatedWorkoutDistanceKm(workout, vdot);
+      const distance = estimatedWorkoutDistanceKm(workout, vdot, week);
       lines.push(`${date}: ${workout.durationMinutes} ${t.units.min} · ${t.workouts[workoutLabelKey(workout.type ?? "easy")]}${distance ? ` · ~${distanceRange(locale, distance.min, distance.max, t)}` : ""}`);
       const plan = workout.type && workout.type !== "easy" && workout.type !== "long"
-        ? workoutSessionPlan(workout.type, vdot, workout.durationMinutes,
-          workout.intensityAdjustment ?? (workout.intensityIncreased ? 1 : workout.intensityDecreased ? -1 : 0))
+        ? weekWorkoutSessionPlan(week, workout)
         : null;
       if (plan) lines.push(...workoutDetailLines(plan.steps, vdot, t).map((step) => `- ${step.description}`));
       else lines.push(`- ${easyPace}`);
+      if (workout.type === "repetition") lines.push(`- ${plan?.steps.some((step) => step.kind === "repetition")
+        ? t.week.repetitionNote : t.week.repetitionEasyNote}`);
     }
     return lines.join("\n");
   }
@@ -194,7 +221,7 @@ export function WeekView({ week }: {
       {Array.from({ length: 7 }, (_, i) => {
         const workout = week.workouts.find((entry) => entry.day === i);
         const workoutDistance = workout
-          ? estimatedWorkoutDistanceKm(workout, vdot)
+          ? estimatedWorkoutDistanceKm(workout, vdot, week)
           : null;
         const calendarDate = addDays(week.startDate, i);
         const isToday = calendarDate === today;
@@ -259,6 +286,10 @@ export function WeekView({ week }: {
               {step.description}
             </li>)}
           </ol>}
+        {selectedWorkout.type === "repetition" && <p className="mt-3 text-sm leading-6 text-stone-600">
+          {selectedSessionPlan?.steps.some((step) => step.kind === "repetition")
+            ? t.week.repetitionNote : t.week.repetitionEasyNote}
+        </p>}
         {selectedWorkout.type && selectedWorkout.type !== "easy" && <button type="button"
           className="mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
           onClick={() => downloadWorkoutFit(week, selectedWorkout, locale)}>
