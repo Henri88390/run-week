@@ -5,15 +5,15 @@ import type { Locale } from "@/features/i18n/locales";
 import { addDays } from "@/features/running-programs/domain";
 import type { TrainingWeek, Workout } from "@/features/running-programs/types";
 import {
-  garminStatusSchema, garminSyncResponseSchema,
+  GARMIN_ERRORS, garminStatusSchema, garminSyncResponseSchema,
   type GarminErrorCode, type GarminStatus, type GarminSyncRequest,
 } from "./sync-request";
 import { GARMIN_SENT_KEY } from "./privacy";
 
 const SENT_KEY = GARMIN_SENT_KEY;
-const NOTICES = ["connected", "error", "unavailable", "disconnectFailed", "localDeleteFailed", "statusFailed"] as const;
+const NOTICES = [...GARMIN_ERRORS, "connected", "error", "disconnectFailed", "localDeleteFailed", "statusFailed"] as const;
 export type GarminNotice = (typeof NOTICES)[number];
-export type GarminSendResult = { count: number; error?: GarminErrorCode };
+export type GarminSendResult = { count: number; error?: GarminErrorCode; requestId?: string };
 
 function isGarminNotice(value: string): value is GarminNotice {
   return NOTICES.some((notice) => notice === value);
@@ -99,20 +99,23 @@ export function useGarmin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+    } catch {
+      return { count: 0, error: "network" };
+    }
+    try {
       const value: unknown = await response.json();
       const parsed = garminSyncResponseSchema.safeParse(value);
-      if (!parsed.success || (!response.ok && !parsed.data.error)) return { count: 0, error: "failed" };
+      if (!parsed.success || (!response.ok && !parsed.data.error)) return { count: 0, error: "invalidResponse" };
       data = parsed.data;
     } catch {
-      return { count: 0, error: "failed" };
+      return { count: 0, error: "invalidResponse" };
     }
     for (const result of data.results) sent[result.date] = result.workoutId;
     writeSent(sent);
     if (data.error === "reconnect") {
       setStatus((current) => ({ ...current, connected: false }));
-      setNotice("error");
     }
-    return { count: data.results.length, error: data.error };
+    return { count: data.results.length, error: data.error, requestId: data.requestId };
   }, []);
 
   const disconnect = useCallback(async () => {

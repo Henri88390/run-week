@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { LOCALES } from "@/features/i18n/locales";
 
-export const GARMIN_ERRORS = ["reconnect", "permission", "rateLimited", "failed", "invalid"] as const;
+export const GARMIN_ERRORS = [
+  "reconnect", "permission", "rateLimited", "rejected", "unavailable", "network", "invalidResponse", "failed", "invalid",
+] as const;
 export type GarminErrorCode = (typeof GARMIN_ERRORS)[number];
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
@@ -28,6 +30,7 @@ export type GarminSyncRequest = z.infer<typeof garminSyncRequestSchema>;
 export type GarminSyncResponse = {
   results: { day: number; date: string; workoutId: number }[];
   error?: GarminErrorCode;
+  requestId?: string;
 };
 
 export const garminSyncResponseSchema = z.object({
@@ -37,6 +40,7 @@ export const garminSyncResponseSchema = z.object({
     workoutId: z.number().int().positive().refine(Number.isSafeInteger),
   })),
   error: z.enum(GARMIN_ERRORS).optional(),
+  requestId: z.uuid().optional(),
 });
 
 export const garminStatusSchema = z.object({

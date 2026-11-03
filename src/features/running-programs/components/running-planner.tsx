@@ -64,7 +64,8 @@ export function RunningPlanner() {
     : garmin.notice === "unavailable" ? t.garmin.unavailable
       : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
         : garmin.notice === "localDeleteFailed" ? t.garmin.localDeleteFailed
-          : garmin.notice === "statusFailed" ? t.garmin.statusFailed : "";
+          : garmin.notice === "statusFailed" ? t.garmin.statusFailed
+            : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice] : "";
 
   return <div className="space-y-4">
     {warning && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">{t.storage[warning]}</p>}

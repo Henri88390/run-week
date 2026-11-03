@@ -230,6 +230,44 @@ approved developers; the endpoints and payload format in
 against a live account. Check them against the official documentation, in
 particular the scheduling endpoint.
 
+### Garmin diagnostics in production
+
+Garmin failures emit structured JSON through server-only `console.error` (service,
+network, invalid response, configuration or internal failures) or `console.warn`
+(authorization, permission, rate limit, rejection or invalid input). On Vercel,
+open the project's **Logs**, select the production deployment/environment and
+filter for `garmin_failure` (include warning and error levels). No logging vendor
+or additional environment variables are needed. These are runtime/function logs,
+not browser console or build logs.
+
+Each entry includes a generated request ID, a fixed operation (`refresh`,
+`replace`, `create`, `schedule`, `cleanup`, OAuth/status/disconnect, etc.), a
+category, a safe frontend code, and, when applicable, the upstream HTTP status
+and number of completed runs. Upload responses include the same ID in
+`X-Request-ID` and JSON; localized week and workout-modal errors display it as a
+reference. Other Garmin endpoints include it in the response header. There is
+no per-user identifier, persistent log store or success/payload logging.
+
+Diagnostics never include credentials, cookies, tokens, OAuth codes, URLs,
+workout contents, upstream bodies, or original exception messages/stacks.
+Unexpected exceptions are categorized as internal failures. HTTP rejection
+categories are indicative only: Garmin's response bodies are deliberately not
+inspected or logged. Configure Vercel/infrastructure retention and access
+appropriately; separately verify that platform/proxy access logs do not retain
+OAuth callback query strings.
+
+The UI distinguishes reconnect/permission/rate-limit, rejected workout,
+unavailable service, network, invalid response and generic failures in all ten
+languages. Transient refresh failures do not clear the session. Partial upload
+successes remain recorded; scheduling and best-effort cleanup failures are both
+logged under the same ID. Uploads are never automatically retried. After an
+uncertain outcome, check Garmin before resending: an upstream write may have
+succeeded despite a lost response, and failed cleanup can leave an orphan workout.
+
+Run the focused mocked verification without calling Garmin:
+`node scripts\verify-garmin.mjs`. It uses Node and the installed TypeScript compiler;
+no test framework or real credentials are required.
+
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.
 

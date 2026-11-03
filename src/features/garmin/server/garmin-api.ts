@@ -1,5 +1,6 @@
 import "server-only";
 import type { GarminConfig } from "./config";
+import { GarminApiError, httpFailure } from "./diagnostics";
 
 const AUTHORIZE_URL = "https://connect.garmin.com/oauth2Confirm";
 const TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token";
@@ -17,9 +18,20 @@ export type GarminTokens = {
   refreshExpiresAt: number;
 };
 
-export class GarminApiError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
+async function garminFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS), cache: "no-store" });
+  } catch (error) {
+    const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new GarminApiError(timeout ? "timeout" : "network");
+  }
+}
+
+async function responseJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new GarminApiError("invalid_response");
   }
 }
 
@@ -53,26 +65,26 @@ export async function requestTokens(
   grant: { grant_type: "authorization_code"; code: string; code_verifier: string; redirect_uri: string }
     | { grant_type: "refresh_token"; refresh_token: string },
 ): Promise<GarminTokens> {
-  const response = await fetch(TOKEN_URL, {
+  const response = await garminFetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams({ ...grant, client_id: config.clientId, client_secret: config.clientSecret }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
     cache: "no-store",
   });
-  if (!response.ok) throw new GarminApiError(response.status, "Garmin token request failed.");
-  const body: unknown = await response.json();
+  if (!response.ok) throw httpFailure(response.status, true);
+  const body = await responseJson(response);
   if (!isRecord(body) || typeof body.access_token !== "string" || !body.access_token
     || typeof body.refresh_token !== "string" || !body.refresh_token
     || (body.expires_in !== undefined && !isPositiveDuration(body.expires_in))
     || (body.refresh_token_expires_in !== undefined && !isPositiveDuration(body.refresh_token_expires_in))) {
-    throw new GarminApiError(502, "Garmin token response is invalid.");
+    throw new GarminApiError("invalid_response");
   }
   const now = Date.now();
   const expiresAt = now + (body.expires_in ?? 3600) * 1000;
   const refreshExpiresAt = now + (body.refresh_token_expires_in ?? DEFAULT_REFRESH_LIFETIME_SECONDS) * 1000;
   if (!Number.isFinite(expiresAt) || !Number.isFinite(refreshExpiresAt)) {
-    throw new GarminApiError(502, "Garmin token expiry is invalid.");
+    throw new GarminApiError("invalid_response");
   }
   return {
     accessToken: body.access_token,
@@ -83,23 +95,23 @@ export async function requestTokens(
 }
 
 async function trainingApi(accessToken: string, path: string, init: RequestInit): Promise<Response> {
-  const response = await fetch(`${TRAINING_API_URL}${path}`, {
+  const response = await garminFetch(`${TRAINING_API_URL}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
     cache: "no-store",
   });
   if (!response.ok && !(init.method === "DELETE" && response.status === 404)) {
-    throw new GarminApiError(response.status, `Garmin Training API ${init.method} ${path} failed.`);
+    throw httpFailure(response.status);
   }
   return response;
 }
 
 export async function createWorkout(accessToken: string, workout: Record<string, unknown>): Promise<number> {
   const response = await trainingApi(accessToken, "/workout", { method: "POST", body: JSON.stringify(workout) });
-  const body: unknown = await response.json();
+  const body = await responseJson(response);
   if (!isRecord(body) || typeof body.workoutId !== "number" || !Number.isSafeInteger(body.workoutId)
-    || body.workoutId <= 0) throw new GarminApiError(502, "Garmin did not return a valid workout ID.");
+    || body.workoutId <= 0) throw new GarminApiError("invalid_response");
   return body.workoutId;
 }
 

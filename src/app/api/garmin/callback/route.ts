@@ -1,9 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
-import { NextResponse, type NextRequest } from "next/server";
+import { connection, NextResponse, type NextRequest } from "next/server";
 import { garminConfig } from "@/features/garmin/server/config";
 import { requestTokens } from "@/features/garmin/server/garmin-api";
 import { clearAuthorization, readAuthorization, writeSession } from "@/features/garmin/server/session";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
+import { failureDetails, GarminApiError, logGarminFailure, newRequestId } from "@/features/garmin/server/diagnostics";
+import type { GarminErrorCode } from "@/features/garmin/sync-request";
 
 function sameState(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -12,25 +14,27 @@ function sameState(a: string, b: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
-  const config = garminConfig();
-  const finish = (result: "connected" | "error" | "unavailable") => {
+  await connection();
+  const requestId = newRequestId();
+  const finish = (result: "connected" | "error" | GarminErrorCode) => {
     const response = NextResponse.redirect(new URL(`/?garmin=${result}`, request.nextUrl));
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("Referrer-Policy", "no-referrer");
+    response.headers.set("X-Request-ID", requestId);
     clearAuthorization(response, request);
     return response;
   };
-  if (!config) return finish("unavailable");
-
-  const authorization = readAuthorization(request, config);
-  const code = request.nextUrl.searchParams.get("code");
-  const state = request.nextUrl.searchParams.get("state");
-  if (!authorization || authorization.consentVersion !== GARMIN_CONSENT_VERSION
-    || typeof authorization.consentAt !== "number"
-    || !code || code.length > 2048 || !state || state.length !== 43
-    || !sameState(state, authorization.state)) return finish("error");
-
   try {
+    const config = garminConfig();
+    if (!config) throw new GarminApiError("configuration");
+    const authorization = readAuthorization(request, config);
+    const code = request.nextUrl.searchParams.get("code");
+    const state = request.nextUrl.searchParams.get("state");
+    if (!authorization || authorization.consentVersion !== GARMIN_CONSENT_VERSION
+      || typeof authorization.consentAt !== "number"
+      || request.nextUrl.searchParams.has("error")
+      || !code || code.length > 2048 || !state || state.length !== 43
+      || !sameState(state, authorization.state)) throw new GarminApiError("invalid_request");
     const tokens = await requestTokens(config, {
       grant_type: "authorization_code",
       code,
@@ -42,7 +46,9 @@ export async function GET(request: NextRequest) {
       ...tokens, consentVersion: authorization.consentVersion, consentAt: authorization.consentAt,
     });
     return response;
-  } catch {
-    return finish("error");
+  } catch (error) {
+    logGarminFailure(requestId, "callback", error);
+    const code = failureDetails(error).code;
+    return finish(code === "invalid" ? "error" : code);
   }
 }

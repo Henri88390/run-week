@@ -268,9 +268,10 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  function garminMessage({ count, error }: GarminSendResult): string {
+  function garminMessage({ count, error, requestId }: GarminSendResult): string {
     const sent = count > 0 ? `${t.garmin.sent}: ${count}.` : "";
-    return [sent, error ? t.garmin[error] : ""].filter(Boolean).join(" ");
+    const reference = error && requestId ? `${t.garmin.reference}: ${requestId}` : "";
+    return [sent, error ? t.garmin[error] : "", reference].filter(Boolean).join(" ");
   }
 
   async function sendToGarmin(target: "week" | number) {
@@ -462,7 +463,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                 {t.garmin.connect}
               </a>
             ))}
-          <p role="status" className="mt-2 text-sm text-stone-600 empty:hidden">
+          <p role="status" className="mt-2 break-words text-sm text-stone-600 empty:hidden">
             {garminResult?.target === "week"
               ? garminResult.message
               : ""}
@@ -615,7 +616,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
               {garminResult?.target === selectedWorkout.day && (
                 <p
                   role="status"
-                  className="mt-2 text-sm text-stone-600 empty:hidden"
+                  className="mt-2 break-words text-sm text-stone-600 empty:hidden"
                 >
                   {garminResult?.target === selectedWorkout.day
                     ? garminResult.message

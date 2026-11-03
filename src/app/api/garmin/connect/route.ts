@@ -4,6 +4,7 @@ import { authorizationUrl } from "@/features/garmin/server/garmin-api";
 import { pkceChallenge, randomToken, writeAuthorization } from "@/features/garmin/server/session";
 import { hostingProvider } from "@/features/garmin/server/privacy";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
+import { failureDetails, GarminApiError, logGarminFailure, newRequestId } from "@/features/garmin/server/diagnostics";
 
 export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(new URL("/garmin/consent", request.nextUrl));
@@ -12,38 +13,39 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) {
-    return new NextResponse("Cross-site authorization is not allowed.", { status: 403 });
-  }
-  if (!hostingProvider()) {
-    return new NextResponse("Garmin authorization is unavailable until the hosting provider is disclosed in the privacy policy.", { status: 503 });
-  }
-  let consent: FormDataEntryValue | null;
+  const requestId = newRequestId();
   try {
-    consent = (await request.formData()).get("consent");
-  } catch {
-    return new NextResponse("Please read the privacy policy and consent before connecting Garmin.", { status: 400 });
-  }
-  if (consent !== GARMIN_CONSENT_VERSION) {
-    return new NextResponse("Please read the privacy policy and consent before connecting Garmin.", { status: 400 });
-  }
-  const config = garminConfig();
-  if (!config) {
-    const response = NextResponse.redirect(new URL("/?garmin=unavailable", request.nextUrl), 303);
+    if (request.headers.get("origin") !== request.nextUrl.origin) {
+      logGarminFailure(requestId, "connect", new GarminApiError("invalid_request"));
+      return NextResponse.json({ error: "invalid" }, {
+        status: 403, headers: { "Cache-Control": "no-store", "X-Request-ID": requestId },
+      });
+    }
+    if (!hostingProvider()) throw new GarminApiError("configuration");
+    const form = await request.formData().catch(() => null);
+    if (form?.get("consent") !== GARMIN_CONSENT_VERSION) throw new GarminApiError("invalid_request");
+    const config = garminConfig();
+    if (!config) throw new GarminApiError("configuration");
+    const state = randomToken();
+    const codeVerifier = randomToken(48);
+    const redirectUri = config.redirectUri ?? new URL("/api/garmin/callback", request.nextUrl.origin).toString();
+    const response = NextResponse.redirect(authorizationUrl(config, {
+      state,
+      codeChallenge: pkceChallenge(codeVerifier),
+      redirectUri,
+    }), 303);
     response.headers.set("Cache-Control", "no-store");
+    response.headers.set("X-Request-ID", requestId);
+    writeAuthorization(response, request, config, {
+      state, codeVerifier, redirectUri, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
+    });
+    return response;
+  } catch (error) {
+    logGarminFailure(requestId, "connect", error);
+    const code = failureDetails(error).code;
+    const response = NextResponse.redirect(new URL(`/?garmin=${code === "invalid" ? "error" : code}`, request.nextUrl), 303);
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("X-Request-ID", requestId);
     return response;
   }
-  const state = randomToken();
-  const codeVerifier = randomToken(48);
-  const redirectUri = config.redirectUri ?? new URL("/api/garmin/callback", request.nextUrl.origin).toString();
-  const response = NextResponse.redirect(authorizationUrl(config, {
-    state,
-    codeChallenge: pkceChallenge(codeVerifier),
-    redirectUri,
-  }), 303);
-  response.headers.set("Cache-Control", "no-store");
-  writeAuthorization(response, request, config, {
-    state, codeVerifier, redirectUri, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
-  });
-  return response;
 }
