@@ -10,7 +10,7 @@ const FLAGS: Record<Locale, ComponentType<{ className?: string; "aria-hidden"?: 
   en: GB, fr: FR, de: DE, es: ES, pt: PT, pl: PL, ru: RU, uk: UA, be: BY, it: IT,
 };
 
-function Flag({ locale }: { locale: Locale }) {
+export function Flag({ locale }: { locale: Locale }) {
   const Icon = FLAGS[locale];
   return <Icon aria-hidden className="h-3.5 w-5 shrink-0 rounded-[2px] shadow-[0_0_0_1px_rgb(0_0_0/0.08)]" />;
 }

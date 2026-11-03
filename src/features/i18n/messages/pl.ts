@@ -147,6 +147,7 @@ export const pl = {
     signIn: "Zaloguj się",
     signOut: "Wyloguj się",
     signedInAs: (email: string) => `Zalogowano jako ${email}`,
+    menu: "Menu konta",
     title: "Zaloguj się do Run Week",
     intro: "Konto zapisuje plan i jest wymagane do połączenia z Garmin. Bez logowania plan jest zapisywany tylko w tej przeglądarce.",
     email: "E-mail",

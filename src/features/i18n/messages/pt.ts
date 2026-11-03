@@ -147,6 +147,7 @@ export const pt = {
     signIn: "Iniciar sessão",
     signOut: "Terminar sessão",
     signedInAs: (email: string) => `Sessão iniciada como ${email}`,
+    menu: "Menu da conta",
     title: "Iniciar sessão no Run Week",
     intro: "Uma conta guarda o seu plano e é necessária para ligar o Garmin. Sem sessão iniciada, o plano é guardado apenas neste navegador.",
     email: "E-mail",

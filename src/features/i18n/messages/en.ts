@@ -146,6 +146,7 @@ export const en = {
     signIn: "Sign in",
     signOut: "Sign out",
     signedInAs: (email: string) => `Signed in as ${email}`,
+    menu: "Account menu",
     title: "Sign in to Run Week",
     intro: "An account saves your planner and is required to connect Garmin. Signed out, the planner is saved in this browser only.",
     email: "Email",

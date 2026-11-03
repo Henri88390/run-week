@@ -147,6 +147,7 @@ export const it = {
     signIn: "Accedi",
     signOut: "Esci",
     signedInAs: (email: string) => `Accesso effettuato come ${email}`,
+    menu: "Menu dell'account",
     title: "Accedi a Run Week",
     intro: "Un account salva il tuo piano ed è necessario per collegare Garmin. Senza accesso, il piano viene salvato solo in questo browser.",
     email: "Email",

@@ -147,6 +147,7 @@ export const ru = {
     signIn: "Войти",
     signOut: "Выйти",
     signedInAs: (email: string) => `Вы вошли как ${email}`,
+    menu: "Меню аккаунта",
     title: "Вход в Run Week",
     intro: "Учётная запись сохраняет план и нужна для подключения Garmin. Без входа план сохраняется только в этом браузере.",
     email: "Эл. почта",

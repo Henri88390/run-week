@@ -147,6 +147,7 @@ export const de = {
     signIn: "Anmelden",
     signOut: "Abmelden",
     signedInAs: (email: string) => `Angemeldet als ${email}`,
+    menu: "Kontomenü",
     title: "Bei Run Week anmelden",
     intro: "Ein Konto speichert deinen Plan und ist für die Garmin-Verbindung erforderlich. Ohne Anmeldung wird der Plan nur in diesem Browser gespeichert.",
     email: "E-Mail",

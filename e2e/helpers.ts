@@ -38,21 +38,39 @@ export async function signIn(page: Page, email: string) {
   expect(updated.rowCount).toBe(1);
   await code.fill(SIGN_IN_CODE);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-  await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await expect(accountMenuButton(page)).toBeVisible();
+  // The desktop trigger shows the email; the "Signed in as" menu line is mobile-only.
+  await expect(accountMenuButton(page)).toContainText(email);
+}
+
+export const accountMenuButton = (page: Page) => page.getByRole("button", { name: "Account menu" });
+
+export async function openAccountMenu(page: Page) {
+  const button = accountMenuButton(page);
+  if (await button.getAttribute("aria-expanded") !== "true") await button.click();
+  await expect(page.getByRole("menu", { name: "Account menu" })).toBeVisible();
+}
+
+export async function closeAccountMenu(page: Page) {
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Account menu" })).toBeHidden();
 }
 
 export async function signOut(page: Page) {
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await openAccountMenu(page);
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
 }
 
-export const connectGarminLink = (page: Page) => page.getByRole("link", { name: "Connect Garmin" });
-export const disconnectGarminButton = (page: Page) => page.getByRole("button", { name: "Disconnect Garmin" });
+/** Garmin items are in the account menu; open it before checking them. */
+export const connectGarminLink = (page: Page) => page.getByRole("menuitem", { name: "Connect Garmin", exact: true });
+export const disconnectGarminButton = (page: Page) =>
+  page.getByRole("menuitem", { name: "Disconnect Garmin", exact: true });
 
 /** Runs the Garmin consent and OAuth flow; the mocked Garmin authorization page signs in as `garminUser`. */
 export async function connectGarmin(page: Page, garminUser: string) {
   await page.context().addCookies([{ name: "garmin_e2e_user", value: garminUser, url: GARMIN_MOCK_ORIGIN }]);
+  await openAccountMenu(page);
   await connectGarminLink(page).click();
   await expect(page).toHaveURL(/\/garmin\/consent$/);
   await page.getByRole("checkbox").check();
@@ -61,8 +79,11 @@ export async function connectGarmin(page: Page, garminUser: string) {
 }
 
 export async function disconnectGarmin(page: Page) {
+  await openAccountMenu(page);
   await disconnectGarminButton(page).click();
+  await openAccountMenu(page);
   await expect(connectGarminLink(page)).toBeVisible();
+  await closeAccountMenu(page);
 }
 
 export async function garminWorkouts(garminUser: string): Promise<{ workoutId: number; date: string | null }[]> {

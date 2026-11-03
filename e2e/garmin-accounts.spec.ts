@@ -1,21 +1,65 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
-  connectGarmin, connectGarminLink, createWeek, disconnectGarmin, disconnectGarminButton, garminWorkouts,
-  signIn, signOut, uniqueEmail, uniqueGarminUser,
+  accountMenuButton, closeAccountMenu, connectGarmin, connectGarminLink, createWeek, disconnectGarmin,
+  disconnectGarminButton, garminWorkouts, openAccountMenu, signIn, signOut, uniqueEmail, uniqueGarminUser,
 } from "./helpers";
 
 const ALREADY_LINKED = "This Garmin Connect account is already connected to another Run Week account.";
 
+async function expectGarminConnected(page: Page, connected: boolean) {
+  await openAccountMenu(page);
+  await expect(connected ? disconnectGarminButton(page) : connectGarminLink(page)).toBeVisible();
+  await expect(connected ? connectGarminLink(page) : disconnectGarminButton(page)).toHaveCount(0);
+  await closeAccountMenu(page);
+}
+
 test("Garmin controls are available only to signed-in users", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /^Language/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create training week" })).toBeVisible();
+  await expect(accountMenuButton(page)).toHaveCount(0);
   await expect(connectGarminLink(page)).toHaveCount(0);
 
   await page.goto("/garmin/consent");
   await expect(page.getByRole("alert").filter({ hasText: "Sign in to connect Garmin." })).toBeVisible();
   await expect(page.getByRole("checkbox")).toBeDisabled();
   await expect(page.getByRole("button", { name: "Agree and continue to Garmin" })).toBeDisabled();
+});
+
+test("the account menu holds Garmin, language and sign-out and works with the keyboard", async ({ page }) => {
+  await signIn(page, uniqueEmail("menu"));
+  await expect(page.getByRole("combobox", { name: /^Language/ })).toHaveCount(0);
+  const button = accountMenuButton(page);
+  const menu = page.getByRole("menu", { name: "Account menu" });
+
+  await button.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu).toBeVisible();
+  await expect(connectGarminLink(page)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: /Language/ })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menuitemradio", { name: "English" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Français" }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("button", { name: "Menu du compte" })).toBeVisible();
+  await page.getByRole("button", { name: "Menu du compte" }).click();
+  await page.getByRole("menuitem", { name: /Langue/ }).click();
+  await page.getByRole("menuitemradio", { name: "English" }).click();
+  await expect(button).toBeVisible();
+
+  await button.click();
+  await page.mouse.click(5, 5);
+  await expect(menu).toBeHidden();
 });
 
 test("a Garmin account can be connected to only one user account", async ({ page }) => {
@@ -26,7 +70,7 @@ test("a Garmin account can be connected to only one user account", async ({ page
   await test.step("first user connects the Garmin account", async () => {
     await signIn(page, first);
     await connectGarmin(page, garminUser);
-    await expect(disconnectGarminButton(page)).toBeVisible();
+    await expectGarminConnected(page, true);
     await signOut(page);
   });
 
@@ -34,14 +78,13 @@ test("a Garmin account can be connected to only one user account", async ({ page
     await signIn(page, second);
     await connectGarmin(page, garminUser);
     await expect(page.getByRole("alert").filter({ hasText: ALREADY_LINKED })).toBeVisible();
-    await expect(disconnectGarminButton(page)).toHaveCount(0);
-    await expect(connectGarminLink(page)).toBeVisible();
+    await expectGarminConnected(page, false);
     await signOut(page);
   });
 
   await test.step("first user is still connected and disconnects Garmin", async () => {
     await signIn(page, first);
-    await expect(disconnectGarminButton(page)).toBeVisible();
+    await expectGarminConnected(page, true);
     await disconnectGarmin(page);
     await signOut(page);
   });
@@ -49,9 +92,9 @@ test("a Garmin account can be connected to only one user account", async ({ page
   await test.step("second user can now connect the Garmin account", async () => {
     await signIn(page, second);
     await connectGarmin(page, garminUser);
-    await expect(disconnectGarminButton(page)).toBeVisible();
+    await expectGarminConnected(page, true);
     await page.reload();
-    await expect(disconnectGarminButton(page)).toBeVisible();
+    await expectGarminConnected(page, true);
   });
 });
 
@@ -59,10 +102,10 @@ test("a user can reconnect the same Garmin account after disconnecting", async (
   const garminUser = uniqueGarminUser();
   await signIn(page, uniqueEmail("reconnect"));
   await connectGarmin(page, garminUser);
-  await expect(disconnectGarminButton(page)).toBeVisible();
+  await expectGarminConnected(page, true);
   await disconnectGarmin(page);
   await connectGarmin(page, garminUser);
-  await expect(disconnectGarminButton(page)).toBeVisible();
+  await expectGarminConnected(page, true);
 });
 
 test("sent runs are recorded in the account and can be deleted from Garmin", async ({ page }) => {

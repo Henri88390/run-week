@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useSession } from "next-auth/react";
-import { AccountMenu } from "@/features/account/components/account-menu";
+import { UserMenu } from "@/features/account/components/user-menu";
 import { LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
@@ -85,27 +84,10 @@ export function RunningPlanner() {
     <p role="status" className="text-sm text-emerald-900">{notice && t.notices[notice]}</p>
     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
       {garminNotice && <p role="alert" className="min-w-0 text-sm text-amber-900">{garminNotice}</p>}
-      {garmin.configured && userId && !garmin.connected && <a href="/api/garmin/connect"
-        aria-label={t.garmin.connect} title={t.garmin.connect}
-        className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
-        <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[13px] w-auto" unoptimized />
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
-          <circle cx="12" cy="12" r="9" />
-          <path strokeLinecap="round" d="M12 8v8M8 12h8" />
-        </svg>
-      </a>}
-      {garmin.connected &&
-        <button type="button" aria-label={t.garmin.disconnect} title={t.garmin.disconnect}
-          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-400 bg-stone-100 px-3 py-1.5 text-stone-800 hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
-          onClick={() => void garmin.disconnect()}>
-          <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[13px] w-auto" unoptimized />
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v9M6.34 6.34a8 8 0 1 0 11.32 0" />
-          </svg>
-        </button>
-      }
-      <LanguageSelect className="ml-auto sm:ml-0" />
-      <AccountMenu />
+      {!userId && <LanguageSelect className="ml-auto sm:ml-0" />}
+      <div className={userId ? "ml-auto sm:ml-0" : ""}>
+        <UserMenu garmin={garmin} />
+      </div>
     </div>
 
     {accountLoadFailed ? null : unreadable ? <section className="panel">
