@@ -437,6 +437,30 @@ npm run test:e2e
 - Garmin is never called. `GARMIN_E2E_MOCK_ORIGIN` redirects the Garmin URLs to
   the mock and is ignored outside development.
 
+## CI and deployment
+
+`.github/workflows/ci.yml` runs on pushes to `main`, on pull requests to `main`
+and manually. It has two jobs, which need no secrets:
+
+- **Lint, typecheck and build**: `npm run lint`, `npm run typecheck`,
+  `npm run build`.
+- **E2E tests**: `npm run test:e2e`. On failure, the Playwright report and
+  traces are uploaded as the `playwright-report` artifact.
+
+Vercel deploys `main` through its GitHub integration. To promote a production
+deployment only when both jobs pass, in the Vercel project:
+
+1. **Settings → Environments → Production**: keep automatic aliasing of
+   production deployments on.
+2. **Settings → Build and Deployment → Deployment Checks → Add Checks**: choose
+   **GitHub** and select **Lint, typecheck and build** and **E2E tests**. The
+   jobs must have run at least once to be listed.
+
+Vercel still builds each push to `main`, but the production domain keeps the
+previous deployment until both checks pass. A failed check leaves the new
+deployment unpromoted; **Force Promote** on the deployment page bypasses the
+checks. Renaming a job requires updating the Deployment Checks.
+
 ## Languages
 
 The UI is available in English, French, German, Spanish, Portuguese, Polish,

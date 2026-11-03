@@ -35,6 +35,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   `node scripts/verify-garmin-rate-limit.mjs` check the Garmin routes with
   mocks. `npm run test:e2e` runs the Playwright tests in `e2e/` (accounts and
   Garmin with a mock server); it needs Docker for its throwaway database.
+  `.github/workflows/ci.yml` runs lint, typecheck, build and e2e on `main`;
+  Vercel Deployment Checks block production promotion until its jobs pass, so
+  keep the job names stable.
 
 ## Next.js and React
 

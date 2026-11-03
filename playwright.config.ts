@@ -16,7 +16,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   timeout: 120_000,
   expect: { timeout: 15_000 },
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: APP_URL,
     locale: "en-US",
