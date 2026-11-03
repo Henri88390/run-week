@@ -46,6 +46,8 @@ export const de = {
     regenerateTitle: "Einstellungen speichern und diese Woche neu erstellen?",
     regenerateConfirm: "Speichern und neu erstellen",
     regenerateBody: "Beim Speichern dieser Änderungen wird die aktuelle Woche mit dem aktualisierten Profil neu erstellt.",
+    regenerateGarminBody: (count: number) => `${count} an Garmin Connect ${count === 1 ? "gesendetes Training" : "gesendete Trainings"} dieser Woche ${count === 1 ? "wird" : "werden"} zuerst aus Garmin Connect gel?scht.`,
+    regenerateGarminFailed: "Die Woche wurde nicht neu erstellt, weil ihre Trainings nicht aus Garmin Connect gel?scht werden konnten.",
   },
   distances: {
     mile: "1 Meile",

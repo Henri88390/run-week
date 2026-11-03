@@ -193,7 +193,28 @@ export function useGarmin(userId: string | null) {
   const isSent = useCallback((weekStart: string, date: string) =>
     sent?.weekStart === weekStart && sent.dates.has(date), [sent]);
 
-  return { ...status, signedIn: userId !== null, notice, isSent, loadWeek, send, remove, disconnect };
+  const sentCount = useCallback((weekStart: string) =>
+    sent?.weekStart === weekStart ? sent.dates.size : 0, [sent]);
+
+  /** Deletes every workout of a week that this account sent to Garmin, reading the server record first. */
+  const clearWeek = useCallback(async (weekStart: string): Promise<GarminSendResult> => {
+    let dates: string[];
+    try {
+      const response = await fetch(`/api/garmin/workouts?${new URLSearchParams({ weekStart })}`, { cache: "no-store" });
+      const parsed = garminSentResponseSchema.safeParse(await response.json());
+      if (!parsed.success) return { count: 0, error: "invalidResponse" };
+      if (parsed.data.error === "reconnect") setStatus((current) => ({ ...current, connected: false }));
+      if (parsed.data.error) return { count: 0, error: parsed.data.error };
+      dates = parsed.data.dates;
+    } catch {
+      return { count: 0, error: "network" };
+    }
+    return remove(weekStart, dates);
+  }, [remove]);
+
+  return {
+    ...status, signedIn: userId !== null, notice, isSent, sentCount, loadWeek, send, remove, clearWeek, disconnect,
+  };
 }
 
 export type GarminConnection = ReturnType<typeof useGarmin>;

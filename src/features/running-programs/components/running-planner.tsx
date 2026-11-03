@@ -32,6 +32,8 @@ export function RunningPlanner() {
   const [action, setAction] = useState<Action>(null);
   const [notice, setNotice] = useState<"" | "cleared" | "created">("");
   const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
 
   if (!loaded) return <section className="panel" role="status" aria-busy="true">{t.loading}</section>;
 
@@ -54,11 +56,34 @@ export function RunningPlanner() {
     : state?.profile.desiredWeeklyDurationMinutes != null
       ? t.perWeek(`${weeklyHours > 0 ? `${weeklyHours} ${t.units.h} ` : ""}${weeklyMinutes} ${t.units.min}`)
       : null;
-  const confirm = () => {
+  const closeDialog = () => {
+    setAction(null);
+    setPendingProfile(null);
+    setConfirmError("");
+  };
+  const garminSentCount = current && garmin.connected ? garmin.sentCount(current.startDate) : 0;
+  const confirm = async () => {
     if (action === "reset") {
       save(null);
       setNotice("cleared");
     } else if (state && current && pendingProfile && action === "update-setup") {
+      // Workouts already sent for this week would no longer match it; delete them before regenerating.
+      if (garmin.connected) {
+        setConfirmBusy(true);
+        setConfirmError("");
+        const result = await garmin.clearWeek(current.startDate);
+        setConfirmBusy(false);
+        if (result.error) {
+          setConfirmError([
+            t.confirm.regenerateGarminFailed,
+            t.garmin[result.error],
+            result.error === "rateLimited" && result.retryAfterSeconds !== undefined
+              ? t.garmin.retryAfter(result.retryAfterSeconds) : "",
+            result.requestId ? `${t.garmin.reference}: ${result.requestId}` : "",
+          ].filter(Boolean).join(" "));
+          return;
+        }
+      }
       const regenerated = generateWeek(pendingProfile, current.startDate, current.number);
       save({
         ...state,
@@ -67,8 +92,7 @@ export function RunningPlanner() {
       });
       setNotice("");
     }
-    setAction(null);
-    setPendingProfile(null);
+    closeDialog();
   };
   const garminNotice = garmin.notice === "error" ? t.garmin.connectFailed
     : garmin.notice === "unavailable" ? t.garmin.unavailable
@@ -140,10 +164,12 @@ export function RunningPlanner() {
     </details>
     <p className="text-sm text-stone-600"><Link href="/privacy" className="underline">{t.privacyLink}</Link></p>
     {action && <ConfirmationDialog title={action === "reset" ? t.confirm.resetTitle : t.confirm.regenerateTitle}
-      confirmLabel={action === "reset" ? t.confirm.resetConfirm : t.confirm.regenerateConfirm}
-      cancelLabel={t.confirm.cancel}
-      onCancel={() => { setAction(null); setPendingProfile(null); }} onConfirm={confirm}>
+      confirmLabel={confirmBusy ? t.garmin.removing : action === "reset" ? t.confirm.resetConfirm : t.confirm.regenerateConfirm}
+      cancelLabel={t.confirm.cancel} busy={confirmBusy}
+      onCancel={closeDialog} onConfirm={() => void confirm()}>
       <p>{action === "reset" ? t.confirm.resetBody : t.confirm.regenerateBody}</p>
+      {action === "update-setup" && garminSentCount > 0 && <p>{t.confirm.regenerateGarminBody(garminSentCount)}</p>}
+      {confirmError && <p role="alert" className="text-red-700">{confirmError}</p>}
     </ConfirmationDialog>}
   </div>;
 }

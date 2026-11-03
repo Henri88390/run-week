@@ -46,6 +46,8 @@ export const pl = {
     regenerateTitle: "Zapisać ustawienia i wygenerować ten tydzień ponownie?",
     regenerateConfirm: "Zapisz i wygeneruj ponownie",
     regenerateBody: "Zapisanie tych zmian ponownie wygeneruje bieżący tydzień na podstawie zaktualizowanego profilu.",
+    regenerateGarminBody: (count: number) => `Treningi tego tygodnia wys?ane do Garmin Connect (${count}) zostan? najpierw usuni?te z Garmin Connect.`,
+    regenerateGarminFailed: "Tydzie? nie zosta? wygenerowany ponownie, poniewa? nie uda?o si? usun?? jego trening?w z Garmin Connect.",
   },
   distances: {
     mile: "1 mila",

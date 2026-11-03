@@ -223,7 +223,9 @@ Garmin Connect does not let users edit or delete workouts created by a partner
 app, so the week controls and workout modal also offer "Remove from Garmin"
 (`DELETE /api/garmin/workouts`), which deletes the recorded workouts for those
 dates, along with their calendar entries.
-The connect button uses a locally hosted Garmin wordmark from the
+Regenerating the week after a setup change first deletes that week's recorded
+workouts from Garmin Connect; if the deletion fails, the week is not regenerated.
+The connect menu item uses a locally hosted Garmin wordmark from the
 [user-supplied logo source](https://zonalogo.com/garmin-logo-png-svg);
 Garmin branding remains Garmin's trademark. Verify its use against the branding
 requirements of your approved Garmin developer application.

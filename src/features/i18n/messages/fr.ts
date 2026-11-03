@@ -46,6 +46,8 @@ export const fr = {
     regenerateTitle: "Enregistrer les paramètres et régénérer cette semaine ?",
     regenerateConfirm: "Enregistrer et régénérer",
     regenerateBody: "Enregistrer ces modifications régénère la semaine en cours avec le profil mis à jour.",
+    regenerateGarminBody: (count: number) => `${count} ${count === 1 ? "s?ance de cette semaine envoy?e" : "s?ances de cette semaine envoy?es"} ? Garmin Connect ${count === 1 ? "sera supprim?e" : "seront supprim?es"} de Garmin Connect au pr?alable.`,
+    regenerateGarminFailed: "La semaine n'a pas ?t? r?g?n?r?e, car ses s?ances n'ont pas pu ?tre supprim?es de Garmin Connect.",
   },
   distances: {
     mile: "1 mile",

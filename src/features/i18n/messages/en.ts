@@ -45,6 +45,8 @@ export const en = {
     regenerateTitle: "Save setup and regenerate this week?",
     regenerateConfirm: "Save and regenerate",
     regenerateBody: "Saving these changes regenerates the current week using the updated profile.",
+    regenerateGarminBody: (count: number) => `${count} ${count === 1 ? "workout" : "workouts"} of this week sent to Garmin Connect will be deleted from Garmin Connect first.`,
+    regenerateGarminFailed: "The week was not regenerated because its workouts could not be deleted from Garmin Connect.",
   },
   distances: {
     mile: "1 mile",

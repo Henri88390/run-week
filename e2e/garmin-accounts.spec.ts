@@ -137,3 +137,36 @@ test("sent runs are recorded in the account and can be deleted from Garmin", asy
   expect(await garminWorkouts(garminUser)).toEqual([]);
   await expect(page.getByRole("button", { name: "Send week to Garmin" })).toBeVisible();
 });
+
+test("regenerating a week deletes its workouts from Garmin first", async ({ page }) => {
+  const garminUser = uniqueGarminUser();
+  await signIn(page, uniqueEmail("regenerate"));
+  await connectGarmin(page, garminUser);
+  await createWeek(page);
+  await page.getByRole("button", { name: "Send week to Garmin" }).click();
+  await expect(page.getByText(/^\d+ workouts? sent to Garmin\.$/)).toBeVisible();
+  const sent = await garminWorkouts(garminUser);
+  expect(sent.length).toBeGreaterThan(0);
+
+  await page.locator("details summary").first().click();
+  await page.getByLabel("Minutes", { exact: true }).fill("24");
+  await page.getByRole("button", { name: "Save and regenerate week" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(
+    `${sent.length} ${sent.length === 1 ? "workout" : "workouts"} of this week sent to Garmin Connect will be deleted from Garmin Connect first.`,
+  )).toBeVisible();
+
+  await test.step("a failed deletion keeps the week and its Garmin workouts", async () => {
+    // Without Upstash, development allows one Garmin upload or delete per user every 10 seconds.
+    await dialog.getByRole("button", { name: "Save and regenerate" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("The week was not regenerated");
+    expect(await garminWorkouts(garminUser)).toHaveLength(sent.length);
+  });
+
+  await page.waitForTimeout(11_000);
+  await dialog.getByRole("button", { name: "Save and regenerate" }).click();
+  await expect(dialog).toBeHidden();
+  expect(await garminWorkouts(garminUser)).toEqual([]);
+  await expect(page.getByRole("button", { name: "Send week to Garmin" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete training week from Garmin" })).toHaveCount(0);
+});

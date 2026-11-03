@@ -46,6 +46,8 @@ export const pt = {
     regenerateTitle: "Guardar a configuração e regenerar esta semana?",
     regenerateConfirm: "Guardar e regenerar",
     regenerateBody: "Guardar estas alterações regenera a semana atual com o perfil atualizado.",
+    regenerateGarminBody: (count: number) => `${count === 1 ? "1 treino desta semana enviado para o Garmin Connect ser? eliminado" : `${count} treinos desta semana enviados para o Garmin Connect ser?o eliminados`} do Garmin Connect primeiro.`,
+    regenerateGarminFailed: "A semana n?o foi regenerada porque os seus treinos n?o puderam ser eliminados do Garmin Connect.",
   },
   distances: {
     mile: "1 milha",
