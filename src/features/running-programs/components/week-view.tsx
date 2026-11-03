@@ -185,6 +185,11 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const [garminSending, setGarminSending] = useState<"week" | number | null>(
     null,
   );
+  const [garminRemoving, setGarminRemoving] = useState<"week" | number | null>(null);
+  const garminBusy = garminSending !== null || garminRemoving !== null;
+  const sentDates = (days: number[]) =>
+    days.map((day) => addDays(week.startDate, day)).filter((date) => garmin.sentWorkouts[date] !== undefined);
+  const allDays = [0, 1, 2, 3, 4, 5, 6];
   const [garminResult, setGarminResult] = useState<{
     target: "week" | number;
     message: string;
@@ -269,12 +274,25 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  function garminMessage({ count, error, requestId, retryAfterSeconds }: GarminSendResult): string {
-    const sent = count > 0 ? t.garmin.sent(count) : "";
+  function garminMessage(
+    { count, error, requestId, retryAfterSeconds }: GarminSendResult,
+    action: "send" | "remove" = "send",
+  ): string {
+    const done = count > 0 ? (action === "send" ? t.garmin.sent(count) : t.garmin.removed(count)) : "";
     const reference = error && requestId ? `${t.garmin.reference}: ${requestId}` : "";
     const retry = error === "rateLimited" && retryAfterSeconds !== undefined
       ? t.garmin.retryAfter(retryAfterSeconds) : "";
-    return [sent, error ? t.garmin[error] : "", retry, reference].filter(Boolean).join(" ");
+    return [done, error ? t.garmin[error] : "", retry, reference].filter(Boolean).join(" ");
+  }
+
+  async function removeFromGarmin(target: "week" | number) {
+    const dates = sentDates(target === "week" ? allDays : [target]);
+    if (dates.length === 0) return;
+    setGarminRemoving(target);
+    setGarminResult(null);
+    const result = await garmin.remove(dates);
+    setGarminRemoving(null);
+    setGarminResult({ target, message: garminMessage(result, "remove"), tone: result.error ? "error" : "success" });
   }
 
   async function sendToGarmin(target: "week" | number) {
@@ -459,13 +477,23 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                 <button
                   type="button"
                   className="button-primary"
-                  disabled={garminSending !== null}
+                  disabled={garminBusy}
                   onClick={() => sendToGarmin("week")}
                 >
                   {garminSending === "week"
                     ? t.garmin.sending
                     : t.garmin.sendWeek}
                 </button>
+                {sentDates(allDays).length > 0 && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={garminBusy}
+                    onClick={() => removeFromGarmin("week")}
+                  >
+                    {garminRemoving === "week" ? t.garmin.removing : t.garmin.removeWeek}
+                  </button>
+                )}
               </div>
             ) : (
               <a href="/api/garmin/connect" className="button-secondary">
@@ -612,13 +640,25 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                 {garmin.configured && garmin.connected && (
                   <button
                     type="button"
-                    disabled={garminSending !== null}
+                    disabled={garminBusy}
                     className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
                     onClick={() => sendToGarmin(selectedWorkout.day)}
                   >
                     {garminSending === selectedWorkout.day
                       ? t.garmin.sending
                       : t.garmin.sendDay}
+                  </button>
+                )}
+                {garmin.configured && garmin.connected && sentDates([selectedWorkout.day]).length > 0 && (
+                  <button
+                    type="button"
+                    disabled={garminBusy}
+                    className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
+                    onClick={() => removeFromGarmin(selectedWorkout.day)}
+                  >
+                    {garminRemoving === selectedWorkout.day
+                      ? t.garmin.removing
+                      : t.garmin.removeDay}
                   </button>
                 )}
               </div>

@@ -8,7 +8,8 @@ import { clearSession, freshTokens, isSameOrigin, readSession, writeSession } fr
 import { garminWorkoutPayload } from "@/features/garmin/server/workout-payload";
 import { reserveUpload } from "@/features/garmin/server/upload-rate-limit";
 import {
-  garminSyncRequestSchema, type GarminErrorCode, type GarminSyncResponse,
+  garminDeleteRequestSchema, garminSyncRequestSchema,
+  type GarminDeleteResponse, type GarminErrorCode, type GarminSyncResponse,
 } from "@/features/garmin/sync-request";
 import { addDays, mondayOf } from "@/features/running-programs/domain";
 
@@ -100,6 +101,71 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (caught) {
     logGarminFailure(requestId, operation, caught, results.length);
+    if (operation === "rateLimit") return json("unavailable", 503);
+    return json("failed", 500);
+  }
+}
+
+/** Deletes Run Week workouts (and their calendar entries) sequentially. Garmin Connect does not let users delete partner workouts. */
+export async function DELETE(request: NextRequest) {
+  const requestId = newRequestId();
+  const deleted: number[] = [];
+  const json = (error?: GarminErrorCode, status = 200, retryAfterSeconds?: number) => {
+    logGarminEvent(requestId, { event: "garmin_delete_result", status, code: error, deleted });
+    return NextResponse.json(
+      { deleted, error, requestId, ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}) } satisfies GarminDeleteResponse,
+      { status, headers: { "Cache-Control": "no-store", "X-Request-ID": requestId,
+        ...(retryAfterSeconds !== undefined ? { "Retry-After": String(retryAfterSeconds) } : {}) } },
+    );
+  };
+  const reject = (category: "invalid_request" | "configuration" | "auth", status: number) => {
+    const error = new GarminApiError(category);
+    logGarminFailure(requestId, "validate", error, 0);
+    return json(failureDetails(error).code, status);
+  };
+  let operation: GarminOperation = "validate";
+  try {
+    if (!isSameOrigin(request)) return reject("invalid_request", 403);
+    const config = garminConfig();
+    if (!config) return reject("configuration", 503);
+    const session = readSession(request, config);
+    if (!session) return reject("auth", 401);
+
+    const body: unknown = await request.json().catch(() => null);
+    logGarminEvent(requestId, { event: "garmin_delete_request", payload: body });
+    const parsed = garminDeleteRequestSchema.safeParse(body);
+    if (!parsed.success) return reject("invalid_request", 400);
+
+    operation = "rateLimit";
+    const reservation = await reserveUpload(config, session);
+    if (!reservation.allowed) {
+      logGarminFailure(requestId, operation, new GarminApiError("rate_limit"), 0);
+      return json("rateLimited", 429, reservation.retryAfterSeconds);
+    }
+
+    let tokens = session;
+    let refreshed = false;
+    let error: GarminErrorCode | undefined;
+    try {
+      operation = "refresh";
+      ({ tokens, refreshed } = await freshTokens(config, session));
+      operation = "delete";
+      for (const workoutId of parsed.data.workoutIds) {
+        logGarminEvent(requestId, { event: "garmin_api_request", operation, payload: { workoutId } });
+        await deleteWorkout(tokens.accessToken, workoutId);
+        deleted.push(workoutId);
+      }
+    } catch (caught) {
+      logGarminFailure(requestId, operation, caught, deleted.length);
+      error = failureDetails(caught).code;
+    }
+
+    const response = json(error, error === "reconnect" ? 401 : operationStatus(error, deleted.length));
+    if (error === "reconnect") clearSession(response, request);
+    else if (refreshed) writeSession(response, request, config, tokens);
+    return response;
+  } catch (caught) {
+    logGarminFailure(requestId, operation, caught, deleted.length);
     if (operation === "rateLimit") return json("unavailable", 503);
     return json("failed", 500);
   }

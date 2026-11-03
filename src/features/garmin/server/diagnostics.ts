@@ -5,7 +5,7 @@ import type { GarminErrorCode } from "../sync-request";
 type Category = "auth" | "permission" | "rate_limit" | "rejected" | "unavailable"
   | "network" | "timeout" | "invalid_response" | "invalid_request" | "configuration" | "internal";
 export type GarminOperation = "connect" | "callback" | "status" | "disconnect" | "validate"
-  | "rateLimit" | "refresh" | "replace" | "create" | "schedule" | "cleanup" | "upload";
+  | "rateLimit" | "refresh" | "replace" | "create" | "schedule" | "cleanup" | "upload" | "delete";
 
 /** Contains only categorical diagnostics, never the upstream body or original exception. */
 export class GarminApiError extends Error {
@@ -54,10 +54,11 @@ function boundedPayload(value: unknown): unknown {
 }
 
 type GarminEvent =
-  | { event: "garmin_upload_request"; payload: unknown }
-  | { event: "garmin_api_request"; operation: "create" | "schedule" | "replace" | "cleanup"; payload: unknown }
+  | { event: "garmin_upload_request" | "garmin_delete_request"; payload: unknown }
+  | { event: "garmin_api_request"; operation: "create" | "schedule" | "replace" | "cleanup" | "delete"; payload: unknown }
   | { event: "garmin_api_response"; operation: "create"; workoutId: number }
-  | { event: "garmin_upload_result"; status: number; code?: GarminErrorCode; completed: number; results: unknown };
+  | { event: "garmin_upload_result"; status: number; code?: GarminErrorCode; completed: number; results: unknown }
+  | { event: "garmin_delete_result"; status: number; code?: GarminErrorCode; deleted: number[] };
 
 /** Training payloads only. Callers must never pass tokens, cookies, headers or OAuth values. */
 export function logGarminEvent(requestId: string, details: GarminEvent) {

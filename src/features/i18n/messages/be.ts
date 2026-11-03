@@ -157,6 +157,14 @@ export const be = {
       const text = form === "one" ? "трэніроўка адпраўлена" : form === "few" ? "трэніроўкі адпраўлены" : "трэніровак адпраўлена";
       return `${count} ${text} ў Garmin.`;
     },
+    removeWeek: "Выдаліць тыдзень з Garmin",
+    removeDay: "Выдаліць з Garmin",
+    removing: "Выдаленне…",
+    removed: (count: number) => {
+      const form = new Intl.PluralRules("be").select(count);
+      const text = form === "one" ? "трэніроўка выдалена" : form === "few" ? "трэніроўкі выдалены" : "трэніровак выдалена";
+      return `${count} ${text} з Garmin.`;
+    },
     connected: "Уліковы запіс Garmin Connect падключаны.",
     connectFailed: "Не ўдалося аўтарызаваць Garmin Connect.",
     unavailable: "Garmin Connect зараз недаступны. Паспрабуйце пазней; перад паўторнай адпраўкай праверце Garmin.",

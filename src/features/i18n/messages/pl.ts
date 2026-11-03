@@ -157,6 +157,14 @@ export const pl = {
       const text = form === "one" ? "trening wysłany" : form === "few" ? "treningi wysłane" : "treningów wysłanych";
       return `${count} ${text} do Garmin.`;
     },
+    removeWeek: "Usuń tydzień z Garmin",
+    removeDay: "Usuń z Garmin",
+    removing: "Usuwanie…",
+    removed: (count: number) => {
+      const form = new Intl.PluralRules("pl").select(count);
+      const text = form === "one" ? "trening usunięty" : form === "few" ? "treningi usunięte" : "treningów usuniętych";
+      return `${count} ${text} z Garmin.`;
+    },
     connected: "Połączono konto Garmin Connect.",
     connectFailed: "Autoryzacja Garmin Connect nie powiodła się.",
     unavailable: "Garmin Connect jest teraz niedostępny. Spróbuj później; sprawdź Garmin przed ponownym wysłaniem biegów.",

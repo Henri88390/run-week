@@ -27,6 +27,29 @@ export const garminSyncRequestSchema = z.object({
 
 export type GarminSyncRequest = z.infer<typeof garminSyncRequestSchema>;
 
+const workoutIdSchema = z.number().int().positive().refine(Number.isSafeInteger);
+
+export const garminDeleteRequestSchema = z.object({
+  workoutIds: z.array(workoutIdSchema).min(1).max(7)
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+
+export type GarminDeleteRequest = z.infer<typeof garminDeleteRequestSchema>;
+
+export type GarminDeleteResponse = {
+  deleted: number[];
+  error?: GarminErrorCode;
+  requestId?: string;
+  retryAfterSeconds?: number;
+};
+
+export const garminDeleteResponseSchema = z.object({
+  deleted: z.array(workoutIdSchema).max(7),
+  error: z.enum(GARMIN_ERRORS).optional(),
+  requestId: z.uuid().optional(),
+  retryAfterSeconds: z.number().int().min(1).max(86400).optional(),
+});
+
 export type GarminSyncResponse = {
   results: { day: number; date: string; workoutId: number }[];
   error?: GarminErrorCode;

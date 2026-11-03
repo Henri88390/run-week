@@ -5,8 +5,8 @@ import type { Locale } from "@/features/i18n/locales";
 import { addDays } from "@/features/running-programs/domain";
 import type { TrainingWeek, Workout } from "@/features/running-programs/types";
 import {
-  GARMIN_ERRORS, garminStatusSchema, garminSyncResponseSchema,
-  type GarminErrorCode, type GarminStatus, type GarminSyncRequest,
+  GARMIN_ERRORS, garminDeleteResponseSchema, garminStatusSchema, garminSyncResponseSchema,
+  type GarminDeleteRequest, type GarminErrorCode, type GarminStatus, type GarminSyncRequest,
 } from "./sync-request";
 import { GARMIN_SENT_KEY } from "./privacy";
 
@@ -42,6 +42,13 @@ function writeSent(sent: Record<string, number>) {
 export function useGarmin() {
   const [status, setStatus] = useState<GarminStatus>({ configured: false, connected: false });
   const [notice, setNotice] = useState<GarminNotice | null>(null);
+  const [sentWorkouts, setSentWorkouts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    // localStorage is only available after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSentWorkouts(readSent());
+  }, []);
 
   useEffect(() => {
     if (notice !== "error") return;
@@ -112,10 +119,47 @@ export function useGarmin() {
     }
     for (const result of data.results) sent[result.date] = result.workoutId;
     writeSent(sent);
+    setSentWorkouts({ ...sent });
     if (data.error === "reconnect") {
       setStatus((current) => ({ ...current, connected: false }));
     }
     return { count: data.results.length, error: data.error, requestId: data.requestId,
+      ...(data.error === "rateLimited" && data.retryAfterSeconds !== undefined
+        ? { retryAfterSeconds: data.retryAfterSeconds } : {}) };
+  }, []);
+
+  const remove = useCallback(async (dates: string[]): Promise<GarminSendResult> => {
+    const sent = readSent();
+    const workoutIds = [...new Set(dates.map((date) => sent[date]).filter((id) => id !== undefined))];
+    if (workoutIds.length === 0) return { count: 0 };
+    const body: GarminDeleteRequest = { workoutIds };
+    let response: Response;
+    let data: ReturnType<typeof garminDeleteResponseSchema.parse>;
+    try {
+      response = await fetch("/api/garmin/workouts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return { count: 0, error: "network" };
+    }
+    try {
+      const value: unknown = await response.json();
+      const parsed = garminDeleteResponseSchema.safeParse(value);
+      if (!parsed.success || (!response.ok && !parsed.data.error)) return { count: 0, error: "invalidResponse" };
+      data = parsed.data;
+    } catch {
+      return { count: 0, error: "invalidResponse" };
+    }
+    const deleted = new Set(data.deleted);
+    const remaining = Object.fromEntries(Object.entries(sent).filter(([, id]) => !deleted.has(id)));
+    writeSent(remaining);
+    setSentWorkouts(remaining);
+    if (data.error === "reconnect") {
+      setStatus((current) => ({ ...current, connected: false }));
+    }
+    return { count: data.deleted.length, error: data.error, requestId: data.requestId,
       ...(data.error === "rateLimited" && data.retryAfterSeconds !== undefined
         ? { retryAfterSeconds: data.retryAfterSeconds } : {}) };
   }, []);
@@ -132,6 +176,7 @@ export function useGarmin() {
       setNotice(null);
       try {
         localStorage.removeItem(SENT_KEY);
+        setSentWorkouts({});
       } catch {
         setNotice("localDeleteFailed");
       }
@@ -140,7 +185,7 @@ export function useGarmin() {
     }
   }, []);
 
-  return { ...status, notice, send, disconnect };
+  return { ...status, notice, sentWorkouts, send, remove, disconnect };
 }
 
 export type GarminConnection = ReturnType<typeof useGarmin>;

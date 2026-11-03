@@ -156,6 +156,14 @@ export const uk = {
       const form = new Intl.PluralRules("uk").select(count);
       return `${count} ${form === "many" ? "тренувань" : "тренування"} надіслано до Garmin.`;
     },
+    removeWeek: "Видалити тиждень з Garmin",
+    removeDay: "Видалити з Garmin",
+    removing: "Видалення…",
+    removed: (count: number) => {
+      const form = new Intl.PluralRules("uk").select(count);
+      const text = form === "one" ? "тренування видалено" : form === "few" ? "тренування видалено" : "тренувань видалено";
+      return `${count} ${text} з Garmin.`;
+    },
     connected: "Обліковий запис Garmin Connect підключено.",
     connectFailed: "Не вдалося авторизувати Garmin Connect.",
     unavailable: "Garmin Connect зараз недоступний. Спробуйте пізніше; перед повторним надсиланням перевірте Garmin.",
