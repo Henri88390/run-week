@@ -244,9 +244,12 @@ export function ProfileForm({ profile, onSave }: {
   };
 
   const updateDistance = (value: string) => {
-    setValue("distanceMeters", value, { shouldDirty: true, shouldValidate: true });
+    setValue("distanceMeters", value, { shouldDirty: true });
     const newDistance = Number(value);
-    if (!Number.isFinite(newDistance) || newDistance < 1500 || newDistance > 42195) return;
+    if (!Number.isFinite(newDistance) || newDistance < 1500 || newDistance > 42195) {
+      void trigger("distanceMeters");
+      return;
+    }
     const anchor = performanceAnchor;
     let totalSeconds = !anchor ? null : anchor.distanceMeters === newDistance ? anchor.raceSeconds
       : equivalentRaceSeconds(calculateVdot(anchor.distanceMeters, anchor.raceSeconds), newDistance);
@@ -255,6 +258,7 @@ export function ProfileForm({ profile, onSave }: {
       totalSeconds = null;
     }
     setRaceTime(newDistance, totalSeconds);
+    void trigger(["distanceMeters", "hours", "minutes", "seconds"]);
   };
 
   const onSubmit = (values: ProfileFormValues) => {
