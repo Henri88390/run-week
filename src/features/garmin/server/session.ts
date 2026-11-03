@@ -3,12 +3,15 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import type { NextRequest, NextResponse } from "next/server";
 import type { GarminConfig } from "./config";
 import { requestTokens, type GarminTokens } from "./garmin-api";
+import { GARMIN_CONSENT_VERSION } from "../privacy";
 
 export const SESSION_COOKIE = "run-week-garmin";
 export const AUTHORIZATION_COOKIE = "run-week-garmin-auth";
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
-type Authorization = { state: string; codeVerifier: string; redirectUri: string };
+type Authorization = {
+  state: string; codeVerifier: string; redirectUri: string; consentVersion: string; consentAt: number;
+};
 
 function encryptionKey(secret: string): Buffer {
   return createHash("sha256").update(secret).digest();
@@ -46,7 +49,9 @@ function cookieOptions(request: NextRequest, maxAgeSeconds: number) {
 
 export function readSession(request: NextRequest, config: GarminConfig): GarminTokens | null {
   const tokens = unseal<GarminTokens>(request.cookies.get(SESSION_COOKIE)?.value, config.sessionSecret);
-  return tokens && tokens.refreshExpiresAt > Date.now() ? tokens : null;
+  return tokens && tokens.refreshExpiresAt > Date.now()
+    && tokens.consentVersion === GARMIN_CONSENT_VERSION
+    && typeof tokens.consentAt === "number" ? tokens : null;
 }
 
 export function writeSession(response: NextResponse, request: NextRequest, config: GarminConfig, tokens: GarminTokens) {
@@ -77,7 +82,11 @@ export async function freshTokens(
 ): Promise<{ tokens: GarminTokens; refreshed: boolean }> {
   if (tokens.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) return { tokens, refreshed: false };
   return {
-    tokens: await requestTokens(config, { grant_type: "refresh_token", refresh_token: tokens.refreshToken }),
+    tokens: {
+      ...await requestTokens(config, { grant_type: "refresh_token", refresh_token: tokens.refreshToken }),
+      consentVersion: tokens.consentVersion,
+      consentAt: tokens.consentAt,
+    },
     refreshed: true,
   };
 }

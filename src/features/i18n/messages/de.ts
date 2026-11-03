@@ -2,6 +2,7 @@ import { plural } from "../locales";
 import type { Messages } from "./en";
 
 export const de = {
+  privacyLink: "Datenschutz und Datenverwaltung",
   language: "Sprache",
   loading: "Gespeicherter Plan dieses Browsers wird geladen…",
   storage: {
@@ -139,6 +140,8 @@ export const de = {
     copyFailed: "Kopieren in die Zwischenablage fehlgeschlagen.",
   },
   garmin: {
+    disconnectFailed: "Garmin konnte nicht getrennt werden. Versuche es erneut.",
+    localDeleteFailed: "Garmin wurde getrennt, aber lokale Verweise konnten nicht gelöscht werden. Lösche die Website-Daten im Browser.",
     connect: "Garmin verbinden",
     disconnect: "Garmin trennen",
     scope: "Zu sendende Läufe",

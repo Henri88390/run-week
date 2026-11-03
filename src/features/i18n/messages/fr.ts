@@ -2,6 +2,7 @@ import { plural } from "../locales";
 import type { Messages } from "./en";
 
 export const fr = {
+  privacyLink: "Confidentialité et gestion des données",
   language: "Langue",
   loading: "Chargement du planning enregistré dans ce navigateur…",
   storage: {
@@ -139,6 +140,8 @@ export const fr = {
     copyFailed: "Impossible de copier dans le presse-papiers.",
   },
   garmin: {
+    disconnectFailed: "Impossible de déconnecter Garmin. Réessayez.",
+    localDeleteFailed: "Garmin est déconnecté, mais les références locales n’ont pas pu être supprimées. Effacez les données du site dans le navigateur.",
     connect: "Connecter Garmin",
     disconnect: "Déconnecter Garmin",
     scope: "Sorties à envoyer",

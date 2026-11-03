@@ -181,6 +181,32 @@ application with the workout import permission. Copy `.env.example` to
 | `GARMIN_CLIENT_SECRET` | Application consumer secret |
 | `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt the session cookie |
 | `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Register it with Garmin. |
+| `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, CDN/proxy and managed logging processors. |
+
+For `https://run-week.fyi`, register the OAuth callback as
+`https://run-week.fyi/api/garmin/callback` and the privacy policy as
+`https://run-week.fyi/privacy`. `/garmin/consent` is the user-facing consent page,
+not the OAuth callback. These URLs must be deployed and publicly reachable
+before submitting the application. Set `GARMIN_REDIRECT_URI` to the exact callback.
+For Garmin's branding image, use
+`https://run-week.fyi/run-week-branding.png` after deployment. The public PNG is
+300 x 300 pixels; it is not used as a favicon.
+
+The privacy policy and consent pages are in English; the planner footer link is
+localized. Consent is required before authorization and its version/time are
+stored in the encrypted OAuth cookies; legacy sessions require reconnection.
+Disconnect clears both authorization and token cookies, and local Garmin IDs.
+The privacy page provides local JSON export, consent withdrawal and confirmed
+local deletion. It never exports credentials or claims to delete Garmin-side
+workouts. Users manage those and revoke the OAuth grant in Garmin Connect.
+
+Before submitting the policy, identify all actual infrastructure processors in
+`PRIVACY_HOSTING_PROVIDER`, verify their logging/retention settings and ensure the
+operator website provides a working privacy-contact channel. No runtime AI or
+analytics processors are configured. Do not add them without updating the policy,
+consent requirements and processor disclosure. Never log Garmin payloads, tokens
+or OAuth callback query strings. Have the deployment-specific policy reviewed;
+this page is not a guarantee of Garmin approval or legal compliance.
 
 Without them, the Garmin controls are hidden. Authorization uses OAuth 2.0 with
 PKCE. Tokens are stored only in an encrypted, httpOnly cookie; there is no

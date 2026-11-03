@@ -2,6 +2,7 @@ import { plural } from "../locales";
 import type { Messages } from "./en";
 
 export const pl = {
+  privacyLink: "Prywatność i zarządzanie danymi",
   language: "Język",
   loading: "Wczytywanie planu zapisanego w tej przeglądarce…",
   storage: {
@@ -139,6 +140,8 @@ export const pl = {
     copyFailed: "Nie udało się skopiować do schowka.",
   },
   garmin: {
+    disconnectFailed: "Nie udało się odłączyć Garmin. Spróbuj ponownie.",
+    localDeleteFailed: "Garmin odłączony, ale nie usunięto lokalnych odwołań. Wyczyść dane witryny w przeglądarce.",
     connect: "Połącz z Garmin",
     disconnect: "Odłącz Garmin",
     scope: "Biegi do wysłania",

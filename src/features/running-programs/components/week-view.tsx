@@ -299,6 +299,10 @@ export function WeekView({ week }: { week: TrainingWeek }) {
       ? t.garmin.connected
       : garmin.notice === "error"
         ? t.garmin.connectFailed
+        : garmin.notice === "disconnectFailed"
+          ? t.garmin.disconnectFailed
+          : garmin.notice === "localDeleteFailed"
+            ? t.garmin.localDeleteFailed
         : garmin.notice === "unavailable"
           ? t.garmin.unavailable
           : null;

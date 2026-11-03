@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
@@ -111,6 +112,7 @@ export function RunningPlanner() {
         {t.method.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
       </div>
     </details>
+    <p className="text-sm text-stone-600"><Link href="/privacy" className="underline">{t.privacyLink}</Link></p>
     {action && <ConfirmationDialog title={action === "reset" ? t.confirm.resetTitle : t.confirm.regenerateTitle}
       confirmLabel={action === "reset" ? t.confirm.resetConfirm : t.confirm.regenerateConfirm}
       cancelLabel={t.confirm.cancel}

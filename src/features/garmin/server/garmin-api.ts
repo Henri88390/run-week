@@ -8,6 +8,8 @@ const TIMEOUT_MS = 15_000;
 const DEFAULT_REFRESH_LIFETIME_SECONDS = 90 * 24 * 3600;
 
 export type GarminTokens = {
+  consentVersion?: string;
+  consentAt?: number;
   accessToken: string;
   refreshToken: string;
   /** Epoch milliseconds. */

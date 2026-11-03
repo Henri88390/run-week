@@ -2,6 +2,7 @@ import { plural } from "../locales";
 import type { Messages } from "./en";
 
 export const pt = {
+  privacyLink: "Privacidade e gestão de dados",
   language: "Idioma",
   loading: "A carregar o plano guardado neste navegador…",
   storage: {
@@ -139,6 +140,8 @@ export const pt = {
     copyFailed: "Não foi possível copiar para a área de transferência.",
   },
   garmin: {
+    disconnectFailed: "Não foi possível desligar o Garmin. Tente novamente.",
+    localDeleteFailed: "O Garmin foi desligado, mas as referências locais não foram eliminadas. Limpe os dados do site no navegador.",
     connect: "Ligar Garmin",
     disconnect: "Desligar Garmin",
     scope: "Corridas a enviar",

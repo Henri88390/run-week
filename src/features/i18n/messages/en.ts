@@ -2,6 +2,7 @@ import { plural } from "../locales";
 
 export const en = {
   language: "Language",
+  privacyLink: "Privacy and data controls",
   loading: "Loading this browser’s saved planner…",
   storage: {
     unreadable: "Saved data could not be read. It has not been overwritten. Reset local data to start again.",
@@ -138,6 +139,8 @@ export const en = {
     copyFailed: "Could not copy to the clipboard.",
   },
   garmin: {
+    disconnectFailed: "Could not disconnect Garmin. Try again.",
+    localDeleteFailed: "Garmin disconnected, but local references could not be deleted. Clear this site's data in browser settings.",
     connect: "Connect Garmin",
     disconnect: "Disconnect Garmin",
     scope: "Runs to send",

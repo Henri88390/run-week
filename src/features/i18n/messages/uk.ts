@@ -2,6 +2,7 @@ import { plural } from "../locales";
 import type { Messages } from "./en";
 
 export const uk = {
+  privacyLink: "Конфіденційність і керування даними",
   language: "Мова",
   loading: "Завантаження плану, збереженого в цьому браузері…",
   storage: {
@@ -139,6 +140,8 @@ export const uk = {
     copyFailed: "Не вдалося скопіювати в буфер обміну.",
   },
   garmin: {
+    disconnectFailed: "Не вдалося відключити Garmin. Спробуйте знову.",
+    localDeleteFailed: "Garmin відключено, але локальні посилання не видалено. Очистіть дані сайту в браузері.",
     connect: "Підключити Garmin",
     disconnect: "Відключити Garmin",
     scope: "Пробіжки для надсилання",

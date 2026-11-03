@@ -5,9 +5,10 @@ import type { Locale } from "@/features/i18n/locales";
 import { addDays } from "@/features/running-programs/domain";
 import type { TrainingWeek, Workout } from "@/features/running-programs/types";
 import type { GarminErrorCode, GarminStatus, GarminSyncRequest, GarminSyncResponse } from "./sync-request";
+import { GARMIN_SENT_KEY } from "./privacy";
 
-const SENT_KEY = "run-week.garmin.v1";
-const NOTICES = ["connected", "error", "unavailable"] as const;
+const SENT_KEY = GARMIN_SENT_KEY;
+const NOTICES = ["connected", "error", "unavailable", "disconnectFailed", "localDeleteFailed"] as const;
 export type GarminNotice = (typeof NOTICES)[number];
 export type GarminSendResult = { count: number; error?: GarminErrorCode };
 
@@ -85,8 +86,22 @@ export function useGarmin() {
   }, []);
 
   const disconnect = useCallback(async () => {
-    await fetch("/api/garmin/disconnect", { method: "POST" }).catch(() => undefined);
-    setStatus((current) => ({ ...current, connected: false }));
+    try {
+      const response = await fetch("/api/garmin/disconnect", { method: "POST" });
+      if (!response.ok) {
+        setNotice("disconnectFailed");
+        return;
+      }
+      setStatus((current) => ({ ...current, connected: false }));
+      setNotice(null);
+      try {
+        localStorage.removeItem(SENT_KEY);
+      } catch {
+        setNotice("localDeleteFailed");
+      }
+    } catch {
+      setNotice("disconnectFailed");
+    }
   }, []);
 
   return { ...status, notice, send, disconnect };
