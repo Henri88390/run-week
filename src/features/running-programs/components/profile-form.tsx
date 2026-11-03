@@ -193,6 +193,10 @@ export function ProfileForm({ profile, onSave }: {
   const hasPreferredDayErrors = Boolean(
     errors.preferredVo2maxDay || errors.preferredThresholdDay || errors.preferredLongRunDay);
   const hasWorkoutErrors = Boolean(errors.intervalWorkout || errors.thresholdWorkout || errors.longWorkout);
+  const hasCustomWorkouts = intervalWorkout !== DEFAULT_WORKOUT_CHOICES.vo2max
+    || thresholdWorkout !== DEFAULT_WORKOUT_CHOICES.threshold
+    || longWorkout !== DEFAULT_WORKOUT_CHOICES.long
+    || [preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay].some((day) => day !== "");
   const clearPreferredDaysOutside = (days: number[]) => {
     for (const field of PREFERRED_DAY_FIELDS) {
       const value = { preferredVo2maxDay, preferredThresholdDay, preferredLongRunDay }[field];
@@ -400,7 +404,7 @@ export function ProfileForm({ profile, onSave }: {
                 <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
               </svg>
               {t.form.advancedOptions}
-              {(advancedOpen || hasPreferredDayErrors || hasWorkoutErrors) && <button
+              {hasCustomWorkouts && (advancedOpen || hasPreferredDayErrors || hasWorkoutErrors) && <button
                 type="button"
                 className="ml-2 rounded border border-stone-300 bg-white px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
                 onClick={(event) => {
