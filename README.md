@@ -198,8 +198,10 @@ deletes it (`DELETE /api/account`), which removes all its rows.
 | `AUTH_EMAIL_FROM` | Sender address on a domain verified in Resend |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Optional Google OAuth client; redirect URI `<origin>/api/auth/callback/google` |
 
-Run `npm run db:deploy` against the production database before deploying a
-version with new migrations. The email body is in English.
+Migrations are applied by the **Migrate database** CI job on each push to
+`main` (see [CI and deployment](#ci-and-deployment)). To apply them by hand, run
+`npm run db:deploy` with `DIRECT_URL` set to the production database. The email
+body is in English.
 
 ## Garmin Connect
 
@@ -450,26 +452,48 @@ npm run test:e2e
 ## CI and deployment
 
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests to `main`
-and manually. It has two jobs, which need no secrets:
+and manually. Its first two jobs need no secrets:
 
 - **Lint, typecheck and build**: `npm run lint`, `npm run typecheck`,
   `npm run build`.
 - **E2E tests**: `npm run test:e2e`. On failure, the Playwright report and
   traces are uploaded as the `playwright-report` artifact.
+- **Migrate database**: runs only on `main` (push or manual run), after both
+  jobs pass, and applies pending migrations to production with
+  `npm run db:deploy`. Runs never overlap or cancel each other. Pull requests
+  skip it.
+
+The migration job reads `DIRECT_URL` from the GitHub `production` environment.
+In the GitHub repository:
+
+1. **Settings → Environments → New environment**: name it `production`.
+   Optionally add required reviewers to approve each migration, and restrict
+   deployment branches to `main`.
+2. In that environment, add the secret `DIRECT_URL`. On Supabase, use the
+   **Session pooler** connection string (**Connect** → **Session pooler**, port
+   5432, user `postgres.<project-ref>`). The direct host `db.<project-ref>.supabase.co`
+   is IPv6-only and unreachable from GitHub-hosted runners.
 
 Vercel deploys `main` through its GitHub integration. To promote a production
-deployment only when both jobs pass, in the Vercel project:
+deployment only when all three jobs pass, in the Vercel project:
 
 1. **Settings → Environments → Production**: keep automatic aliasing of
    production deployments on.
 2. **Settings → Build and Deployment → Deployment Checks → Add Checks**: choose
-   **GitHub** and select **Lint, typecheck and build** and **E2E tests**. The
-   jobs must have run at least once to be listed.
+   **GitHub** and select **Lint, typecheck and build**, **E2E tests** and
+   **Migrate database**. The jobs must have run at least once to be listed.
 
 Vercel still builds each push to `main`, but the production domain keeps the
-previous deployment until both checks pass. A failed check leaves the new
+previous deployment until all checks pass. A failed check leaves the new
 deployment unpromoted; **Force Promote** on the deployment page bypasses the
 checks. Renaming a job requires updating the Deployment Checks.
+
+Migrations are applied before the new deployment is promoted, so the previous
+deployment briefly runs against the migrated schema. Keep migrations
+backward-compatible: add columns and tables first, and remove or rename them in
+a later release once no deployed version uses them. A failed migration leaves
+the previous deployment live; fix the migration (or resolve it with
+`prisma migrate resolve`) and push again.
 
 ## Languages
 

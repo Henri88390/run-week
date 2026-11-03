@@ -29,13 +29,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   Generated weeks use disclosed heuristics, not personalized training advice.
 - Do not add other server code, server-side persistence or data stored with the
   account without an explicit requirement. Schema changes need a Prisma
-  migration (`npm run db:migrate`).
+  migration (`npm run db:migrate`) that stays backward-compatible with the
+  previous deployment, because CI applies it before the new one is promoted.
 - Use `npm run lint`, `npm run typecheck`, and `npm run build` for applicable
   checks. `node scripts/verify-garmin.mjs` and
   `node scripts/verify-garmin-rate-limit.mjs` check the Garmin routes with
   mocks. `npm run test:e2e` runs the Playwright tests in `e2e/` (accounts and
   Garmin with a mock server); it needs Docker for its throwaway database.
-  `.github/workflows/ci.yml` runs lint, typecheck, build and e2e on `main`;
+  `.github/workflows/ci.yml` runs lint, typecheck, build and e2e on `main`, then
+  applies production migrations (`Migrate database`, `production` environment);
   Vercel Deployment Checks block production promotion until its jobs pass, so
   keep the job names stable.
 

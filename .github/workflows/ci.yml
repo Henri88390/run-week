@@ -1,7 +1,7 @@
 name: CI
 
-# Vercel Deployment Checks require the "Lint, typecheck and build" and "E2E tests" jobs,
-# so a production deployment is promoted only after both pass on its commit.
+# Vercel Deployment Checks require the "Lint, typecheck and build", "E2E tests" and "Migrate database"
+# jobs, so a production deployment is promoted only after its checks pass and its migrations are applied.
 on:
   push:
     branches: [main]
@@ -58,3 +58,32 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  migrate:
+    name: Migrate database
+    needs: [checks, e2e]
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Holds the DIRECT_URL secret; add required reviewers to the environment to approve each run.
+    environment: production
+    # Never cancel a running migration; later pushes wait for it.
+    concurrency:
+      group: migrate-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply pending migrations
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          if [ -z "$DIRECT_URL" ]; then
+            echo "::error::Set the DIRECT_URL secret in the production environment."
+            exit 1
+          fi
+          npm run db:deploy
