@@ -152,7 +152,11 @@ export const ru = {
     sendWeek: "Отправить неделю в Garmin",
     sendDay: "Отправить в Garmin",
     sending: "Отправка…",
-    sent: "Отправлено в Garmin Connect",
+    sent: (count: number) => {
+      const form = new Intl.PluralRules("ru").select(count);
+      const text = form === "one" ? "тренировка отправлена" : form === "few" ? "тренировки отправлены" : "тренировок отправлено";
+      return `${count} ${text} в Garmin.`;
+    },
     connected: "Аккаунт Garmin Connect подключён.",
     connectFailed: "Не удалось авторизоваться в Garmin Connect.",
     unavailable: "Garmin Connect сейчас недоступен. Попробуйте позже; перед повторной отправкой проверьте Garmin.",

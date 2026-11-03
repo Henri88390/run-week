@@ -152,7 +152,7 @@ export const es = {
     sendWeek: "Enviar semana a Garmin",
     sendDay: "Enviar a Garmin",
     sending: "Enviando…",
-    sent: "Enviado a Garmin Connect",
+    sent: (count: number) => `${count} ${count === 1 ? "sesión enviada" : "sesiones enviadas"} a Garmin.`,
     connected: "Cuenta de Garmin Connect conectada.",
     connectFailed: "La autorización de Garmin Connect falló.",
     unavailable: "Garmin Connect no está disponible ahora. Inténtalo más tarde; revisa Garmin antes de reenviar carreras.",

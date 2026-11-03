@@ -151,7 +151,7 @@ export const en = {
     sendWeek: "Send week to Garmin",
     sendDay: "Send to Garmin",
     sending: "Sending…",
-    sent: "Sent to Garmin Connect",
+    sent: (count: number) => `${count} ${count === 1 ? "workout" : "workouts"} sent to Garmin.`,
     connected: "Garmin Connect account connected.",
     connectFailed: "Garmin Connect authorization failed.",
     unavailable: "Garmin Connect is currently unavailable. Try later; check Garmin before resending runs.",

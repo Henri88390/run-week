@@ -188,6 +188,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const [garminResult, setGarminResult] = useState<{
     target: "week" | number;
     message: string;
+    tone: "success" | "error" | "neutral";
   } | null>(null);
   const vdot = week.profile.vdot;
   const total = week.workouts.reduce(
@@ -269,7 +270,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   function garminMessage({ count, error, requestId, retryAfterSeconds }: GarminSendResult): string {
-    const sent = count > 0 ? `${t.garmin.sent}: ${count}.` : "";
+    const sent = count > 0 ? t.garmin.sent(count) : "";
     const reference = error && requestId ? `${t.garmin.reference}: ${requestId}` : "";
     const retry = error === "rateLimited" && retryAfterSeconds !== undefined
       ? t.garmin.retryAfter(retryAfterSeconds) : "";
@@ -286,15 +287,21 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
           )
         : week.workouts.filter((workout) => workout.day === target);
     if (workouts.length === 0) {
-      setGarminResult({ target, message: t.garmin.nothingToSend });
+      setGarminResult({ target, message: t.garmin.nothingToSend, tone: "neutral" });
       return;
     }
     setGarminSending(target);
     setGarminResult(null);
     const result = await garmin.send(week, workouts, locale);
     setGarminSending(null);
-    setGarminResult({ target, message: garminMessage(result) });
+    setGarminResult({ target, message: garminMessage(result), tone: result.error ? "error" : "success" });
   }
+
+  const garminResultClass = {
+    success: "text-green-700",
+    error: "text-red-700",
+    neutral: "text-stone-600",
+  };
 
   useEffect(() => {
     if (selectedDay === null) return;
@@ -465,7 +472,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                 {t.garmin.connect}
               </a>
             ))}
-          <p role="status" className="mt-2 break-words text-sm text-stone-600 empty:hidden">
+          <p role="status" className={`mt-2 break-words text-sm empty:hidden ${garminResultClass[garminResult?.target === "week" ? garminResult.tone : "neutral"]}`}>
             {garminResult?.target === "week"
               ? garminResult.message
               : ""}
@@ -618,7 +625,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
               {garminResult?.target === selectedWorkout.day && (
                 <p
                   role="status"
-                  className="mt-2 break-words text-sm text-stone-600 empty:hidden"
+                  className={`mt-2 break-words text-sm empty:hidden ${garminResultClass[garminResult.tone]}`}
                 >
                   {garminResult?.target === selectedWorkout.day
                     ? garminResult.message

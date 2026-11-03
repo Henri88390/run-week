@@ -152,7 +152,11 @@ export const be = {
     sendWeek: "Адправіць тыдзень у Garmin",
     sendDay: "Адправіць у Garmin",
     sending: "Адпраўка…",
-    sent: "Адпраўлена ў Garmin Connect",
+    sent: (count: number) => {
+      const form = new Intl.PluralRules("be").select(count);
+      const text = form === "one" ? "трэніроўка адпраўлена" : form === "few" ? "трэніроўкі адпраўлены" : "трэніровак адпраўлена";
+      return `${count} ${text} ў Garmin.`;
+    },
     connected: "Уліковы запіс Garmin Connect падключаны.",
     connectFailed: "Не ўдалося аўтарызаваць Garmin Connect.",
     unavailable: "Garmin Connect зараз недаступны. Паспрабуйце пазней; перад паўторнай адпраўкай праверце Garmin.",

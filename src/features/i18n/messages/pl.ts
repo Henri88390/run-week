@@ -152,7 +152,11 @@ export const pl = {
     sendWeek: "Wyślij tydzień do Garmin",
     sendDay: "Wyślij do Garmin",
     sending: "Wysyłanie…",
-    sent: "Wysłano do Garmin Connect",
+    sent: (count: number) => {
+      const form = new Intl.PluralRules("pl").select(count);
+      const text = form === "one" ? "trening wysłany" : form === "few" ? "treningi wysłane" : "treningów wysłanych";
+      return `${count} ${text} do Garmin.`;
+    },
     connected: "Połączono konto Garmin Connect.",
     connectFailed: "Autoryzacja Garmin Connect nie powiodła się.",
     unavailable: "Garmin Connect jest teraz niedostępny. Spróbuj później; sprawdź Garmin przed ponownym wysłaniem biegów.",
