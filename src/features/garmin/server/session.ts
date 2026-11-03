@@ -1,5 +1,5 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 import type { NextRequest, NextResponse } from "next/server";
 import type { GarminConfig } from "./config";
 import { requestTokens, type GarminTokens } from "./garmin-api";
@@ -23,6 +23,8 @@ function isGarminTokens(value: unknown): value is GarminTokens {
     && typeof value.refreshToken === "string" && value.refreshToken.length > 0
     && typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)
     && typeof value.refreshExpiresAt === "number" && Number.isFinite(value.refreshExpiresAt)
+    && (value.uploadIdentity === undefined
+      || (typeof value.uploadIdentity === "string" && /^[a-f0-9]{64}$/.test(value.uploadIdentity)))
     && value.consentVersion === GARMIN_CONSENT_VERSION
     && typeof value.consentAt === "number" && Number.isFinite(value.consentAt);
 }
@@ -78,8 +80,14 @@ export function readSession(request: NextRequest, config: GarminConfig): GarminT
 }
 
 export function writeSession(response: NextResponse, request: NextRequest, config: GarminConfig, tokens: GarminTokens) {
-  response.cookies.set(SESSION_COOKIE, seal(tokens, config.sessionSecret),
+  response.cookies.set(SESSION_COOKIE, seal({ ...tokens, uploadIdentity: uploadIdentity(tokens, config) }, config.sessionSecret),
     cookieOptions(request, (tokens.refreshExpiresAt - Date.now()) / 1000));
+}
+
+/** No Garmin user ID is available in this integration; do not identify by mutable access token or cookie bytes. */
+export function uploadIdentity(tokens: GarminTokens, config: GarminConfig): string {
+  return tokens.uploadIdentity ?? createHmac("sha256", config.sessionSecret)
+    .update("run-week:garmin:upload-identity:v1\0").update(tokens.refreshToken).digest("hex");
 }
 
 export function clearSession(response: NextResponse, request: NextRequest) {
@@ -110,6 +118,7 @@ export async function freshTokens(
       ...await requestTokens(config, { grant_type: "refresh_token", refresh_token: tokens.refreshToken }),
       consentVersion: tokens.consentVersion,
       consentAt: tokens.consentAt,
+      uploadIdentity: uploadIdentity(tokens, config),
     },
     refreshed: true,
   };

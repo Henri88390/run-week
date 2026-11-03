@@ -13,7 +13,7 @@ import { GARMIN_SENT_KEY } from "./privacy";
 const SENT_KEY = GARMIN_SENT_KEY;
 const NOTICES = [...GARMIN_ERRORS, "connected", "error", "disconnectFailed", "localDeleteFailed", "statusFailed"] as const;
 export type GarminNotice = (typeof NOTICES)[number];
-export type GarminSendResult = { count: number; error?: GarminErrorCode; requestId?: string };
+export type GarminSendResult = { count: number; error?: GarminErrorCode; requestId?: string; retryAfterSeconds?: number };
 
 function isGarminNotice(value: string): value is GarminNotice {
   return NOTICES.some((notice) => notice === value);
@@ -115,7 +115,9 @@ export function useGarmin() {
     if (data.error === "reconnect") {
       setStatus((current) => ({ ...current, connected: false }));
     }
-    return { count: data.results.length, error: data.error, requestId: data.requestId };
+    return { count: data.results.length, error: data.error, requestId: data.requestId,
+      ...(data.error === "rateLimited" && data.retryAfterSeconds !== undefined
+        ? { retryAfterSeconds: data.retryAfterSeconds } : {}) };
   }, []);
 
   const disconnect = useCallback(async () => {

@@ -159,6 +159,7 @@ export const de = {
     reconnect: "Die Garmin-Connect-Sitzung ist abgelaufen. Verbinde dich erneut.",
     permission: "Garmin Connect hat den Trainingsimport nicht erlaubt. Verbinde dich erneut und erlaube den Trainingsimport.",
     rateLimited: "Zu viele Anfragen an Garmin Connect. Versuche es später erneut.",
+    retryAfter: (seconds: number) => `Versuche es in ${seconds} Sekunden erneut.`,
     rejected: "Garmin konnte dieses Training nicht annehmen. Prüfe die Laufeinstellungen oder nutze den FIT-Export.",
     network: "Garmin Connect ist nicht erreichbar. Prüfe deine Verbindung und den Garmin-Kalender vor dem erneuten Senden.",
     invalidResponse: "Das Ergebnis von Garmin Connect konnte nicht bestätigt werden. Prüfe Garmin vor dem erneuten Senden.",

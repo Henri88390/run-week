@@ -158,6 +158,7 @@ export const en = {
     reconnect: "Garmin Connect session expired. Connect again.",
     permission: "Garmin Connect did not allow workout import. Connect again and allow workout import.",
     rateLimited: "Too many requests to Garmin Connect. Try again later.",
+    retryAfter: (seconds: number) => `Try again in ${seconds} seconds.`,
     rejected: "Garmin could not accept this workout. Check the run settings or use FIT export.",
     network: "Could not reach Garmin Connect. Check your connection and Garmin calendar before resending runs.",
     invalidResponse: "Could not confirm the Garmin Connect result. Check Garmin before resending runs.",

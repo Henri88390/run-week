@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import nextServer from "next/server.js";
+import { verifyRateLimit } from "./verify-garmin-rate-limit.mjs";
 
 const requireFromProject = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -50,6 +51,7 @@ const load = loader({
   "@/features/garmin/server/config": { garminConfig: () => config },
   "@/features/garmin/server/privacy": { hostingProvider: () => "Test host" },
   "next/server": { ...nextServer, connection: async () => {} },
+  "@/features/garmin/server/upload-rate-limit": { reserveUpload: async () => ({ allowed: true }) },
 });
 const diagnostics = load("src\\features\\garmin\\server\\diagnostics.ts");
 const api = load("src\\features\\garmin\\server\\garmin-api.ts");
@@ -237,6 +239,7 @@ async function verify() {
     assert.deepEqual(await client.send(week, input.workouts, "en"), { count: 0, error });
     assert.equal(calls, 1);
   }
+  await verifyRateLimit({ loader, config, tokens, input, request, records, nextServer, original });
   const allowed = new Set(["event", "requestId", "operation", "category", "code", "upstreamStatus", "completed"]);
   for (const record of records) for (const key of Object.keys(record)) assert.ok(allowed.has(key));
   assert.ok(!JSON.stringify(records).includes(secret), "Sensitive data leaked into diagnostics");

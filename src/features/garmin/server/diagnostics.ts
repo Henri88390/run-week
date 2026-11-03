@@ -5,7 +5,7 @@ import type { GarminErrorCode } from "../sync-request";
 type Category = "auth" | "permission" | "rate_limit" | "rejected" | "unavailable"
   | "network" | "timeout" | "invalid_response" | "invalid_request" | "configuration" | "internal";
 export type GarminOperation = "connect" | "callback" | "status" | "disconnect" | "validate"
-  | "refresh" | "replace" | "create" | "schedule" | "cleanup" | "upload";
+  | "rateLimit" | "refresh" | "replace" | "create" | "schedule" | "cleanup" | "upload";
 
 /** Contains only categorical diagnostics, never the upstream body or original exception. */
 export class GarminApiError extends Error {

@@ -190,6 +190,8 @@ application with the workout import permission. Copy `.env.example` to
 | `GARMIN_CLIENT_ID` | Application consumer key |
 | `GARMIN_CLIENT_SECRET` | Application consumer secret |
 | `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt the session cookie |
+| `UPSTASH_REDIS_REST_URL` | Required for uploads everywhere: HTTPS REST endpoint of your Upstash Redis database |
+| `UPSTASH_REDIS_REST_TOKEN` | Server-only read/write REST token for that database (not the read-only token) |
 | `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Must be an HTTPS URL (HTTP is allowed only on localhost), without credentials or a fragment; register the exact URI with Garmin. |
 | `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, CDN/proxy and managed logging processors. |
 
@@ -219,9 +221,55 @@ or OAuth callback query strings. Have the deployment-specific policy reviewed;
 this page is not a guarantee of Garmin approval or legal compliance.
 
 Without them, the Garmin controls are hidden. Authorization uses OAuth 2.0 with
-PKCE. Tokens are stored only in an encrypted, httpOnly cookie; there is no
-database. Disconnecting deletes the cookie; revoke access in Garmin Connect
+PKCE. Tokens are stored only in an encrypted, httpOnly cookie; no planner or
+token database is used. Redis stores only short-lived quota metadata. Disconnecting deletes the cookie; revoke access in Garmin Connect
 account settings.
+
+### Distributed upload limits (Upstash Redis)
+
+Provision an Upstash Redis database, select and review its region/retention
+settings and processor terms, and set its REST URL and **read/write** REST token
+in the server environment (Vercel integration variables or manual configuration).
+The implementation uses Upstash's REST command API directly; no SDK is required.
+Use the same database and stable `GARMIN_SESSION_SECRET` across all production
+instances/deployments, and a separate database for local development. Do not
+expose either Redis variable through `NEXT_PUBLIC_*`.
+
+An authenticated, valid `POST /api/garmin/workouts` reserves **one upload request**,
+whether it sends one run or a batch of up to seven. Requests must start at least
+**10 seconds apart in every environment**. There are **10 accepted requests per
+UTC calendar day**, resetting at 00:00 UTC, except when the trusted server's
+`NODE_ENV` is exactly `development` (`next dev`). No Origin, hostname or client
+parameter can enable that exemption; production previews also have the daily cap.
+The cooldown still applies across UTC midnight. Invalid/unauthenticated requests
+and blocked attempts do not consume quota; accepted reservations do, including
+failed/partial Garmin uploads or lost responses. There is no automatic refund
+or retry, and this is not a per-workout or rolling-24-hour quota.
+
+One atomic Redis Lua operation uses Redis server time to check and reserve both
+limits before token refresh, deletion, creation or scheduling. Parallel requests
+across Vercel instances cannot bypass the reservation. Rejections return typed
+`rateLimited`, HTTP 429, `Retry-After` seconds and `retryAfterSeconds` JSON; the UI
+shows the returned wait. Missing/invalid Redis configuration, provider failures
+or unexpected responses fail closed as generic HTTP 503 `unavailable`, with
+sanitized `rateLimit` diagnostics and no in-memory fallback.
+
+This integration does not currently receive a stable Garmin user ID. Its quota
+identity is an HMAC of the initial refresh credential under the session secret,
+stored inside the authenticated encrypted cookie and carried across refresh-token
+rotation, access-token changes and cookie re-encryption. Raw credentials, cookie
+bytes and Garmin user IDs never go to Redis or diagnostics. This is a
+per-authorization identity, not a guaranteed cross-browser/account quota:
+a new independent authorization can have another identity. Rotating the session
+secret invalidates sessions and quota identities; do not rotate it routinely.
+
+Upstash receives only the derived pseudonymous key, timestamp, UTC-day counter
+and TTL (plus service network metadata), not tokens, workouts or Garmin activity
+data. Quota records expire by UTC midnight or after the 10-second cooldown,
+whichever is later (at most 24 hours); development records last 10 seconds.
+Disconnect does not delete these records early. Review provider backups/logs
+separately. Privacy and consent pages disclose Upstash explicitly; the consent
+version is bumped so pre-Upstash sessions must reconnect before this processing.
 
 Route handlers in `src/app/api/garmin`: `connect`, `callback`, `status`,
 `disconnect` and `workouts`. Garmin's API documentation is available only to
@@ -266,7 +314,21 @@ succeeded despite a lost response, and failed cleanup can leave an orphan workou
 
 Run the focused mocked verification without calling Garmin:
 `node scripts\verify-garmin.mjs`. It uses Node and the installed TypeScript compiler;
-no test framework or real credentials are required.
+no test framework or real credentials are required. Redis REST and failure paths
+are mocked as well. To additionally execute the production Lua script against
+a real **local** Redis 5+ instance (no Upstash calls), start an isolated Redis
+server bound to `127.0.0.1`, then run in PowerShell:
+
+```powershell
+$env:GARMIN_VERIFY_REDIS_PORT = "16379" # Port of your isolated local Redis
+node scripts\verify-garmin.mjs
+```
+
+Those checks use uniquely prefixed keys and delete only their own keys. They
+verify concurrent reservations across separate route instances, exact cooldown
+boundaries, UTC-day exhaustion/reset, midnight cooldown carry-over, development
+exemption and TTL expiry. Boundary tests replace only Redis's time source with a
+deterministic clock; a separate check runs the unmodified script with Redis TIME.
 
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.

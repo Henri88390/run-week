@@ -30,6 +30,7 @@ async function PrivacyContent() {
       <ul className="list-disc space-y-2 pl-5">
         <li>Garmin receives the workouts you choose to send and handles authentication and calendar storage under its own privacy policy.</li>
         <li>Hosting, infrastructure, CDN and managed logging providers: {host ?? "not yet configured; Garmin authorization is disabled"}. Infrastructure processes HTTP requests, network metadata and the Garmin synchronization traffic required to run the service.</li>
+        <li>Upstash Redis enforces shared upload quotas. It receives a pseudonymous HMAC key derived from an authorization credential, upload-request timestamps, UTC-day counters and expiry metadata, not Garmin tokens, raw user identifiers, workouts or activity data. Network metadata is also processed to provide the service.</li>
         <li>No additional analytics vendors, integration partners, external AI services or data-processing services are configured by this application. The operator must update this policy and its processor disclosure before adding any that process Garmin data.</li>
       </ul>
       <p>Garmin API keys remain under the operator&apos;s control as server configuration. They are not provided to users or transferred to third parties for their use. Infrastructure providers process service traffic; they are not authorized to use the keys for their own applications.</p>
@@ -42,6 +43,7 @@ async function PrivacyContent() {
       <h2 className="text-lg font-semibold">Storage, retention and security</h2>
       <p>Browser planner data and Garmin workout-ID references remain until you delete them or clear site data. OAuth authorization cookies expire after 10 minutes. The connected session cookie expires when the Garmin refresh token expires, or is removed when you disconnect. Consent version and acceptance time are stored inside the encrypted authorization/session cookies. Older sessions without this consent require reconnection.</p>
       <p>Sync requests are processed in server memory; there is no application database retaining their payloads. Hosting-provider access and operational logs may contain request metadata; their retention depends on the provider and deployment settings. Do not put tokens, API keys, workout payloads or OAuth callback query strings in analytics or logs. The operator must verify logging settings and the named provider&apos;s terms before launch.</p>
+      <p>Upstash quota records expire automatically within 24 hours of the last accepted upload request (10 seconds in local development). Uploads require at least 10 seconds between requests; outside local development, at most 10 requests are accepted per UTC calendar day. A week batch counts as one request. Disconnecting does not immediately delete these short-lived abuse-prevention records. Upstash backups and operational-log retention depend on the operator&apos;s selected region, plan and settings; the operator must verify them before deployment.</p>
     </section>
     <section className="space-y-2">
       <h2 className="text-lg font-semibold">Access, correction, export, deletion and consent</h2>

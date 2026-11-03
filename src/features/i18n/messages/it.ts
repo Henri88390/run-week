@@ -159,6 +159,7 @@ export const it = {
     reconnect: "La sessione Garmin Connect è scaduta. Collegati di nuovo.",
     permission: "Garmin Connect non ha consentito l’importazione degli allenamenti. Collegati di nuovo e consenti l’importazione.",
     rateLimited: "Troppe richieste a Garmin Connect. Riprova più tardi.",
+    retryAfter: (seconds: number) => `Riprova tra ${seconds} secondi.`,
     rejected: "Garmin non ha accettato questo allenamento. Controlla le impostazioni della corsa o usa l’esportazione FIT.",
     network: "Impossibile raggiungere Garmin Connect. Controlla la connessione e il calendario Garmin prima di reinviare le corse.",
     invalidResponse: "Impossibile confermare il risultato di Garmin Connect. Controlla Garmin prima di reinviare le corse.",

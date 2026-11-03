@@ -159,6 +159,7 @@ export const es = {
     reconnect: "La sesión de Garmin Connect caducó. Vuelve a conectar.",
     permission: "Garmin Connect no permitió importar entrenamientos. Vuelve a conectar y permite la importación de entrenamientos.",
     rateLimited: "Demasiadas solicitudes a Garmin Connect. Inténtalo más tarde.",
+    retryAfter: (seconds: number) => `Inténtalo de nuevo en ${seconds} segundos.`,
     rejected: "Garmin no pudo aceptar este entrenamiento. Revisa los ajustes de la carrera o usa la exportación FIT.",
     network: "No se pudo contactar con Garmin Connect. Revisa tu conexión y el calendario Garmin antes de reenviar carreras.",
     invalidResponse: "No se pudo confirmar el resultado de Garmin Connect. Revisa Garmin antes de reenviar carreras.",

@@ -159,6 +159,7 @@ export const be = {
     reconnect: "Сеанс Garmin Connect скончыўся. Падключыцеся зноў.",
     permission: "Garmin Connect не дазволіў імпарт трэніровак. Падключыцеся зноў і дазвольце імпарт.",
     rateLimited: "Занадта шмат запытаў да Garmin Connect. Паспрабуйце пазней.",
+    retryAfter: (seconds: number) => `Паспрабуйце зноў праз ${seconds} секунд.`,
     rejected: "Garmin не прыняў гэту трэніроўку. Праверце налады прабежкі або скарыстайцеся экспартам FIT.",
     network: "Не ўдалося звязацца з Garmin Connect. Праверце злучэнне і каляндар Garmin перад паўторнай адпраўкай.",
     invalidResponse: "Не ўдалося пацвердзіць вынік Garmin Connect. Праверце Garmin перад паўторнай адпраўкай.",

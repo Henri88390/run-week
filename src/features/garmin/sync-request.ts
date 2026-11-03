@@ -31,6 +31,7 @@ export type GarminSyncResponse = {
   results: { day: number; date: string; workoutId: number }[];
   error?: GarminErrorCode;
   requestId?: string;
+  retryAfterSeconds?: number;
 };
 
 export const garminSyncResponseSchema = z.object({
@@ -41,6 +42,7 @@ export const garminSyncResponseSchema = z.object({
   })),
   error: z.enum(GARMIN_ERRORS).optional(),
   requestId: z.uuid().optional(),
+  retryAfterSeconds: z.number().int().min(1).max(86400).optional(),
 });
 
 export const garminStatusSchema = z.object({

@@ -268,10 +268,12 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  function garminMessage({ count, error, requestId }: GarminSendResult): string {
+  function garminMessage({ count, error, requestId, retryAfterSeconds }: GarminSendResult): string {
     const sent = count > 0 ? `${t.garmin.sent}: ${count}.` : "";
     const reference = error && requestId ? `${t.garmin.reference}: ${requestId}` : "";
-    return [sent, error ? t.garmin[error] : "", reference].filter(Boolean).join(" ");
+    const retry = error === "rateLimited" && retryAfterSeconds !== undefined
+      ? t.garmin.retryAfter(retryAfterSeconds) : "";
+    return [sent, error ? t.garmin[error] : "", retry, reference].filter(Boolean).join(" ");
   }
 
   async function sendToGarmin(target: "week" | number) {

@@ -159,6 +159,7 @@ export const fr = {
     reconnect: "La session Garmin Connect a expiré. Reconnectez-vous.",
     permission: "Garmin Connect n’a pas autorisé l’import d’entraînements. Reconnectez-vous et autorisez l’import d’entraînements.",
     rateLimited: "Trop de requêtes vers Garmin Connect. Réessayez plus tard.",
+    retryAfter: (seconds: number) => `Réessayez dans ${seconds} secondes.`,
     rejected: "Garmin n’a pas accepté cet entraînement. Vérifiez les paramètres de la course ou utilisez l’export FIT.",
     network: "Garmin Connect est injoignable. Vérifiez votre connexion et le calendrier Garmin avant de renvoyer les courses.",
     invalidResponse: "Impossible de confirmer le résultat Garmin Connect. Vérifiez Garmin avant de renvoyer les courses.",

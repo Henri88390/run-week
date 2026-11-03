@@ -159,6 +159,7 @@ export const pl = {
     reconnect: "Sesja Garmin Connect wygasła. Połącz ponownie.",
     permission: "Garmin Connect nie zezwolił na import treningów. Połącz ponownie i zezwól na import treningów.",
     rateLimited: "Zbyt wiele żądań do Garmin Connect. Spróbuj później.",
+    retryAfter: (seconds: number) => `Spróbuj ponownie za ${seconds} sekund.`,
     rejected: "Garmin nie przyjął tego treningu. Sprawdź ustawienia biegu lub użyj eksportu FIT.",
     network: "Nie można połączyć się z Garmin Connect. Sprawdź połączenie i kalendarz Garmin przed ponownym wysłaniem biegów.",
     invalidResponse: "Nie można potwierdzić wyniku Garmin Connect. Sprawdź Garmin przed ponownym wysłaniem biegów.",
