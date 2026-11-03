@@ -21,7 +21,7 @@ async function GarminConsentContent() {
   return <main lang="en" className="mx-auto w-full max-w-2xl space-y-5 px-6 py-8 text-sm leading-6">
     <Link href="/" className="underline">Back to Run Week</Link>
     <h1 className="text-2xl font-semibold">Connect Garmin</h1>
-    <p>Garmin Connect is linked to your Run Week account. Run Week sends only the runs you select to create and schedule workouts in Garmin Connect, and deletes them when you ask. Garmin provides authorization tokens and workout identifiers, which Run Week stores encrypted (tokens) in its database with your account. Run Week does not read your recorded activity history or your Garmin calendar.</p>
+    <p>Garmin Connect is linked to your Run Week account. Run Week sends only the runs you select to create and schedule workouts in Garmin Connect, and deletes them when you ask. Garmin provides authorization tokens and workout identifiers, which Run Week stores encrypted (tokens) in its database with your account. Run Week also reads your Garmin user ID and stores only a keyed hash of it: a Garmin account can be connected to one Run Week account at a time. Run Week does not read your recorded activity history or your Garmin calendar.</p>
     <p>Recipients are Garmin and the service infrastructure provider(s), including the database host: {host ?? "not yet disclosed"}. No AI service processes Garmin data, and Garmin data is not sold or used to train, evaluate or improve AI models.</p>
     <p>Upstash Redis also receives a pseudonymous quota key derived from your account ID, request timing, daily counters and expiry metadata to enforce upload limits; it does not receive your Garmin tokens, workouts or recorded activities. Quota records expire within 24 hours (10 seconds in local development) and are not immediately deleted on disconnect.</p>
     <p>You can withdraw consent and disconnect at any time on the <Link href="/privacy" className="underline">privacy and data-controls page</Link>. Disconnecting or deleting your account removes the stored tokens and workout identifiers. Workouts already sent stay in Garmin Connect; delete them from Run Week before disconnecting.</p>
@@ -32,7 +32,7 @@ async function GarminConsentContent() {
     <form action="/api/garmin/connect" method="post" className="space-y-4">
       <label className="flex items-start gap-3">
         <input type="checkbox" name="consent" value={GARMIN_CONSENT_VERSION} required disabled={!signedIn} className="mt-1 shrink-0" />
-        <span>I have read the <Link href="/privacy" className="underline">privacy policy</Link> and consent to Run Week and its disclosed infrastructure processing and storing Garmin authorization tokens, workout identifiers and the runs I select for Garmin synchronization, and to Upstash processing the pseudonymous quota metadata described above.</span>
+        <span>I have read the <Link href="/privacy" className="underline">privacy policy</Link> and consent to Run Week and its disclosed infrastructure processing and storing Garmin authorization tokens, a keyed hash of my Garmin user ID, workout identifiers and the runs I select for Garmin synchronization, and to Upstash processing the pseudonymous quota metadata described above.</span>
       </label>
       <button type="submit" className="button-primary" disabled={!signedIn}>Agree and continue to Garmin</button>
     </form>

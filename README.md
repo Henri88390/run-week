@@ -281,6 +281,15 @@ stored AES-256-GCM encrypted in the database with the account and never reach
 browser JavaScript. Redis stores only short-lived quota metadata. Disconnecting
 deletes the stored tokens; revoke access in Garmin Connect account settings.
 
+A Garmin account can be connected to only one Run Week account. The callback
+reads the Garmin user ID (`GET /wellness-api/rest/user/id`) and stores an HMAC
+of it (keyed with `GARMIN_SESSION_SECRET`) in the unique
+`GarminConnection.garminUserKey` column. If another account already holds that
+key, the connection is refused with `?garmin=alreadyLinked`, and the other
+account must disconnect first. Reconnecting the same account with a different
+Garmin account deletes its sent-workout records, which belong to the previous
+Garmin account.
+
 ### Distributed upload limits (Upstash Redis)
 
 Provision an Upstash Redis database, select and review its region/retention

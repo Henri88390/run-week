@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { connection, NextResponse, type NextRequest } from "next/server";
 import { currentUserId } from "@/features/account/server/auth";
 import { garminConfig } from "@/features/garmin/server/config";
-import { requestTokens } from "@/features/garmin/server/garmin-api";
+import { garminUserId, requestTokens } from "@/features/garmin/server/garmin-api";
 import { clearAuthorization, readAuthorization } from "@/features/garmin/server/session";
 import { saveConnection } from "@/features/garmin/server/store";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
       code_verifier: authorization.codeVerifier,
       redirect_uri: authorization.redirectUri,
     });
-    await saveConnection(config, authorization.userId, tokens, {
+    const garminUser = await garminUserId(tokens.accessToken);
+    await saveConnection(config, authorization.userId, garminUser, tokens, {
       version: authorization.consentVersion, at: new Date(authorization.consentAt),
     });
     return finish("connected");

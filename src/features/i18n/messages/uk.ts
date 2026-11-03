@@ -227,6 +227,7 @@ export const uk = {
     reference: "Номер звернення",
     failed: "Операція Garmin Connect не вдалася. Перевірте Garmin перед повторною спробою.",
     invalid: "Цей тиждень неможливо надіслати до Garmin Connect.",
+    alreadyLinked: "Цей обліковий запис Garmin Connect уже підключено до іншого облікового запису Run Week. Спочатку відключіть його там.",
     nothingToSend: "Немає пробіжок для надсилання.",
   },
   workouts: {

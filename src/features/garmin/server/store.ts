@@ -1,6 +1,9 @@
 import "server-only";
+import { createHmac } from "node:crypto";
 import { db } from "@/features/account/server/db";
+import { Prisma } from "@/generated/prisma/client";
 import type { GarminConfig } from "./config";
+import { GarminApiError } from "./diagnostics";
 import type { GarminTokens } from "./garmin-api";
 import { isGarminTokens, seal, unseal } from "./session";
 import { GARMIN_CONSENT_VERSION } from "../privacy";
@@ -14,14 +17,35 @@ export async function loadTokens(config: GarminConfig, userId: string): Promise<
 }
 
 export async function saveConnection(
-  config: GarminConfig, userId: string, tokens: GarminTokens, consent: { version: string; at: Date },
+  config: GarminConfig, userId: string, garminUserId: string, tokens: GarminTokens,
+  consent: { version: string; at: Date },
 ): Promise<void> {
   const sealed = seal(tokens, config.sessionSecret);
-  await db().garminConnection.upsert({
-    where: { userId },
-    create: { userId, tokens: sealed, consentVersion: consent.version, consentAt: consent.at },
-    update: { tokens: sealed, consentVersion: consent.version, consentAt: consent.at },
-  });
+  const garminUserKey = garminAccountKey(config, garminUserId);
+  const data = { garminUserKey, tokens: sealed, consentVersion: consent.version, consentAt: consent.at };
+  try {
+    await db().$transaction(async (tx) => {
+      const owner = await tx.garminConnection.findUnique({ where: { garminUserKey }, select: { userId: true } });
+      if (owner && owner.userId !== userId) throw new GarminApiError("already_linked");
+      const previous = await tx.garminConnection.findUnique({ where: { userId }, select: { garminUserKey: true } });
+      // Records of another Garmin account cannot be deleted with these tokens.
+      if (previous && previous.garminUserKey !== garminUserKey) {
+        await tx.garminWorkout.deleteMany({ where: { userId } });
+      }
+      await tx.garminConnection.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+    });
+  } catch (error) {
+    // A concurrent connection of the same Garmin account by another user.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new GarminApiError("already_linked");
+    }
+    throw error;
+  }
+}
+
+/** Pseudonymous, keyed so the database never holds the Garmin user ID. */
+function garminAccountKey(config: GarminConfig, garminUserId: string): string {
+  return createHmac("sha256", config.sessionSecret).update("run-week:garmin:user:v1\0").update(garminUserId).digest("hex");
 }
 
 export async function updateTokens(config: GarminConfig, userId: string, tokens: GarminTokens): Promise<void> {

@@ -5,6 +5,7 @@ import { GarminApiError, httpFailure } from "./diagnostics";
 const AUTHORIZE_URL = "https://connect.garmin.com/oauth2Confirm";
 const TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token";
 const TRAINING_API_URL = "https://apis.garmin.com/training-api";
+const USER_ID_URL = "https://apis.garmin.com/wellness-api/rest/user/id";
 const TIMEOUT_MS = 15_000;
 const DEFAULT_REFRESH_LIFETIME_SECONDS = 90 * 24 * 3600;
 
@@ -90,6 +91,19 @@ export async function requestTokens(
     expiresAt,
     refreshExpiresAt,
   };
+}
+
+/** Garmin's stable user ID; it is the same across tokens and reconnections. */
+export async function garminUserId(accessToken: string): Promise<string> {
+  const response = await garminFetch(USER_ID_URL, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (!response.ok) throw httpFailure(response.status);
+  const body = await responseJson(response);
+  if (!isRecord(body) || typeof body.userId !== "string" || !body.userId || body.userId.length > 256) {
+    throw new GarminApiError("invalid_response");
+  }
+  return body.userId;
 }
 
 async function trainingApi(accessToken: string, path: string, init: RequestInit): Promise<Response> {

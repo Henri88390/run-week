@@ -73,6 +73,8 @@ model Planner {
 
 model GarminConnection {
   userId         String   @id
+  /// HMAC of the Garmin user ID. Unique: a Garmin account links to one Run Week account.
+  garminUserKey  String   @unique
   /// AES-256-GCM sealed Garmin OAuth tokens.
   tokens         String
   consentVersion String

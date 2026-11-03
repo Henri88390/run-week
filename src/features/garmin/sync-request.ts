@@ -3,6 +3,7 @@ import { LOCALES } from "@/features/i18n/locales";
 
 export const GARMIN_ERRORS = [
   "reconnect", "permission", "rateLimited", "rejected", "unavailable", "network", "invalidResponse", "failed", "invalid",
+  "alreadyLinked",
 ] as const;
 export type GarminErrorCode = (typeof GARMIN_ERRORS)[number];
 

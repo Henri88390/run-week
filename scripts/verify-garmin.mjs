@@ -1,4 +1,4 @@
-/* Dependency-free Garmin route verifier using the project TypeScript compiler. */
+﻿/* Dependency-free Garmin route verifier using the project TypeScript compiler. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -53,7 +53,7 @@ let scheduleStatus = 204;
 let refreshStatus = 200;
 const store = {
   async loadTokens(_config, userId) { return tokenRows.get(userId) ?? null; },
-  async saveConnection(_config, userId, tokens) { tokenRows.set(userId, tokens); },
+  async saveConnection(_config, userId, _garminUserId, tokens) { tokenRows.set(userId, tokens); },
   async updateTokens(_config, userId, tokens) { if (tokenRows.has(userId)) tokenRows.set(userId, tokens); },
   async forgetTokens(userId) { tokenRows.delete(userId); },
   async deleteConnection(userId) {

@@ -228,6 +228,7 @@ export const ru = {
     reference: "Номер обращения",
     failed: "Операция Garmin Connect не удалась. Проверьте Garmin перед повторной попыткой.",
     invalid: "Эту неделю нельзя отправить в Garmin Connect.",
+    alreadyLinked: "Этот аккаунт Garmin Connect уже подключён к другому аккаунту Run Week. Сначала отключите его там.",
     nothingToSend: "Нет пробежек для отправки.",
   },
   workouts: {

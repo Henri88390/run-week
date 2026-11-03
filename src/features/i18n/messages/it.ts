@@ -216,6 +216,7 @@ export const it = {
     reference: "Riferimento",
     failed: "L’operazione Garmin Connect non è riuscita. Controlla Garmin prima di riprovare.",
     invalid: "Questa settimana non può essere inviata a Garmin Connect.",
+    alreadyLinked: "Questo account Garmin Connect è già collegato a un altro account Run Week. Scollegalo prima da quell'account.",
     nothingToSend: "Nessuna corsa da inviare.",
   },
   workouts: {

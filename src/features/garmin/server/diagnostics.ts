@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { GarminErrorCode } from "../sync-request";
 
-type Category = "auth" | "permission" | "rate_limit" | "rejected" | "unavailable"
+type Category = "auth" | "permission" | "rate_limit" | "rejected" | "unavailable" | "already_linked"
   | "network" | "timeout" | "invalid_response" | "invalid_request" | "configuration" | "internal";
 export type GarminOperation = "connect" | "callback" | "status" | "disconnect" | "validate"
   | "rateLimit" | "refresh" | "create" | "schedule" | "record" | "cleanup" | "upload" | "delete";
@@ -26,6 +26,7 @@ export function httpFailure(status: number, tokenRequest = false, upstreamBody?:
 export function failureDetails(error: unknown): { category: Category; code: GarminErrorCode; upstreamStatus?: number } {
   const category = error instanceof GarminApiError ? error.category : "internal";
   const code: GarminErrorCode = category === "auth" ? "reconnect"
+    : category === "already_linked" ? "alreadyLinked"
     : category === "permission" ? "permission"
       : category === "rate_limit" ? "rateLimited"
         : category === "rejected" ? "rejected"
