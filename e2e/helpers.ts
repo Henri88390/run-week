@@ -95,5 +95,5 @@ export async function createWeek(page: Page) {
   await page.getByLabel("Minutes", { exact: true }).fill("25");
   await page.getByLabel("Seconds", { exact: true }).fill("0");
   await page.getByRole("button", { name: "Create training week" }).click();
-  await expect(page.getByRole("button", { name: "Send week to Garmin" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy week as text" })).toBeVisible();
 }

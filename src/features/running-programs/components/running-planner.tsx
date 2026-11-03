@@ -141,7 +141,8 @@ export function RunningPlanner() {
             </span>}
           </summary>
           <div className="border-t border-stone-200 px-4 pb-4 sm:px-5 sm:pb-5">
-            <ProfileForm key={current?.id ?? "new"} profile={state?.profile} onSave={(profile) => {
+            {/* Remount when the saved profile changes so derived race times start from the saved performance. */}
+            <ProfileForm key={`${current?.id ?? "new"}:${JSON.stringify(state?.profile ?? null)}`} profile={state?.profile} onSave={(profile) => {
               if (state) {
                 setPendingProfile(profile);
                 setAction("update-setup");

@@ -23,6 +23,13 @@ function scheduledPreferredDays(preferredDays: PreferredDays, runCount: number):
   return scheduled;
 }
 
+/** A different distance with the time derived from the saved performance is the same performance. */
+function samePerformance(saved: Profile, entered: Pick<Profile, "distanceMeters" | "raceSeconds">): boolean {
+  return saved.distanceMeters === entered.distanceMeters
+    ? saved.raceSeconds === entered.raceSeconds
+    : entered.raceSeconds === equivalentRaceSeconds(saved.vdot, entered.distanceMeters);
+}
+
 function profilesMatch(a: Profile, b: Profile): boolean {
   const schedulesMatch = a.schedule.mode === b.schedule.mode && (
     a.schedule.mode === "count" && b.schedule.mode === "count"
@@ -30,8 +37,7 @@ function profilesMatch(a: Profile, b: Profile): boolean {
       : a.schedule.mode === "days" && b.schedule.mode === "days"
         && [...a.schedule.days].sort().join(",") === [...b.schedule.days].sort().join(",")
   );
-  return a.distanceMeters === b.distanceMeters
-    && a.raceSeconds === b.raceSeconds
+  return samePerformance(a, b)
     && a.recentWeeklyVolumeKm === b.recentWeeklyVolumeKm
     && a.desiredWeeklyDurationMinutes === b.desiredWeeklyDurationMinutes
     && a.goal === b.goal
@@ -251,8 +257,10 @@ export function ProfileForm({ profile, onSave }: {
       return;
     }
     const anchor = performanceAnchor;
+    const anchorVdot = !anchor ? 0 : profile && profile.distanceMeters === anchor.distanceMeters
+      && profile.raceSeconds === anchor.raceSeconds ? profile.vdot : calculateVdot(anchor.distanceMeters, anchor.raceSeconds);
     let totalSeconds = !anchor ? null : anchor.distanceMeters === newDistance ? anchor.raceSeconds
-      : equivalentRaceSeconds(calculateVdot(anchor.distanceMeters, anchor.raceSeconds), newDistance);
+      : equivalentRaceSeconds(anchorVdot, newDistance);
     if (totalSeconds !== null && (totalSeconds < 180 || totalSeconds > 28800
       || (newDistance <= 5000 && totalSeconds >= 3600) || !isSupportedPerformance(newDistance, totalSeconds))) {
       totalSeconds = null;
@@ -271,7 +279,9 @@ export function ProfileForm({ profile, onSave }: {
     onSave({
       distanceMeters,
       raceSeconds: raceTimeSeconds,
-      vdot: calculateVdot(distanceMeters, raceTimeSeconds),
+      // An equivalent performance keeps the saved VDOT so rounded times don't shift paces.
+      vdot: profile && samePerformance(profile, { distanceMeters, raceSeconds: raceTimeSeconds })
+        ? profile.vdot : calculateVdot(distanceMeters, raceTimeSeconds),
       goal: profile?.goal ?? "none",
       goalDistanceMeters: profile?.goalDistanceMeters ?? 5000,
       schedule: submittedSchedule,

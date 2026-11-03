@@ -419,7 +419,9 @@ replacement and deletion.
 
 Playwright tests in `e2e/` cover accounts and Garmin: sign-in by email code,
 Garmin controls hidden when signed out, one Garmin account per Run Week account,
-reconnecting, and sending and deleting a week.
+reconnecting, sending and deleting a week, and deleting sent workouts before
+regenerating. They also check that changing only the performance distance is
+not a setup change.
 
 Requirements: Docker running and Chromium installed once with
 `npx playwright install chromium`. Then run:
