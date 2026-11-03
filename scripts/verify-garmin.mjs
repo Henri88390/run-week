@@ -241,7 +241,15 @@ async function verify() {
   }
   await verifyRateLimit({ loader, config, tokens, input, request, records, nextServer, original });
   const allowed = new Set(["event", "requestId", "operation", "category", "code", "upstreamStatus", "completed"]);
-  for (const record of records) for (const key of Object.keys(record)) assert.ok(allowed.has(key));
+  for (const record of records) {
+    if (record.event === "garmin_rate_limit_memory_fallback") {
+      assert.deepEqual(record, {
+        event: "garmin_rate_limit_memory_fallback", scope: "process", reason: "redis_not_configured",
+      });
+    } else {
+      for (const key of Object.keys(record)) assert.ok(allowed.has(key));
+    }
+  }
   assert.ok(!JSON.stringify(records).includes(secret), "Sensitive data leaked into diagnostics");
   original.warn("Garmin verification passed: classification, sanitization, route failures, partial uploads, no retries, client parsing and 10 locales.");
 }

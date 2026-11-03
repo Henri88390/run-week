@@ -79,6 +79,46 @@ export async function verifyRateLimit({ loader, config, tokens, input, request, 
     process.env.UPSTASH_REDIS_REST_TOKEN = sentinel;
   }
   try {
+    const realNow = Date.now;
+    let now = Date.UTC(2026, 10, 3, 12);
+    const memoryTokens = { ...tokens, refreshToken: randomUUID(), uploadIdentity: undefined };
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      Date.now = () => now;
+      mockFetch();
+      const concurrent = await Promise.all(Array.from({ length: 20 }, () => reserveUpload(config, memoryTokens)));
+      assert.equal(concurrent.filter((result) => result.allowed).length, 1);
+      assert.deepEqual(concurrent[1], { allowed: false, retryAfterSeconds: 10 });
+      now += 9999;
+      assert.deepEqual(await reserveUpload(config, memoryTokens), { allowed: false, retryAfterSeconds: 1 });
+      now += 1;
+      assert.deepEqual(await reserveUpload(config, memoryTokens), { allowed: true });
+      for (let count = 2; count < 10; count++) {
+        now += 10000;
+        assert.deepEqual(await reserveUpload(config, memoryTokens), { allowed: true });
+      }
+      now += 10000;
+      assert.deepEqual(await reserveUpload(config, memoryTokens), {
+        allowed: false, retryAfterSeconds: Math.ceil((Date.UTC(2026, 10, 4) - now) / 1000),
+      });
+      now = Date.UTC(2026, 10, 4) - 1;
+      const midnightTokens = { ...memoryTokens, refreshToken: randomUUID() };
+      assert.deepEqual(await reserveUpload(config, midnightTokens), { allowed: true });
+      now += 1;
+      assert.deepEqual(await reserveUpload(config, memoryTokens), { allowed: true });
+      assert.deepEqual(await reserveUpload(config, midnightTokens), { allowed: false, retryAfterSeconds: 10 });
+      process.env.NODE_ENV = "development";
+      for (let count = 0; count < 12; count++) {
+        assert.deepEqual(await reserveUpload(config, memoryTokens), { allowed: true });
+        assert.deepEqual(await reserveUpload(config, memoryTokens), { allowed: false, retryAfterSeconds: 10 });
+        now += 10000;
+      }
+      assert.equal(fetchCalls.length, 0, "Memory fallback must not contact Redis");
+    } finally {
+      Date.now = realNow;
+    }
     configure();
     mockFetch();
     assert.deepEqual(await reserveUpload(config, tokens), { allowed: true });

@@ -27,9 +27,43 @@ return {1, 0}
 
 export type UploadReservation = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
-function redisConfig(): { url: string; token: string } {
+type MemoryQuota = { last: number; day: number; count: number; expiresAt: number };
+const memoryGlobal = globalThis as typeof globalThis & {
+  garminUploadQuotas?: Map<string, MemoryQuota>;
+};
+
+function reserveInMemory(key: string, development: boolean): UploadReservation {
+  if (!memoryGlobal.garminUploadQuotas) {
+    memoryGlobal.garminUploadQuotas = new Map();
+    console.warn(JSON.stringify({
+      event: "garmin_rate_limit_memory_fallback",
+      scope: "process",
+      reason: "redis_not_configured",
+    }));
+  }
+  const quotas = memoryGlobal.garminUploadQuotas;
+  const now = Date.now();
+  for (const [identity, quota] of quotas) {
+    if (quota.expiresAt <= now) quotas.delete(identity);
+  }
+  const day = Math.floor(now / 86400000);
+  const midnight = (day + 1) * 86400000;
+  const previous = quotas.get(key);
+  const count = previous?.day === day ? previous.count : 0;
+  let wait = previous ? Math.max(0, 10000 - (now - previous.last)) : 0;
+  if (!development && count >= 10) wait = Math.max(wait, midnight - now);
+  if (wait > 0) return { allowed: false, retryAfterSeconds: Math.ceil(wait / 1000) };
+  quotas.set(key, {
+    last: now, day, count: count + 1,
+    expiresAt: development ? now + 10000 : Math.max(now + 10000, midnight),
+  });
+  return { allowed: true };
+}
+
+function redisConfig(): { url: string; token: string } | null {
   const rawUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
   const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (!rawUrl && !token) return null;
   try {
     if (!rawUrl || !token || /[\r\n]/.test(token)) throw new Error();
     const url = new URL(rawUrl);
@@ -41,11 +75,12 @@ function redisConfig(): { url: string; token: string } {
   }
 }
 
-/** No retries or memory fallback: even a lost Redis response may have reserved quota. */
+/** Configured Redis failures never fall back: a lost response may have reserved quota. */
 export async function reserveUpload(config: GarminConfig, session: GarminTokens): Promise<UploadReservation> {
   const redis = redisConfig();
   const development = process.env.NODE_ENV === "development";
   const key = `run-week:garmin:upload:v1:${development ? "development" : "production"}:${uploadIdentity(session, config)}`;
+  if (!redis) return reserveInMemory(key, development);
   try {
     const response = await fetch(redis.url, {
       method: "POST",

@@ -190,8 +190,8 @@ application with the workout import permission. Copy `.env.example` to
 | `GARMIN_CLIENT_ID` | Application consumer key |
 | `GARMIN_CLIENT_SECRET` | Application consumer secret |
 | `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt the session cookie |
-| `UPSTASH_REDIS_REST_URL` | Required for uploads everywhere: HTTPS REST endpoint of your Upstash Redis database |
-| `UPSTASH_REDIS_REST_TOKEN` | Server-only read/write REST token for that database (not the read-only token) |
+| `UPSTASH_REDIS_REST_URL` | Optional HTTPS REST endpoint; omit both Redis variables for per-process memory limits |
+| `UPSTASH_REDIS_REST_TOKEN` | Server-only read/write REST token when Redis is configured (not the read-only token) |
 | `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Must be an HTTPS URL (HTTP is allowed only on localhost), without credentials or a fragment; register the exact URI with Garmin. |
 | `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, CDN/proxy and managed logging processors. |
 
@@ -250,9 +250,17 @@ One atomic Redis Lua operation uses Redis server time to check and reserve both
 limits before token refresh, deletion, creation or scheduling. Parallel requests
 across Vercel instances cannot bypass the reservation. Rejections return typed
 `rateLimited`, HTTP 429, `Retry-After` seconds and `retryAfterSeconds` JSON; the UI
-shows the returned wait. Missing/invalid Redis configuration, provider failures
+shows the returned wait. Partially configured/invalid Redis configuration, provider failures
 or unexpected responses fail closed as generic HTTP 503 `unavailable`, with
-sanitized `rateLimit` diagnostics and no in-memory fallback.
+sanitized `rateLimit` diagnostics and no fallback during provider failures.
+
+When both Redis settings are absent or blank, a synchronous in-memory reservation
+enforces the same cooldown, UTC daily quota and development exemption. Expired
+entries are removed on subsequent reservations. A structured warning identifies
+this mode without exposing identities. State is shared only within one running
+process, resets on restart/redeployment and is not shared across Vercel instances.
+Use Redis for reliable distributed production protection; the memory fallback is
+best-effort on serverless deployments.
 
 This integration does not currently receive a stable Garmin user ID. Its quota
 identity is an HMAC of the initial refresh credential under the session secret,
