@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String            @id @default(cuid())
+  name             String?
+  email            String?           @unique
+  emailVerified    DateTime?
+  image            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  accounts         Account[]
+  sessions         Session[]
+  planner          Planner?
+  garminConnection GarminConnection?
+  garminWorkouts   GarminWorkout[]
+}
+
+/// Sign-in methods linked to a user. Provider OAuth tokens are not stored.
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+/// Per-email limits for sign-in code requests and failed code entries.
+model EmailSignInLimit {
+  email          String   @id
+  windowStart    DateTime
+  sendCount      Int      @default(0)
+  failedAttempts Int      @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
+model Planner {
+  userId    String   @id
+  /// Planner JSON, validated with parsePlanner on read and write.
+  data      String
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GarminConnection {
+  userId         String   @id
+  /// AES-256-GCM sealed Garmin OAuth tokens.
+  tokens         String
+  consentVersion String
+  consentAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GarminWorkout {
+  id        String   @id @default(cuid())
+  userId    String
+  /// Scheduled date, YYYY-MM-DD. One Run Week workout per day.
+  date      String
+  workoutId BigInt
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}

@@ -1,36 +1,32 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import type { NextRequest, NextResponse } from "next/server";
 import type { GarminConfig } from "./config";
 import { requestTokens, type GarminTokens } from "./garmin-api";
 import { GARMIN_CONSENT_VERSION } from "../privacy";
 
-export const SESSION_COOKIE = "run-week-garmin";
 export const AUTHORIZATION_COOKIE = "run-week-garmin-auth";
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 type Authorization = {
-  state: string; codeVerifier: string; redirectUri: string; consentVersion: string; consentAt: number;
+  userId: string; state: string; codeVerifier: string; redirectUri: string; consentVersion: string; consentAt: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isGarminTokens(value: unknown): value is GarminTokens {
+export function isGarminTokens(value: unknown): value is GarminTokens {
   return isRecord(value)
     && typeof value.accessToken === "string" && value.accessToken.length > 0
     && typeof value.refreshToken === "string" && value.refreshToken.length > 0
     && typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)
-    && typeof value.refreshExpiresAt === "number" && Number.isFinite(value.refreshExpiresAt)
-    && (value.uploadIdentity === undefined
-      || (typeof value.uploadIdentity === "string" && /^[a-f0-9]{64}$/.test(value.uploadIdentity)))
-    && value.consentVersion === GARMIN_CONSENT_VERSION
-    && typeof value.consentAt === "number" && Number.isFinite(value.consentAt);
+    && typeof value.refreshExpiresAt === "number" && Number.isFinite(value.refreshExpiresAt);
 }
 
 function isAuthorization(value: unknown): value is Authorization {
   return isRecord(value)
+    && typeof value.userId === "string" && value.userId.length > 0
     && typeof value.state === "string" && value.state.length > 0
     && typeof value.codeVerifier === "string" && value.codeVerifier.length > 0
     && typeof value.redirectUri === "string" && value.redirectUri.length > 0
@@ -42,7 +38,7 @@ function encryptionKey(secret: string): Buffer {
   return createHash("sha256").update(secret).digest();
 }
 
-/** AES-256-GCM, so cookie contents are both confidential and tamper-evident. */
+/** AES-256-GCM, so sealed values are both confidential and tamper-evident. */
 export function seal(value: unknown, secret: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(secret), iv);
@@ -74,26 +70,6 @@ function cookieOptions(request: NextRequest, maxAgeSeconds: number) {
   };
 }
 
-export function readSession(request: NextRequest, config: GarminConfig): GarminTokens | null {
-  const tokens = unseal(request.cookies.get(SESSION_COOKIE)?.value, config.sessionSecret);
-  return isGarminTokens(tokens) && tokens.refreshExpiresAt > Date.now() ? tokens : null;
-}
-
-export function writeSession(response: NextResponse, request: NextRequest, config: GarminConfig, tokens: GarminTokens) {
-  response.cookies.set(SESSION_COOKIE, seal({ ...tokens, uploadIdentity: uploadIdentity(tokens, config) }, config.sessionSecret),
-    cookieOptions(request, (tokens.refreshExpiresAt - Date.now()) / 1000));
-}
-
-/** No Garmin user ID is available in this integration; do not identify by mutable access token or cookie bytes. */
-export function uploadIdentity(tokens: GarminTokens, config: GarminConfig): string {
-  return tokens.uploadIdentity ?? createHmac("sha256", config.sessionSecret)
-    .update("run-week:garmin:upload-identity:v1\0").update(tokens.refreshToken).digest("hex");
-}
-
-export function clearSession(response: NextResponse, request: NextRequest) {
-  response.cookies.set(SESSION_COOKIE, "", cookieOptions(request, 0));
-}
-
 export function writeAuthorization(response: NextResponse, request: NextRequest, config: GarminConfig, value: Authorization) {
   response.cookies.set(AUTHORIZATION_COOKIE, seal(value, config.sessionSecret), cookieOptions(request, 600));
 }
@@ -114,12 +90,7 @@ export async function freshTokens(
 ): Promise<{ tokens: GarminTokens; refreshed: boolean }> {
   if (tokens.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) return { tokens, refreshed: false };
   return {
-    tokens: {
-      ...await requestTokens(config, { grant_type: "refresh_token", refresh_token: tokens.refreshToken }),
-      consentVersion: tokens.consentVersion,
-      consentAt: tokens.consentAt,
-      uploadIdentity: uploadIdentity(tokens, config),
-    },
+    tokens: await requestTokens(config, { grant_type: "refresh_token", refresh_token: tokens.refreshToken }),
     refreshed: true,
   };
 }
@@ -132,8 +103,4 @@ export function pkceChallenge(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
 }
 
-/** Rejects cross-site state-changing requests in addition to the SameSite=Lax session cookie. */
-export function isSameOrigin(request: NextRequest): boolean {
-  const origin = request.headers.get("origin");
-  return origin === request.nextUrl.origin;
-}
+export { isSameOrigin } from "@/features/account/server/http";

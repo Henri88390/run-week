@@ -4,11 +4,14 @@ import type { Messages } from "./en";
 export const pl = {
   privacyLink: "Prywatność i zarządzanie danymi",
   language: "Język",
-  loading: "Wczytywanie planu zapisanego w tej przeglądarce…",
+  loading: "Wczytywanie planu…",
   storage: {
     unreadable: "Nie udało się odczytać zapisanych danych. Nie zostały nadpisane. Zresetuj dane lokalne, aby zacząć od nowa.",
     unavailable: "Pamięć przeglądarki jest niedostępna. Zmiany zostaną zachowane tylko na tej otwartej stronie.",
     saveFailed: "Nie udało się zapisać w pamięci przeglądarki. Zmiany są tylko w pamięci i mogą zostać utracone po odświeżeniu.",
+    accountLoadFailed: "Nie udało się wczytać planu z konta. Sprawdź połączenie i spróbuj ponownie.",
+    accountSaveFailed: "Nie udało się zapisać na koncie. Zmiany mogą zostać utracone po odświeżeniu.",
+    retry: "Spróbuj ponownie",
   },
   notices: {
     cleared: "Lokalny plan został wyczyszczony.",
@@ -140,10 +143,36 @@ export const pl = {
     copied: "Tydzień skopiowano do schowka.",
     copyFailed: "Nie udało się skopiować do schowka.",
   },
+  account: {
+    signIn: "Zaloguj się",
+    signOut: "Wyloguj się",
+    signedInAs: (email: string) => `Zalogowano jako ${email}`,
+    title: "Zaloguj się do Run Week",
+    intro: "Konto zapisuje plan i jest wymagane do połączenia z Garmin. Bez logowania plan jest zapisywany tylko w tej przeglądarce.",
+    email: "E-mail",
+    sendCode: "Wyślij kod",
+    sendingCode: "Wysyłanie…",
+    codeSent: (email: string) => `Wpisz 6-cyfrowy kod wysłany na ${email}. Wygasa za 10 minut.`,
+    code: "Kod",
+    verify: "Zaloguj się",
+    verifying: "Logowanie…",
+    otherEmail: "Użyj innego adresu",
+    resend: "Wyślij nowy kod",
+    google: "Kontynuuj z Google",
+    or: "lub",
+    back: "Wróć do Run Week",
+    errors: {
+      invalidEmail: "Wpisz prawidłowy adres e-mail.",
+      invalidCode: "Wpisz 6-cyfrowy kod.",
+      codeRejected: "Kod jest nieprawidłowy lub wygasł. Poproś o nowy kod.",
+      rateLimited: "Zbyt wiele kodów dla tego adresu. Spróbuj później.",
+      sendFailed: "Nie udało się wysłać kodu. Spróbuj ponownie.",
+      failed: "Logowanie nie powiodło się. Spróbuj ponownie.",
+    },
+  },
   garmin: {
     statusFailed: "Nie udało się sprawdzić połączenia Garmin. Odśwież stronę, aby spróbować ponownie.",
     disconnectFailed: "Nie udało się odłączyć Garmin. Spróbuj ponownie.",
-    localDeleteFailed: "Garmin odłączony, ale nie usunięto lokalnych odwołań. Wyczyść dane witryny w przeglądarce.",
     connect: "Połącz z Garmin",
     disconnect: "Odłącz Garmin",
     scope: "Biegi do wysłania",
@@ -157,6 +186,11 @@ export const pl = {
       const text = form === "one" ? "trening wysłany" : form === "few" ? "treningi wysłane" : "treningów wysłanych";
       return `${count} ${text} do Garmin.`;
     },
+    alreadySent: (count: number) => {
+      const form = new Intl.PluralRules("pl").select(count);
+      const text = form === "one" ? "trening był już" : form === "few" ? "treningi były już" : "treningów było już";
+      return `${count} ${text} w Garmin.`;
+    },
     removeWeek: "Usuń tydzień z Garmin",
     removeDay: "Usuń z Garmin",
     removing: "Usuwanie…",
@@ -168,7 +202,7 @@ export const pl = {
     confirmRemoveWeekTitle: "Usunąć tydzień treningowy z Garmin Connect?",
     confirmRemoveDayTitle: "Usunąć trening z Garmin Connect?",
     confirmRemove: "Usuń",
-    confirmRemoveWeekBody: (count: number) => `Treningi wysłane z tej przeglądarki (${count}) zostaną usunięte z Garmin Connect, kalendarza Garmin i zegarka po następnej synchronizacji.`,
+    confirmRemoveWeekBody: (count: number) => `Treningi wysłane z tego konta (${count}) zostaną usunięte z Garmin Connect, kalendarza Garmin i zegarka po następnej synchronizacji.`,
     confirmRemoveDayBody: (day: string) => `Trening z dnia ${day} zostanie usunięty z Garmin Connect, kalendarza Garmin i zegarka po następnej synchronizacji.`,
     helpLabel: "Pomoc Garmin",
     helpTitle: "Gdzie znaleźć treningi na Garmin",
@@ -179,7 +213,7 @@ export const pl = {
       "Na zegarku otwórz kalendarz treningowy (zwykle Trening > Kalendarz treningów). Garmin pokazuje treningi z aplikacji partnerskich, takich jak Run Week, w kalendarzu, a nie na liście Treningi.",
       "W zaplanowanym dniu zegarek może zaproponować trening po rozpoczęciu biegu.",
       "Garmin Connect nie pozwala edytować ani usuwać treningów z aplikacji partnerskich. Aby zmienić bieg, użyj „Usuń z Garmin” w Run Week, a potem wyślij go ponownie.",
-      "Zastąpić lub usunąć można tylko treningi wysłane z tej przeglądarki.",
+      "Wysłane biegi są zapisywane na koncie Run Week, więc widać je w każdej karcie i na każdym urządzeniu. Biegi, które już są w Garmin, nie są wysyłane ponownie.",
     ],
     connected: "Połączono konto Garmin Connect.",
     connectFailed: "Autoryzacja Garmin Connect nie powiodła się.",

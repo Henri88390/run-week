@@ -9,10 +9,6 @@ const TIMEOUT_MS = 15_000;
 const DEFAULT_REFRESH_LIFETIME_SECONDS = 90 * 24 * 3600;
 
 export type GarminTokens = {
-  /** Credential-derived HMAC, retained across refresh-token rotation. */
-  uploadIdentity?: string;
-  consentVersion?: string;
-  consentAt?: number;
   accessToken: string;
   refreshToken: string;
   /** Epoch milliseconds. */

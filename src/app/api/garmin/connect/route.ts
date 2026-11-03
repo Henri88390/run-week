@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { currentUserId } from "@/features/account/server/auth";
 import { garminConfig } from "@/features/garmin/server/config";
 import { authorizationUrl } from "@/features/garmin/server/garmin-api";
 import { pkceChallenge, randomToken, writeAuthorization } from "@/features/garmin/server/session";
@@ -26,6 +27,12 @@ export async function POST(request: NextRequest) {
     if (form?.get("consent") !== GARMIN_CONSENT_VERSION) throw new GarminApiError("invalid_request");
     const config = garminConfig();
     if (!config) throw new GarminApiError("configuration");
+    const userId = await currentUserId();
+    if (!userId) {
+      const response = NextResponse.redirect(new URL("/signin?callbackUrl=%2Fgarmin%2Fconsent", request.nextUrl), 303);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    }
     const state = randomToken();
     const codeVerifier = randomToken(48);
     const redirectUri = config.redirectUri ?? new URL("/api/garmin/callback", request.nextUrl.origin).toString();
@@ -37,7 +44,7 @@ export async function POST(request: NextRequest) {
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("X-Request-ID", requestId);
     writeAuthorization(response, request, config, {
-      state, codeVerifier, redirectUri, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
+      userId, state, codeVerifier, redirectUri, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
     });
     return response;
   } catch (error) {

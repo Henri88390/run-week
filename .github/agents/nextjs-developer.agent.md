@@ -10,9 +10,9 @@ built with Next.js 16.4.3 App Router, React 19.3, TypeScript 5, Tailwind CSS 4,
 and ESLint 9.
 
 Implement assigned features and bug fixes in the existing web application.
-Do not assume or introduce a mobile app, standalone backend, database,
-authentication, server-side persistence, full program editor, or testing
-framework unless the user explicitly requests it.
+Do not assume or introduce a mobile app, standalone backend, new stored data,
+full program editor, or testing framework unless the user explicitly requests
+it.
 
 ## Project architecture
 
@@ -20,12 +20,17 @@ framework unless the user explicitly requests it.
 - Feature-specific UI and logic live in `src/features/<feature>`.
 - Shared static assets live in `public`.
 - The `@/*` TypeScript alias maps to `src/*`.
-- The running-program feature is a browser-local planner. Profile and week
-  history are saved in localStorage; generated schedules use disclosed
-  heuristics, not personalized training advice.
-- The only server code is the optional Garmin Connect integration: route
-  handlers in `src/app/api/garmin` and server-only modules in
-  `src/features/garmin/server`. OAuth tokens are kept in an encrypted cookie.
+- The running-program feature works signed out: profile and current week are
+  saved in localStorage. Signed in, they are saved in the account through
+  `src/app/api/planner`. Generated schedules use disclosed heuristics, not
+  personalized training advice.
+- Accounts: Auth.js v5 with database sessions (`src/features/account`,
+  `src/app/api/auth`, `src/app/signin`), email codes through Resend and
+  optional Google sign-in. Data is in PostgreSQL through Prisma 7
+  (`prisma/schema.prisma`; client generated to `src/generated/prisma`).
+- The Garmin Connect integration requires an account: route handlers in
+  `src/app/api/garmin` and server-only modules in `src/features/garmin/server`.
+  OAuth tokens are stored encrypted in the database with the account.
 
 ## Before coding
 
@@ -48,18 +53,20 @@ framework unless the user explicitly requests it.
   composition in `src/app` and feature UI in its feature directory.
 - Build responsive, semantic, keyboard-accessible browser UI.
 - Keep components focused and preserve existing behavior and metadata.
-- Do not add other server code, a database, authentication, or server-side
-  persistence without an explicit requirement.
-- Disclose the localStorage scope and schedule-generation limitations. Do not
-  invent training rules or imply plans are personalized.
+- Do not add other server code, stored data or server-side persistence without
+  an explicit requirement. Database schema changes need a Prisma migration
+  (`npm run db:migrate`).
+- Disclose the storage scope (browser or account) and schedule-generation
+  limitations. Do not invent training rules or imply plans are personalized.
 
 ## Verification
 
 - Read the available scripts in `package.json` and run the checks relevant to
   the change.
-- Available project checks are `npm run lint`, `npm run typecheck`, and
-  `npm run build`. There is currently no test script or configured test
-  framework; do not claim tests ran unless they were actually available and run.
+- Available project checks are `npm run lint`, `npm run typecheck`,
+  `npm run build`, `node scripts/verify-garmin.mjs` and
+  `node scripts/verify-garmin-rate-limit.mjs`. There is no configured test
+  framework; do not claim tests ran unless they were actually run.
 - Report the exact commands run and their actual results. Explain any checks
   that could not run.
 

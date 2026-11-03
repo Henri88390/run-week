@@ -194,7 +194,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   } | null>(null);
   const garminBusy = garminSending !== null || garminRemoving !== null;
   const sentDates = (days: number[]) =>
-    days.map((day) => addDays(week.startDate, day)).filter((date) => garmin.sentWorkouts[date] !== undefined);
+    days.map((day) => addDays(week.startDate, day)).filter((date) => garmin.isSent(week.startDate, date));
   const allDays = [0, 1, 2, 3, 4, 5, 6];
   const [garminResult, setGarminResult] = useState<{
     target: "week" | number;
@@ -233,6 +233,22 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
     const timeout = window.setTimeout(() => setCopyStatus(null), 3000);
     return () => window.clearTimeout(timeout);
   }, [copyStatus]);
+
+  const { loadWeek } = garmin;
+  useEffect(() => {
+    if (!garminActive) return;
+    const controller = new AbortController();
+    // Sent workouts are recorded in the account; reread them when the tab regains focus.
+    const load = () => {
+      if (document.visibilityState === "visible") void loadWeek(week.startDate, controller.signal);
+    };
+    load();
+    window.addEventListener("focus", load);
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", load);
+    };
+  }, [garminActive, loadWeek, week.startDate]);
 
   function weekAsText(): string {
     const lines = [
@@ -284,14 +300,15 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   function garminMessage(
-    { count, error, requestId, retryAfterSeconds }: GarminSendResult,
+    { count, existing = 0, error, requestId, retryAfterSeconds }: GarminSendResult,
     action: "send" | "remove" = "send",
   ): string {
     const done = count > 0 ? (action === "send" ? t.garmin.sent(count) : t.garmin.removed(count)) : "";
+    const already = existing > 0 ? t.garmin.alreadySent(existing) : "";
     const reference = error && requestId ? `${t.garmin.reference}: ${requestId}` : "";
     const retry = error === "rateLimited" && retryAfterSeconds !== undefined
       ? t.garmin.retryAfter(retryAfterSeconds) : "";
-    return [done, error ? t.garmin[error] : "", retry, reference].filter(Boolean).join(" ");
+    return [done, already, error ? t.garmin[error] : "", retry, reference].filter(Boolean).join(" ");
   }
 
   async function removeFromGarmin(target: "week" | number, resultTarget: "week" | number = target) {
@@ -299,7 +316,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
     if (dates.length === 0) return;
     setGarminRemoving(target);
     setGarminResult(null);
-    const result = await garmin.remove(dates);
+    const result = await garmin.remove(week.startDate, dates);
     setGarminRemoving(null);
     setGarminResult({ target: resultTarget, message: garminMessage(result, "remove"), tone: result.error ? "error" : "success" });
   }
@@ -423,7 +440,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
               )}
             </span>
           );
-          const isSent = Boolean(workout) && garmin.connected && garmin.sentWorkouts[calendarDate] !== undefined;
+          const isSent = Boolean(workout) && garmin.connected && garmin.isSent(week.startDate, calendarDate);
           return (
             <li
               key={i}

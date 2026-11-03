@@ -1,8 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { connection, NextResponse, type NextRequest } from "next/server";
+import { currentUserId } from "@/features/account/server/auth";
 import { garminConfig } from "@/features/garmin/server/config";
 import { requestTokens } from "@/features/garmin/server/garmin-api";
-import { clearAuthorization, readAuthorization, writeSession } from "@/features/garmin/server/session";
+import { clearAuthorization, readAuthorization } from "@/features/garmin/server/session";
+import { saveConnection } from "@/features/garmin/server/store";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
 import { failureDetails, GarminApiError, logGarminFailure, newRequestId } from "@/features/garmin/server/diagnostics";
 import type { GarminErrorCode } from "@/features/garmin/sync-request";
@@ -35,17 +37,18 @@ export async function GET(request: NextRequest) {
       || request.nextUrl.searchParams.has("error")
       || !code || code.length > 2048 || !state || state.length !== 43
       || !sameState(state, authorization.state)) throw new GarminApiError("invalid_request");
+    // The connection belongs to the account that started the authorization.
+    if (await currentUserId() !== authorization.userId) throw new GarminApiError("invalid_request");
     const tokens = await requestTokens(config, {
       grant_type: "authorization_code",
       code,
       code_verifier: authorization.codeVerifier,
       redirect_uri: authorization.redirectUri,
     });
-    const response = finish("connected");
-    writeSession(response, request, config, {
-      ...tokens, consentVersion: authorization.consentVersion, consentAt: authorization.consentAt,
+    await saveConnection(config, authorization.userId, tokens, {
+      version: authorization.consentVersion, at: new Date(authorization.consentAt),
     });
-    return response;
+    return finish("connected");
   } catch (error) {
     logGarminFailure(requestId, "callback", error);
     const code = failureDetails(error).code;

@@ -17,10 +17,11 @@ Check:
 - Tests or verification gaps, regressions, and whether the sample running plan
   remains clearly identified as a heuristic rather than personalized advice.
 
-Do not assume a database, account system, or server-side persistence exists.
-Profile and week history use browser localStorage. The only server code is the
-optional Garmin Connect integration (`src/app/api/garmin`), which keeps OAuth
-tokens in an encrypted httpOnly cookie. Do not treat schedule
+Signed out, profile and current week use browser localStorage. Optional
+accounts (Auth.js with database sessions, PostgreSQL via Prisma) store the
+planner, the Garmin connection (encrypted OAuth tokens) and sent-workout
+records. Check that account routes authorize by the session user and never by
+client-supplied IDs. Do not treat schedule
 generation as personalized training logic.
 
 Return actionable findings with severity and file references. If no significant

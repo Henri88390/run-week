@@ -1,7 +1,7 @@
 # Run Week
 
-A frontend-first browser-local running planner, built with Next.js
-App Router, React, TypeScript, Tailwind CSS, and ESLint.
+A running planner built with Next.js App Router, React, TypeScript, Tailwind
+CSS and ESLint, with optional accounts (Auth.js, PostgreSQL through Prisma).
 
 ![Setup form](docs/screenshots/setup.png)
 
@@ -11,15 +11,21 @@ App Router, React, TypeScript, Tailwind CSS, and ESLint.
 
 ## Getting started
 
-Use Node.js 24 LTS and npm. From this directory:
+Use Node.js 24 LTS, npm and Docker (or another PostgreSQL 15+ server). From
+this directory:
 
 ```sh
-npm ci
+npm ci                  # also generates the Prisma client
+cp .env.example .env.local   # set AUTH_SECRET; adjust DATABASE_URL if needed
+docker compose up -d    # local PostgreSQL on port 5432
+npm run db:migrate
 npm run dev
 ```
 
 Open [localhost:3000](http://localhost:3000).
-On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
+On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`. Without
+`AUTH_RESEND_KEY`, development sign-in codes are printed to the dev server
+console.
 
 ## Commands
 
@@ -30,33 +36,38 @@ On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 | `npm run typecheck` | Generate route types and check TypeScript |
 | `npm run build` | Create the production build |
 | `npm start` | Serve the production build |
+| `npm run db:migrate` | Create and apply a migration in development (`prisma migrate dev`) |
+| `npm run db:deploy` | Apply pending migrations in production (`prisma migrate deploy`) |
 
 ## Structure
 
 ```text
 .github/
   agents/                 Project-specific coding and review agents
+prisma/                   Database schema and migrations
 src/
-  app/                    Routes, root layout, metadata, global styles
+  app/                    Routes, API route handlers, root layout, global styles
   features/
+    account/              Auth.js configuration, sign-in UI, privacy controls
     i18n/                 Locales, translated messages, language selector
     running-programs/
       components/         Running-program UI
       types.ts            Domain types independent of React
       domain.ts           Pure VDOT, schedule and workout generation functions
-      storage.ts          Versioned localStorage validation
-      use-planner-store.ts Hydration-safe browser store
+      storage.ts          Versioned planner validation
+      use-planner-store.ts Hydration-safe browser store (signed out)
+      use-account-planner.ts Account planner store (signed in)
     garmin/               Garmin Connect client hook and server-only API code
+  generated/prisma/       Generated Prisma client (not committed)
 public/                   Static assets
 ```
 
-The home page supports performance/profile setup and a current-week plan. Profile
-and the current week are saved only in this browser's localStorage. There is no
-account, database or cross-device sync. The only server code is the optional
-Garmin Connect integration described below.
-Clearing browser data deletes the planner. Failed writes show an in-memory-only
-warning; invalid saved data is not silently overwritten. System fonts keep builds
-independent of external font services.
+The home page supports performance/profile setup and a current-week plan.
+Signed out, the profile and current week are saved only in this browser's
+localStorage; clearing browser data deletes them. Signed in, they are saved in
+the account and shared across devices. Failed writes show a warning; invalid
+saved data is not silently overwritten. System fonts keep builds independent of
+external font services.
 
 VDOT uses the Daniels–Gilbert race-performance equations. Changing the
 performance distance prefills the race time with the equivalent time for the
@@ -160,21 +171,57 @@ a compatible Garmin device using Garmin Connect or the device's supported
 file-transfer method. Easy runs do not have FIT downloads; files are generated
 in the browser and are not uploaded automatically.
 
+## Accounts
+
+Accounts are optional; everything except Garmin Connect works signed out.
+`/signin` offers a six-digit email code (Auth.js Resend provider, valid 10
+minutes) and, when `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` are set, Google
+sign-in. A Google sign-in with the same verified email joins the existing
+account. Sessions are stored in the database (30-day HttpOnly cookie). Only
+the latest code for an email is valid; at most 5 codes per email per hour are
+sent, and 5 wrong entries invalidate the pending code. Provider OAuth tokens
+are not stored.
+
+When signed in, the planner is loaded from and saved to the account
+(`GET`/`PUT /api/planner`) instead of localStorage. If the account has no plan,
+the setup form is shown; the browser copy is left unchanged and returns when
+signed out. The privacy page exports the account (`GET /api/account`) and
+deletes it (`DELETE /api/account`), which removes all its rows.
+
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection used by the app. On Supabase, the pooled URL (port 6543, `?pgbouncer=true`) |
+| `DIRECT_URL` | Optional direct connection for migrations (Supabase direct or session URL) |
+| `AUTH_SECRET` | Random string of at least 32 characters (`npx auth secret`) |
+| `AUTH_RESEND_KEY` | Resend API key; required in production for email codes |
+| `AUTH_EMAIL_FROM` | Sender address on a domain verified in Resend |
+| `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Optional Google OAuth client; redirect URI `<origin>/api/auth/callback/google` |
+
+Run `npm run db:deploy` against the production database before deploying a
+version with new migrations. The email body is in English.
+
 ## Garmin Connect
 
 When configured, the week view can send runs to the Garmin Connect calendar.
-The main page shows a persistent connected status and disconnect control, even
-before a training week is created. Connection state is shared with the week and
-workout modal; status-request failures are reported rather than silently hidden.
+Connecting Garmin requires an account; Garmin controls are shown only when
+signed in. The main page shows a persistent connected status and disconnect
+control, even before a training week is created. Connection state is shared with
+the week and workout modal; status-request failures are reported rather than
+silently hidden.
 Connected users can send the week from its Garmin controls or one run from its
 workout modal: the whole week (workouts and long run, or all runs) or a single day from the
-day dialog. Each run becomes a Garmin workout scheduled on its date. Sending a
-day again replaces the workout previously sent from this browser for that date
-(the sent workout IDs are kept in localStorage, `run-week.garmin.v1`).
+day dialog. Each run becomes a Garmin workout scheduled on its date. Each sent
+workout is recorded in the database with its date and Garmin workout ID (one per
+day per account). Uploads skip days already recorded and report them as already
+in Garmin instead of failing; concurrent uploads of the same day keep one
+workout and delete the duplicate. The week view reads the recorded days
+(`GET /api/garmin/workouts?weekStart=`) when it opens and on window focus, so
+every tab and device shows the same state. Run Week does not read the Garmin
+calendar.
 Garmin Connect does not let users edit or delete workouts created by a partner
 app, so the week controls and workout modal also offer "Remove from Garmin"
-(`DELETE /api/garmin/workouts`), which deletes the workouts sent from this
-browser for those dates, along with their calendar entries.
+(`DELETE /api/garmin/workouts`), which deletes the recorded workouts for those
+dates, along with their calendar entries.
 The connect button uses a locally hosted Garmin wordmark from the
 [user-supplied logo source](https://zonalogo.com/garmin-logo-png-svg);
 Garmin branding remains Garmin's trademark. Verify its use against the branding
@@ -196,11 +243,11 @@ application with the workout import permission. Copy `.env.example` to
 | --- | --- |
 | `GARMIN_CLIENT_ID` | Application consumer key |
 | `GARMIN_CLIENT_SECRET` | Application consumer secret |
-| `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt the session cookie |
+| `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt stored Garmin tokens and the authorization cookie, and to derive quota keys |
 | `UPSTASH_REDIS_REST_URL` | Optional HTTPS REST endpoint; omit both Redis variables for per-process memory limits |
 | `UPSTASH_REDIS_REST_TOKEN` | Server-only read/write REST token when Redis is configured (not the read-only token) |
 | `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Must be an HTTPS URL (HTTP is allowed only on localhost), without credentials or a fragment; register the exact URI with Garmin. |
-| `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, CDN/proxy and managed logging processors. |
+| `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, database, CDN/proxy and managed logging processors. |
 
 For `https://run-week.fyi`, register the OAuth callback as
 `https://run-week.fyi/api/garmin/callback` and the privacy policy as
@@ -212,12 +259,13 @@ For Garmin's branding image, use
 300 x 300 pixels; it is not used as a favicon.
 
 The privacy policy and consent pages are in English; the planner footer link is
-localized. Consent is required before authorization and its version/time are
-stored in the encrypted OAuth cookies; legacy sessions require reconnection.
-Disconnect clears both authorization and token cookies, and local Garmin IDs.
-The privacy page provides local JSON export, consent withdrawal and confirmed
-local deletion. It never exports credentials or claims to delete Garmin-side
-workouts. Users manage those and revoke the OAuth grant in Garmin Connect.
+localized. Consent is required before authorization; its version and time are
+stored with the connection, and connections under an earlier version require
+reconnection. Disconnect deletes the stored tokens and sent-workout records.
+The privacy page provides JSON export of account and browser data, consent
+withdrawal, browser-data deletion and account deletion. It never exports
+credentials or claims to delete Garmin-side workouts. Users manage those and
+revoke the OAuth grant in Garmin Connect.
 
 Before submitting the policy, identify all actual infrastructure processors in
 `PRIVACY_HOSTING_PROVIDER`, verify their logging/retention settings and ensure the
@@ -228,9 +276,10 @@ or OAuth callback query strings. Have the deployment-specific policy reviewed;
 this page is not a guarantee of Garmin approval or legal compliance.
 
 Without them, the Garmin controls are hidden. Authorization uses OAuth 2.0 with
-PKCE. Tokens are stored only in an encrypted, httpOnly cookie; no planner or
-token database is used. Redis stores only short-lived quota metadata. Disconnecting deletes the cookie; revoke access in Garmin Connect
-account settings.
+PKCE; the callback must be completed by the account that started it. Tokens are
+stored AES-256-GCM encrypted in the database with the account and never reach
+browser JavaScript. Redis stores only short-lived quota metadata. Disconnecting
+deletes the stored tokens; revoke access in Garmin Connect account settings.
 
 ### Distributed upload limits (Upstash Redis)
 
@@ -269,14 +318,11 @@ process, resets on restart/redeployment and is not shared across Vercel instance
 Use Redis for reliable distributed production protection; the memory fallback is
 best-effort on serverless deployments.
 
-This integration does not currently receive a stable Garmin user ID. Its quota
-identity is an HMAC of the initial refresh credential under the session secret,
-stored inside the authenticated encrypted cookie and carried across refresh-token
-rotation, access-token changes and cookie re-encryption. Raw credentials, cookie
-bytes and Garmin user IDs never go to Redis or diagnostics. This is a
-per-authorization identity, not a guaranteed cross-browser/account quota:
-a new independent authorization can have another identity. Rotating the session
-secret invalidates sessions and quota identities; do not rotate it routinely.
+The quota identity is an HMAC of the account ID under the Garmin session
+secret, so limits apply per account across browsers and devices. Raw account
+IDs, credentials and Garmin user IDs never go to Redis or diagnostics. Rotating
+the session secret disconnects every account and resets quota identities; do
+not rotate it routinely.
 
 Upstash receives only the derived pseudonymous key, timestamp, UTC-day counter
 and TTL (plus service network metadata), not tokens, workouts or Garmin activity
@@ -304,7 +350,7 @@ or additional environment variables are needed. These are runtime/function logs,
 not browser console or build logs.
 
 Each entry includes a generated request ID, a fixed operation (`refresh`,
-`replace`, `create`, `schedule`, `cleanup`, OAuth/status/disconnect, etc.), a
+`create`, `schedule`, `record`, `cleanup`, OAuth/status/disconnect, etc.), a
 category, a safe frontend code, and, when applicable, the upstream HTTP status
 and number of completed runs. Upload responses include the same ID in
 `X-Request-ID` and JSON; localized week and workout-modal errors display it as a
@@ -313,8 +359,9 @@ reference. Other Garmin endpoints include it in the response header.
 Uploads also emit `console.info` events sharing that request ID:
 `garmin_upload_request` (the frontend JSON body), `garmin_api_request` (the
 exact workout payload sent to Garmin, plus schedule/delete targets),
-`garmin_api_response` (created workout ID) and `garmin_upload_result` (HTTP
-status, error code and results). Removals emit `garmin_delete_request`,
+`garmin_api_response` (created workout ID) and
+`garmin_upload_result` (HTTP status, error code and results, with `existing: true`
+for skipped days). Removals emit `garmin_delete_request`,
 `garmin_api_request` (`operation: "delete"`) and `garmin_delete_result`.
 Filter by request ID to follow one upload.
 Payloads above 16,000 characters are truncated. Failures from the Garmin
@@ -366,7 +413,8 @@ Translations live in `src/features/i18n/messages`; `en.ts` defines the message
 shape and the other locales must satisfy it.
 
 Language is resolved in the browser rather than through locale URL segments,
-because the app is a single static page with browser-only data. FIT workout
+because the app is a single page whose language choice is stored in the
+browser. FIT workout
 names are converted to ASCII for Garmin watch fonts; Russian, Ukrainian and
 Belarusian FIT files use English names.
 

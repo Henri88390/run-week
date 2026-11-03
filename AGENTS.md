@@ -17,15 +17,23 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Prefer Server Components; add Client Components only for interactivity or
   browser APIs. Follow the installed Next.js documentation under
   `node_modules/next/dist/docs/` before changing framework APIs.
-- The running-program planner saves its profile and week history in browser
-  localStorage. It has no database or account system. The only server code is
-  the optional Garmin Connect integration (`src/app/api/garmin`,
-  `src/features/garmin`), which keeps OAuth tokens in an encrypted cookie.
+- Optional user accounts use Auth.js v5 (`src/features/account`,
+  `src/app/api/auth`) with email codes (Resend) and Google sign-in, stored in
+  PostgreSQL through Prisma 7 (`prisma/schema.prisma`, client generated to
+  `src/generated/prisma`). Signed out, the planner is saved in browser
+  localStorage; signed in, it is saved in the account (`src/app/api/planner`).
+  Everything except Garmin works signed out.
+- The Garmin Connect integration (`src/app/api/garmin`, `src/features/garmin`)
+  requires an account. Encrypted OAuth tokens and sent-workout records are
+  stored with the account in the database.
   Generated weeks use disclosed heuristics, not personalized training advice.
-- Do not add other server code, authentication, a database, or server-side
-  persistence without an explicit requirement.
+- Do not add other server code, server-side persistence or data stored with the
+  account without an explicit requirement. Schema changes need a Prisma
+  migration (`npm run db:migrate`).
 - Use `npm run lint`, `npm run typecheck`, and `npm run build` for applicable
-  checks. There is currently no test script or configured test framework.
+  checks. `node scripts/verify-garmin.mjs` and
+  `node scripts/verify-garmin-rate-limit.mjs` check the Garmin routes with
+  mocks. There is no configured test framework.
 
 ## Next.js and React
 

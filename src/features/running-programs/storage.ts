@@ -127,7 +127,11 @@ function normalizeWeek(week: StoredWeek): TrainingWeek {
 
 /** Validate untrusted browser data before allowing it into the planner. */
 export function parsePlanner(raw: string): PlannerState {
-  const value: unknown = JSON.parse(raw);
+  return parsePlannerValue(JSON.parse(raw));
+}
+
+/** Validate an untrusted parsed planner (browser storage, request body or database). */
+export function parsePlannerValue(value: unknown): PlannerState {
   if (!isRecord(value)) throw new Error("Unrecognized saved planner.");
 
   const profile = parseStoredProfile(value.profile);

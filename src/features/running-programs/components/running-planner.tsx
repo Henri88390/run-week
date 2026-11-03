@@ -3,22 +3,33 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
+import { AccountMenu } from "@/features/account/components/account-menu";
 import { LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
+import { useAccountPlanner } from "../use-account-planner";
 import { savePlanner, usePlannerStore } from "../use-planner-store";
 import { ConfirmationDialog } from "./confirmation-dialog";
 import { ProfileForm } from "./profile-form";
 import { WeekView } from "./week-view";
-import type { Profile } from "../types";
+import type { PlannerState, Profile } from "../types";
 import { useGarmin } from "@/features/garmin/use-garmin";
 
 type Action = "update-setup" | "reset" | null;
 
 export function RunningPlanner() {
-  const { loaded, state, warning, unreadable } = usePlannerStore();
+  const { data: session, status: sessionStatus } = useSession();
+  const userId = sessionStatus === "authenticated" ? session.user?.id ?? null : null;
+  const local = usePlannerStore();
+  const account = useAccountPlanner(userId);
+  // Signed in, the account planner is used; the browser copy stays untouched.
+  const store = userId ? account : local;
+  const save = (next: PlannerState | null) => userId ? void account.save(next) : savePlanner(next);
+  const { state, warning, unreadable } = store;
+  const loaded = sessionStatus !== "loading" && store.loaded;
   const { t } = useI18n();
-  const garmin = useGarmin();
+  const garmin = useGarmin(userId);
   const [action, setAction] = useState<Action>(null);
   const [notice, setNotice] = useState<"" | "cleared" | "created">("");
   const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
@@ -46,11 +57,11 @@ export function RunningPlanner() {
       : null;
   const confirm = () => {
     if (action === "reset") {
-      savePlanner(null);
+      save(null);
       setNotice("cleared");
     } else if (state && current && pendingProfile && action === "update-setup") {
       const regenerated = generateWeek(pendingProfile, current.startDate, current.number);
-      savePlanner({
+      save({
         ...state,
         profile: pendingProfile,
         currentWeek: regenerated,
@@ -63,16 +74,18 @@ export function RunningPlanner() {
   const garminNotice = garmin.notice === "error" ? t.garmin.connectFailed
     : garmin.notice === "unavailable" ? t.garmin.unavailable
       : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
-        : garmin.notice === "localDeleteFailed" ? t.garmin.localDeleteFailed
-          : garmin.notice === "statusFailed" ? t.garmin.statusFailed
-            : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice] : "";
+        : garmin.notice === "statusFailed" ? t.garmin.statusFailed
+          : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice] : "";
+  const accountLoadFailed = Boolean(userId) && account.loadFailed;
 
   return <div className="space-y-4">
-    {warning && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">{t.storage[warning]}</p>}
+    {warning && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">{t.storage[warning]}
+      {accountLoadFailed && <button type="button" className="ml-2 underline" onClick={account.retry}>{t.storage.retry}</button>}
+    </p>}
     <p role="status" className="text-sm text-emerald-900">{notice && t.notices[notice]}</p>
     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
       {garminNotice && <p role="alert" className="min-w-0 text-sm text-amber-900">{garminNotice}</p>}
-      {garmin.configured && !garmin.connected && <a href="/api/garmin/connect"
+      {garmin.configured && userId && !garmin.connected && <a href="/api/garmin/connect"
         aria-label={t.garmin.connect} title={t.garmin.connect}
         className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
         <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[13px] w-auto" unoptimized />
@@ -92,9 +105,10 @@ export function RunningPlanner() {
         </button>
       }
       <LanguageSelect className="ml-auto sm:ml-0" />
+      <AccountMenu />
     </div>
 
-    {unreadable ? <section className="panel">
+    {accountLoadFailed ? null : unreadable ? <section className="panel">
       <div className="flex items-start justify-between gap-4">
         <h1 className="text-xl font-semibold">{t.unavailable.title}</h1>
       </div>
@@ -126,7 +140,7 @@ export function RunningPlanner() {
                 setPendingProfile(profile);
                 setAction("update-setup");
               } else {
-                savePlanner(createPlanner(profile, new Date()));
+                save(createPlanner(profile, new Date()));
                 setNotice("created");
               }
             }} />

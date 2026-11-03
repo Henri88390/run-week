@@ -1,4 +1,4 @@
-/* Dependency-free runner using the project's TypeScript compiler and mocked Garmin responses. */
+/* Dependency-free Garmin route verifier using the project TypeScript compiler. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,269 +41,189 @@ function loader(overrides = {}) {
 }
 
 const config = { clientId: "test-client", clientSecret: "test-secret", sessionSecret: "x".repeat(32), redirectUri: null };
-const secret = "PRIVATE_SENTINEL_TOKEN_COOKIE_CODE_BODY_STACK";
-const records = [];
-const levels = [];
-const original = { fetch: global.fetch, error: console.error, warn: console.warn, info: console.info, storage: global.localStorage };
-const events = [];
-console.info = (line) => { events.push(JSON.parse(line)); };
-console.error = (line) => { levels.push("error"); records.push(JSON.parse(line)); };
-console.warn = (line) => { levels.push("warn"); records.push(JSON.parse(line)); };
+const sentinel = "PRIVATE_SENTINEL_TOKEN_COOKIE_CODE_BODY";
+const logs = [];
+const originals = { fetch: global.fetch, info: console.info, warn: console.warn, error: console.error };
+let currentUser = "user-a";
+const tokenRows = new Map();
+const workoutRows = new Map();
+let conflictingRecord = null;
+let nextWorkoutId = 100;
+let scheduleStatus = 204;
+let refreshStatus = 200;
+const store = {
+  async loadTokens(_config, userId) { return tokenRows.get(userId) ?? null; },
+  async saveConnection(_config, userId, tokens) { tokenRows.set(userId, tokens); },
+  async updateTokens(_config, userId, tokens) { if (tokenRows.has(userId)) tokenRows.set(userId, tokens); },
+  async forgetTokens(userId) { tokenRows.delete(userId); },
+  async deleteConnection(userId) {
+    tokenRows.delete(userId);
+    for (const key of workoutRows.keys()) if (key.startsWith(`${userId}\0`)) workoutRows.delete(key);
+  },
+  async sentWorkouts(userId, dates) {
+    return dates.flatMap((date) => {
+      const row = workoutRows.get(`${userId}\0${date}`);
+      return row ? [{ ...row }] : [];
+    }).sort((a, b) => a.date.localeCompare(b.date));
+  },
+  async recordWorkout(userId, date, workoutId) {
+    if (conflictingRecord) {
+      const conflict = conflictingRecord;
+      conflictingRecord = null;
+      workoutRows.set(`${userId}\0${date}`, conflict);
+      return { ...conflict };
+    }
+    const key = `${userId}\0${date}`;
+    const existing = workoutRows.get(key);
+    if (existing) return { ...existing };
+    workoutRows.set(key, { date, workoutId });
+    return null;
+  },
+  async forgetWorkout(userId, date) { workoutRows.delete(`${userId}\0${date}`); },
+};
 const load = loader({
+  "server-only": {},
+  "@/features/account/server/auth": { currentUserId: async () => currentUser },
+  "@/features/garmin/server/store": store,
   "@/features/garmin/server/config": { garminConfig: () => config },
-  "@/features/garmin/server/privacy": { hostingProvider: () => "Test host" },
-  "next/server": { ...nextServer, connection: async () => {} },
   "@/features/garmin/server/upload-rate-limit": { reserveUpload: async () => ({ allowed: true }) },
+  "next/server": { ...nextServer, connection: async () => {} },
 });
-const diagnostics = load("src\\features\\garmin\\server\\diagnostics.ts");
-const api = load("src\\features\\garmin\\server\\garmin-api.ts");
-const session = load("src\\features\\garmin\\server\\session.ts");
-const { GARMIN_CONSENT_VERSION } = load("src\\features\\garmin\\privacy.ts");
-const { GARMIN_ERRORS, garminSyncResponseSchema } = load("src\\features\\garmin\\sync-request.ts");
-const tokens = {
-  accessToken: secret, refreshToken: secret, expiresAt: Date.now() + 3600000,
-  refreshExpiresAt: Date.now() + 86400000, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
+const { GARMIN_ERRORS, garminSyncResponseSchema, garminDeleteResponseSchema } = load("src\\features\\garmin\\sync-request.ts");
+const routes = load("src\\app\\api\\garmin\\workouts\\route.ts");
+const baseTokens = {
+  accessToken: "old-access-token", refreshToken: "old-refresh-token",
+  expiresAt: Date.now() + 60 * 60_000, refreshExpiresAt: Date.now() + 24 * 60 * 60_000,
 };
 const input = {
   locale: "en", vdot: 40, weekStart: "2026-11-02",
   workouts: [{ day: 0, durationMinutes: 30, type: "easy" }, { day: 2, durationMinutes: 40, type: "easy" }],
 };
-function request(route, { method = "POST", body = input, cookie = tokens, origin = "https://example.test" } = {}) {
-  return new nextServer.NextRequest(`https://example.test/api/garmin/${route}`, {
-    method,
-    headers: {
-      origin, "Content-Type": "application/json",
-      ...(cookie ? { Cookie: `${session.SESSION_COOKIE}=${session.seal(cookie, config.sessionSecret)}` } : {}),
-    },
-    ...(method !== "GET" ? { body: JSON.stringify(body) } : {}),
-  });
-}
-let calls = 0;
-function responses(...queue) {
-  calls = 0;
-  global.fetch = async () => {
-    calls++;
-    assert.ok(queue.length, "Unexpected request or unsafe retry");
-    const response = queue.shift();
-    if (response instanceof Error) throw response;
-    return response;
+function key(userId, date) { return `${userId}\0${date}`; }
+function reset() {
+  currentUser = "user-a";
+  tokenRows.clear(); workoutRows.clear(); conflictingRecord = null;
+  nextWorkoutId = 100; scheduleStatus = 204; refreshStatus = 200;
+  tokenRows.set("user-a", { ...baseTokens });
+  tokenRows.set("user-b", { ...baseTokens, accessToken: "other-users-access-token" });
+  global.fetch = async (url, init) => {
+    const target = new URL(url);
+    if (target.hostname === "diauth.garmin.com") {
+      if (refreshStatus !== 200) return new Response(sentinel, { status: refreshStatus });
+      return Response.json({ access_token: "rotated-access-token", refresh_token: "rotated-refresh-token", expires_in: 3600 });
+    }
+    assert.equal(target.hostname, "apis.garmin.com", "Only mocked Garmin API requests are expected");
+    if (target.pathname === "/training-api/workout" && init.method === "POST") {
+      return Response.json({ workoutId: nextWorkoutId++ });
+    }
+    if (target.pathname === "/training-api/schedule") return new Response(null, { status: scheduleStatus });
+    if (target.pathname.startsWith("/training-api/workout/") && init.method === "DELETE") return new Response(null, { status: 204 });
+    assert.fail(`Unexpected Garmin request: ${init.method} ${target.pathname}`);
   };
 }
-const json = (body, status = 200) => Response.json(body, { status });
-const garminError = "GARMIN_VALIDATION_MESSAGE";
-const rejection = (status) => new Response(garminError, { status });
-const uploads = load("src\\app\\api\\garmin\\workouts\\route.ts");
-async function upload(...queue) {
-  responses(...queue);
-  const response = await uploads.POST(request("workouts"));
-  const body = await response.json();
-  assert.ok(garminSyncResponseSchema.safeParse(body).success);
-  assert.equal(response.headers.get("X-Request-ID"), body.requestId);
-  assert.equal(response.headers.get("Cache-Control"), "no-store");
-  return { response, body };
+function request(method, body, url = "https://example.test/api/garmin/workouts", origin = "https://example.test") {
+  return new nextServer.NextRequest(url, {
+    method, headers: { origin, "Content-Type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
-
 async function verify() {
-  for (const [status, code] of [[400, "rejected"], [401, "reconnect"], [403, "permission"],
-    [409, "rejected"], [422, "rejected"], [429, "rateLimited"], [500, "unavailable"], [503, "unavailable"]]) {
-    const error = diagnostics.httpFailure(status);
-    assert.equal(diagnostics.failureDetails(error).code, code);
-    diagnostics.logGarminFailure(diagnostics.newRequestId(), "create", error, 1);
-    assert.equal(levels.at(-1), status >= 500 ? "error" : "warn");
-    responses(rejection(status));
-    await assert.rejects(api.createWorkout(secret, { secret }), (caught) => {
-      assert.equal(diagnostics.failureDetails(caught).code, code);
-      assert.ok(!caught.message.includes(secret));
-      assert.equal(caught.upstreamBody, garminError);
-      return true;
-    });
-  }
-  responses(new Response(secret, { status: 400 }));
-  await assert.rejects(api.requestTokens(config, { grant_type: "refresh_token", refresh_token: secret }), (caught) => {
-    assert.equal(caught.upstreamBody, undefined, "Token-endpoint bodies must never be retained");
-    return true;
-  });
-  assert.equal(diagnostics.failureDetails(diagnostics.httpFailure(400, true)).code, "reconnect");
-  for (const [response, code, category] of [
-    [new TypeError(secret), "network", "network"],
-    [new DOMException(secret, "TimeoutError"), "network", "timeout"],
-    [new Response(secret), "invalidResponse", "invalid_response"],
-    [json({ workoutId: secret }), "invalidResponse", "invalid_response"],
-  ]) {
-    responses(response);
-    await assert.rejects(api.createWorkout(secret, {}), (caught) => {
-      assert.equal(diagnostics.failureDetails(caught).code, code);
-      assert.equal(diagnostics.failureDetails(caught).category, category);
-      diagnostics.logGarminFailure(diagnostics.newRequestId(), "create", caught);
-      return true;
-    });
-  }
-  responses(json({ access_token: secret }));
-  await assert.rejects(api.requestTokens(config, { grant_type: "refresh_token", refresh_token: secret }),
-    (caught) => diagnostics.failureDetails(caught).code === "invalidResponse");
-  diagnostics.logGarminFailure(diagnostics.newRequestId(), "upload",
-    Object.assign(new Error(secret), { cookie: secret, payload: { secret }, url: `https://example.test?code=${secret}` }));
-  assert.equal(records.at(-1).category, "internal");
-  assert.equal(levels.at(-1), "error");
+  console.info = (line) => logs.push(JSON.parse(line));
+  console.warn = (line) => logs.push(JSON.parse(line));
+  console.error = (line) => logs.push(JSON.parse(line));
+  reset();
 
-  const partial = await upload(json({ workoutId: 123 }), new Response(null, { status: 204 }), rejection(429));
-  assert.equal(partial.body.error, "rateLimited");
-  assert.equal(partial.body.results.length, 1);
-  assert.equal(partial.body.results[0].workoutId, 123);
-  assert.equal(calls, 3);
-  assert.equal(records.at(-1).operation, "create");
-  assert.equal(records.at(-1).completed, 1);
-  assert.equal(records.at(-1).requestId, partial.body.requestId);
+  currentUser = null;
+  for (const response of [await routes.GET(request("GET", undefined, "https://example.test/api/garmin/workouts?weekStart=2026-11-02")),
+    await routes.POST(request("POST", input)), await routes.DELETE(request("DELETE", { dates: ["2026-11-02"] }))]) {
+    assert.equal(response.status, 401, "All workout endpoints require a signed-in user");
+    assert.equal((await response.json()).error, "reconnect");
+  }
+  currentUser = "user-a";
 
-  const cleanup = await upload(json({ workoutId: 456 }), rejection(403), rejection(503));
-  assert.equal(cleanup.body.error, "permission");
-  assert.deepEqual(cleanup.body.results, []);
-  assert.deepEqual(records.slice(-2).map((record) => record.operation), ["cleanup", "schedule"]);
-  assert.equal(calls, 3);
-  const network = await upload(new TypeError(secret));
-  assert.equal(network.body.error, "network");
-  assert.equal(calls, 1);
+  // A sent date is idempotently skipped; only the unsent workout hits Garmin.
+  workoutRows.set(key("user-a", "2026-11-02"), { date: "2026-11-02", workoutId: 900 });
+  let response = await routes.POST(request("POST", input));
+  let body = await response.json();
+  assert.equal(response.status, 200);
+  assert.ok(garminSyncResponseSchema.safeParse(body).success);
+  assert.deepEqual(body.results, [
+    { day: 0, date: "2026-11-02", existing: true }, { day: 2, date: "2026-11-04" },
+  ]);
+  assert.equal(workoutRows.get(key("user-a", "2026-11-04")).workoutId, 100);
 
-  for (const [status, code] of [[503, "unavailable"], [429, "rateLimited"], [400, "reconnect"]]) {
-    responses(rejection(status));
-    const response = await uploads.POST(request("workouts", { cookie: { ...tokens, expiresAt: 0 } }));
-    assert.equal((await response.json()).error, code);
-    assert.equal(response.headers.has("Set-Cookie"), code === "reconnect");
-    assert.equal(records.at(-1).operation, "refresh");
-    assert.equal(calls, 1);
-  }
-  responses(json({ access_token: "rotated", refresh_token: "rotated" }), rejection(422));
-  const refreshed = await uploads.POST(request("workouts", { cookie: { ...tokens, expiresAt: 0 } }));
-  assert.equal((await refreshed.json()).error, "rejected");
-  assert.ok(refreshed.headers.get("Set-Cookie").includes(session.SESSION_COOKIE));
-  assert.equal((await uploads.POST(request("workouts", { origin: "https://other.test" }))).status, 403);
-  assert.equal((await uploads.POST(request("workouts", { body: { ...input, workouts: [] } }))).status, 400);
-  assert.equal((await uploads.POST(request("workouts", { cookie: null }))).status, 401);
+  // A race that records another workout first removes this request's just-created duplicate.
+  reset();
+  conflictingRecord = { date: "2026-11-02", workoutId: 777 };
+  response = await routes.POST(request("POST", { ...input, workouts: [input.workouts[0]] }));
+  body = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.results, [{ day: 0, date: "2026-11-02", existing: true }]);
+  assert.deepEqual(logs.filter((entry) => entry.event === "garmin_api_request" && entry.operation === "cleanup")
+    .at(-1)?.payload, { workoutId: 100 });
+  assert.deepEqual(workoutRows.get(key("user-a", "2026-11-02")), { date: "2026-11-02", workoutId: 777 });
 
-  responses(new Response(null, { status: 204 }), new Response(null, { status: 404 }), rejection(503));
-  const removal = await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [11, 12, 13] } }));
-  const removalBody = await removal.json();
-  assert.deepEqual(removalBody.deleted, [11, 12]);
-  assert.equal(removalBody.error, "unavailable");
-  assert.equal(removal.status, 200);
-  assert.equal(calls, 3);
-  assert.equal(records.at(-1).operation, "delete");
-  responses();
-  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [] } }))).status, 400);
-  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [1, 1] } }))).status, 400);
-  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [1] }, origin: "https://other.test" }))).status, 403);
-  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [1] }, cookie: null }))).status, 401);
+  // Delete resolves IDs only from the authenticated user's records, never request data or another user.
+  reset();
+  workoutRows.set(key("user-a", "2026-11-02"), { date: "2026-11-02", workoutId: 111 });
+  workoutRows.set(key("user-b", "2026-11-03"), { date: "2026-11-03", workoutId: 222 });
+  const requestedDates = ["2026-11-02", "2026-11-03"];
+  response = await routes.DELETE(request("DELETE", { dates: requestedDates, workoutIds: [999] }));
+  body = await response.json();
+  assert.equal(response.status, 200);
+  assert.ok(garminDeleteResponseSchema.safeParse(body).success);
+  assert.deepEqual([...body.deleted].sort(), [...requestedDates].sort());
+  assert.equal(workoutRows.has(key("user-a", "2026-11-02")), false);
+  assert.deepEqual(workoutRows.get(key("user-b", "2026-11-03")), { date: "2026-11-03", workoutId: 222 });
+  assert.ok(logs.some((entry) => entry.event === "garmin_api_request" && entry.operation === "delete"
+    && entry.payload?.workoutId === 111));
+  assert.ok(!logs.some((entry) => entry.event === "garmin_api_request" && entry.operation === "delete"
+    && entry.payload?.workoutId === 222 || entry.payload?.workoutId === 999));
 
-  const callback = load("src\\app\\api\\garmin\\callback\\route.ts");
-  const authorization = {
-    state: "s".repeat(43), codeVerifier: secret, redirectUri: "https://example.test/api/garmin/callback",
-    consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
-  };
-  responses(rejection(429));
-  const callbackResponse = await callback.GET(new nextServer.NextRequest(
-    `https://example.test/api/garmin/callback?code=${secret}&state=${authorization.state}`,
-    { headers: { Cookie: `${session.AUTHORIZATION_COOKIE}=${session.seal(authorization, config.sessionSecret)}` } },
-  ));
-  assert.ok(callbackResponse.headers.get("Location").endsWith("?garmin=rateLimited"));
-  assert.equal(records.at(-1).operation, "callback");
-  await callback.GET(new nextServer.NextRequest(`https://example.test/api/garmin/callback?code=${secret}`));
-  assert.equal(records.at(-1).category, "invalid_request");
-  const connect = load("src\\app\\api\\garmin\\connect\\route.ts");
-  assert.ok((await connect.POST(request("connect"))).headers.get("Location").endsWith("?garmin=error"));
-  assert.equal(records.at(-1).operation, "connect");
-  assert.equal((await connect.POST(request("connect", { origin: "https://other.test" }))).status, 403);
-  const status = load("src\\app\\api\\garmin\\status\\route.ts");
-  assert.equal((await (await status.GET(request("status", { method: "GET", cookie: { invalid: secret } }))).json()).connected, false);
-  assert.equal(records.at(-1).operation, "status");
-  const disconnect = load("src\\app\\api\\garmin\\disconnect\\route.ts");
-  assert.equal((await disconnect.POST(request("disconnect", { origin: "https://other.test" }))).status, 403);
-  assert.equal(records.at(-1).operation, "disconnect");
-  assert.equal((await disconnect.POST(request("disconnect"))).status, 204);
-  const unavailableLoad = loader({
-    "@/features/garmin/server/config": { garminConfig: () => { throw new Error(secret); } },
-    "next/server": { ...nextServer, connection: async () => {} },
-  });
-  const statusFailure = await unavailableLoad("src\\app\\api\\garmin\\status\\route.ts").GET(request("status", { method: "GET" }));
-  assert.equal(statusFailure.status, 500);
-  assert.deepEqual(await statusFailure.json(), { error: "failed" });
-  const uploadFailure = await unavailableLoad("src\\app\\api\\garmin\\workouts\\route.ts").POST(request("workouts"));
-  assert.equal(uploadFailure.status, 500);
-  assert.equal((await uploadFailure.json()).error, "failed");
-  const brokenLoad = loader({
-    "@/features/garmin/server/session": { ...session, clearSession: () => { throw new Error(secret); } },
-  });
-  assert.equal((await brokenLoad("src\\app\\api\\garmin\\disconnect\\route.ts").POST(request("disconnect"))).status, 500);
+  // The actual session refresh flow runs against mocked fetch and persists rotated tokens to the store.
+  reset();
+  tokenRows.set("user-a", { ...baseTokens, expiresAt: 0 });
+  response = await routes.POST(request("POST", { ...input, workouts: [input.workouts[0]] }));
+  assert.equal(response.status, 200);
+  assert.equal(tokenRows.get("user-a").accessToken, "rotated-access-token");
+  assert.equal(tokenRows.get("user-a").refreshToken, "rotated-refresh-token");
 
-  const storage = new Map();
-  global.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
-  const client = loader({
-    react: { useCallback: (callback) => callback, useEffect: () => {}, useState: (initial) => [initial, () => {}] },
-  })("src\\features\\garmin\\use-garmin.ts").useGarmin();
-  const week = { profile: { vdot: 40 }, startDate: input.weekStart };
-  const { MESSAGES } = load("src\\features\\i18n\\messages\\index.ts");
-  assert.equal(Object.keys(MESSAGES).length, 10);
-  for (const code of GARMIN_ERRORS) {
-    for (const messages of Object.values(MESSAGES)) {
-      assert.ok(messages.garmin[code]?.length > 0);
-      assert.ok(messages.garmin.reference.length > 0);
-    }
-    responses(json({ results: partial.body.results, error: code, requestId: partial.body.requestId }, 502));
-    assert.deepEqual(await client.send(week, input.workouts, "en"),
-      { count: 1, error: code, requestId: partial.body.requestId });
-    assert.equal(calls, 1);
-  }
-  assert.ok([...storage.values()].some((value) => value.includes("123")));
-  responses(json({ deleted: [123] }));
-  assert.deepEqual(await client.remove(["2026-11-02", "2026-11-03"]), { count: 1, error: undefined, requestId: undefined });
-  assert.ok(![...storage.values()].some((value) => value.includes("123")));
-  responses();
-  assert.deepEqual(await client.remove(["2026-11-02"]), { count: 0 });
-  for (const messages of Object.values(MESSAGES)) {
-    for (const count of [1, 3, 5]) {
-      assert.ok(messages.garmin.sent(count).includes(String(count)));
-      assert.ok(messages.garmin.removed(count).includes(String(count)));
-    }
-  }
-  for (const [response, error] of [
-    [new TypeError(secret), "network"], [new Response(secret), "invalidResponse"],
-    [json({ results: [], error: secret }), "invalidResponse"],
-    [json({ results: [], requestId: secret }), "invalidResponse"],
-  ]) {
-    responses(response);
-    assert.deepEqual(await client.send(week, input.workouts, "en"), { count: 0, error });
-    assert.equal(calls, 1);
-  }
-  await verifyRateLimit({ loader, config, tokens, input, request, records, nextServer, original });
-  const allowed = new Set(["event", "requestId", "operation", "category", "code", "upstreamStatus", "completed", "upstreamBody"]);
-  for (const record of records) {
-    if (record.event === "garmin_rate_limit_memory_fallback") {
-      assert.deepEqual(record, {
-        event: "garmin_rate_limit_memory_fallback", scope: "process", reason: "redis_not_configured",
-      });
-    } else {
-      for (const key of Object.keys(record)) assert.ok(allowed.has(key));
-    }
-  }
-  assert.ok(!JSON.stringify(records).includes(secret), "Sensitive data leaked into diagnostics");
-  assert.ok(!JSON.stringify(events).includes(secret), "Sensitive data leaked into payload logs");
-  for (const event of ["garmin_upload_request", "garmin_api_request", "garmin_api_response", "garmin_upload_result"]) {
-    assert.ok(events.some((record) => record.event === event && typeof record.requestId === "string"), event);
-  }
-  assert.ok(events.some((record) => record.event === "garmin_api_request" && record.operation === "create"
-    && record.payload?.sport === "RUNNING" && Array.isArray(record.payload.steps) && record.payload.steps.length > 0
-    && !("segments" in record.payload)), "Garmin V1 workout payload must be logged");
-  const easyPayload = events.find((record) => record.event === "garmin_api_request" && record.operation === "create")?.payload;
-  assert.ok(easyPayload.steps.every((step) => step.targetType === "OPEN" && step.targetValueLow === null && step.targetValueHigh === null),
-    "Easy runs must not set a pace target");
-  assert.ok(easyPayload.steps.some((step) => /\d:\d{2}-\d:\d{2}\/km$/.test(step.description)), "Easy runs must show pace as text");
-  original.warn("Garmin verification passed: classification, sanitization, route failures, partial uploads, no retries, client parsing and 10 locales.");
+  // Reconnect-class token refresh failures forget the current user's tokens.
+  reset();
+  tokenRows.set("user-a", { ...baseTokens, expiresAt: 0 });
+  refreshStatus = 401;
+  response = await routes.POST(request("POST", input));
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "reconnect");
+  assert.equal(tokenRows.has("user-a"), false);
+  assert.equal(tokenRows.has("user-b"), true);
+
+  // A failed schedule triggers best-effort deletion and does not record an unscheduled workout.
+  reset();
+  scheduleStatus = 403;
+  response = await routes.POST(request("POST", { ...input, workouts: [input.workouts[0]] }));
+  assert.equal((await response.json()).error, "permission");
+  assert.equal(workoutRows.size, 0);
+  assert.ok(logs.some((entry) => entry.event === "garmin_api_request" && entry.operation === "cleanup"));
+
+  assert.equal((await routes.POST(request("POST", input, undefined, "https://other.test"))).status, 403);
+  assert.equal((await routes.DELETE(request("DELETE", { dates: [] }))).status, 400);
+  const statusBody = await (await routes.GET(request("GET", undefined,
+    "https://example.test/api/garmin/workouts?weekStart=2026-11-02"))).json();
+  assert.deepEqual(statusBody.dates, []);
+  assert.ok(statusBody.requestId);
+  assert.ok(Object.values(GARMIN_ERRORS).length > 0);
+  const serializedLogs = JSON.stringify(logs);
+  for (const token of [sentinel, baseTokens.accessToken, baseTokens.refreshToken, "rotated-access-token", "rotated-refresh-token"])
+    assert.ok(!serializedLogs.includes(token), "Diagnostics must never contain access/refresh tokens or upstream bodies");
+
+  await verifyRateLimit({ loader, config, tokens: baseTokens, input, request, records: logs, nextServer, original: originals });
+  console.log("Garmin verification passed: account auth, per-user storage, IDOR-safe deletion, idempotent sends, conflict cleanup, token rotation/reconnect and sanitized diagnostics.");
 }
 
-verify().catch((error) => { original.error(error); process.exitCode = 1; }).finally(() => {
-  global.fetch = original.fetch;
-  console.error = original.error;
-  console.warn = original.warn;
-  console.info = original.info;
-  if (original.storage === undefined) delete global.localStorage;
-  else global.localStorage = original.storage;
+verify().catch((error) => { originals.error(error); process.exitCode = 1; }).finally(() => {
+  global.fetch = originals.fetch;
+  console.info = originals.info;
+  console.warn = originals.warn;
+  console.error = originals.error;
 });

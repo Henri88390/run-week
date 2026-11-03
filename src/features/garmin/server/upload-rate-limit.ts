@@ -1,8 +1,7 @@
 import "server-only";
+import { createHmac } from "node:crypto";
 import type { GarminConfig } from "./config";
-import type { GarminTokens } from "./garmin-api";
 import { GarminApiError } from "./diagnostics";
-import { uploadIdentity } from "./session";
 
 /** One atomic reservation, using Redis time rather than an individual function's clock. */
 export const RESERVE_UPLOAD_LUA = `
@@ -75,11 +74,16 @@ function redisConfig(): { url: string; token: string } | null {
   }
 }
 
+/** Keyed by an HMAC of the account ID so Redis never holds the raw ID. */
+export function uploadIdentity(userId: string, config: GarminConfig): string {
+  return createHmac("sha256", config.sessionSecret).update("run-week:garmin:upload-identity:v2\0").update(userId).digest("hex");
+}
+
 /** Configured Redis failures never fall back: a lost response may have reserved quota. */
-export async function reserveUpload(config: GarminConfig, session: GarminTokens): Promise<UploadReservation> {
+export async function reserveUpload(config: GarminConfig, userId: string): Promise<UploadReservation> {
   const redis = redisConfig();
   const development = process.env.NODE_ENV === "development";
-  const key = `run-week:garmin:upload:v1:${development ? "development" : "production"}:${uploadIdentity(session, config)}`;
+  const key = `run-week:garmin:upload:v2:${development ? "development" : "production"}:${uploadIdentity(userId, config)}`;
   if (!redis) return reserveInMemory(key, development);
   try {
     const response = await fetch(redis.url, {
