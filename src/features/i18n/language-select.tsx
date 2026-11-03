@@ -35,7 +35,7 @@ export function LanguageSelect({ className = "" }: { className?: string }) {
           const code = LOCALES.find((entry) => entry === value);
           if (code) setLocale(code);
         }}
-        className="rounded-lg border border-stone-200 bg-white py-1 pr-2 pl-2 text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" />
+        className="min-h-9 rounded-lg border border-stone-200 bg-white py-1.5 pr-2 pl-2 text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" />
     </div>
   </div>;
 }

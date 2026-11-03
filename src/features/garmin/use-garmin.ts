@@ -8,7 +8,7 @@ import type { GarminErrorCode, GarminStatus, GarminSyncRequest, GarminSyncRespon
 import { GARMIN_SENT_KEY } from "./privacy";
 
 const SENT_KEY = GARMIN_SENT_KEY;
-const NOTICES = ["connected", "error", "unavailable", "disconnectFailed", "localDeleteFailed"] as const;
+const NOTICES = ["connected", "error", "unavailable", "disconnectFailed", "localDeleteFailed", "statusFailed"] as const;
 export type GarminNotice = (typeof NOTICES)[number];
 export type GarminSendResult = { count: number; error?: GarminErrorCode };
 
@@ -36,6 +36,12 @@ export function useGarmin() {
   const [notice, setNotice] = useState<GarminNotice | null>(null);
 
   useEffect(() => {
+    if (notice !== "error") return;
+    const timeout = window.setTimeout(() => setNotice(null), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  useEffect(() => {
     const url = new URL(window.location.href);
     const param = url.searchParams.get("garmin");
     if (param) {
@@ -47,9 +53,17 @@ export function useGarmin() {
     }
     let active = true;
     fetch("/api/garmin/status", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() as Promise<GarminStatus> : null)
-      .then((value) => { if (active && value) setStatus(value); })
-      .catch(() => undefined);
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Garmin status request failed.");
+        const value: unknown = await response.json();
+        if (!value || typeof value !== "object"
+          || !("configured" in value) || typeof value.configured !== "boolean"
+          || !("connected" in value) || typeof value.connected !== "boolean") {
+          throw new Error("Invalid Garmin status response.");
+        }
+        if (active) setStatus({ configured: value.configured, connected: value.connected });
+      })
+      .catch(() => { if (active) setNotice("statusFailed"); });
     return () => { active = false; };
   }, []);
 
@@ -81,7 +95,10 @@ export function useGarmin() {
     }
     for (const result of data.results ?? []) sent[result.date] = result.workoutId;
     writeSent(sent);
-    if (data.error === "reconnect") setStatus((current) => ({ ...current, connected: false }));
+    if (data.error === "reconnect") {
+      setStatus((current) => ({ ...current, connected: false }));
+      setNotice("error");
+    }
     return { count: data.results?.length ?? 0, error: data.error };
   }, []);
 
@@ -92,6 +109,7 @@ export function useGarmin() {
         setNotice("disconnectFailed");
         return;
       }
+
       setStatus((current) => ({ ...current, connected: false }));
       setNotice(null);
       try {
@@ -106,3 +124,5 @@ export function useGarmin() {
 
   return { ...status, notice, send, disconnect };
 }
+
+export type GarminConnection = ReturnType<typeof useGarmin>;

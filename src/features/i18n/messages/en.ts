@@ -76,6 +76,7 @@ export const en = {
     save: "Save and regenerate week",
     create: "Create training week",
     advancedOptions: "Advanced options",
+    backToDefault: "Back to default",
     workout: "Workout",
     workoutChoiceNote: "Easy runs stay unchanged. Workout types can be repeated; this does not assess recovery or safe training load.",
     preferredWorkoutDay: "Workout day",
@@ -139,6 +140,7 @@ export const en = {
     copyFailed: "Could not copy to the clipboard.",
   },
   garmin: {
+    statusFailed: "Could not check the Garmin connection. Reload to try again.",
     disconnectFailed: "Could not disconnect Garmin. Try again.",
     localDeleteFailed: "Garmin disconnected, but local references could not be deleted. Clear this site's data in browser settings.",
     connect: "Connect Garmin",

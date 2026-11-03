@@ -159,16 +159,26 @@ in the browser and are not uploaded automatically.
 
 ## Garmin Connect
 
-When configured, the week view can send runs to the Garmin Connect calendar:
-the whole week (workouts and long run, or all runs) or a single day from the
+When configured, the week view can send runs to the Garmin Connect calendar.
+The main page shows a persistent connected status and disconnect control, even
+before a training week is created. Connection state is shared with the week and
+workout modal; status-request failures are reported rather than silently hidden.
+Connected users can send the week from its Garmin controls or one run from its
+workout modal: the whole week (workouts and long run, or all runs) or a single day from the
 day dialog. Each run becomes a Garmin workout scheduled on its date. Sending a
 day again replaces the workout previously sent from this browser for that date
 (the sent workout IDs are kept in localStorage, `run-week.garmin.v1`).
+The connect button uses a locally hosted Garmin wordmark from the
+[user-supplied logo source](https://zonalogo.com/garmin-logo-png-svg);
+Garmin branding remains Garmin's trademark. Verify its use against the branding
+requirements of your approved Garmin developer application.
 Repetition workouts are accepted by the sync endpoint, with distance-based
 efforts and R-pace speed targets. FIT exports retain the full week's R-volume
 budget; Garmin sync generates each selected session independently using its
 conservative session-duration-based R budget. Watch names for Russian,
 Ukrainian and Belarusian use English.
+Garmin workout names and embedded FIT names start with the full weekday in the
+export language. Downloaded FIT filenames also start with the weekday (English).
 
 The integration uses Garmin's Training API, which requires an approved
 [Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/)

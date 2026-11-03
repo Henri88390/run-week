@@ -77,6 +77,7 @@ export const uk = {
     save: "Зберегти й перестворити тиждень",
     create: "Створити тренувальний тиждень",
     advancedOptions: "Додаткові параметри",
+    backToDefault: "Відновити типові значення",
     preferredWorkoutDay: "День тренування",
     skipWorkout: "Пропустити тренування",
     workout: "Тренування",
@@ -140,6 +141,7 @@ export const uk = {
     copyFailed: "Не вдалося скопіювати в буфер обміну.",
   },
   garmin: {
+    statusFailed: "Не вдалося перевірити підключення Garmin. Оновіть сторінку.",
     disconnectFailed: "Не вдалося відключити Garmin. Спробуйте знову.",
     localDeleteFailed: "Garmin відключено, але локальні посилання не видалено. Очистіть дані сайту в браузері.",
     connect: "Підключити Garmin",

@@ -199,6 +199,13 @@ export function ProfileForm({ profile, onSave }: {
       if (value !== "" && !days.includes(Number(value))) setValue(field, "", { shouldDirty: true });
     }
   };
+  const restoreDefaultWorkouts = () => {
+    setValue("intervalWorkout", DEFAULT_WORKOUT_CHOICES.vo2max, { shouldDirty: true });
+    setValue("thresholdWorkout", DEFAULT_WORKOUT_CHOICES.threshold, { shouldDirty: true });
+    setValue("longWorkout", DEFAULT_WORKOUT_CHOICES.long, { shouldDirty: true });
+    for (const field of PREFERRED_DAY_FIELDS) setValue(field, "", { shouldDirty: true });
+    if (isSubmitted) void trigger([...PREFERRED_DAY_FIELDS, "intervalWorkout", "thresholdWorkout", "longWorkout"]);
+  };
   const draft: Profile = {
     distanceMeters: distance,
     raceSeconds,
@@ -388,11 +395,22 @@ export function ProfileForm({ profile, onSave }: {
             open={advancedOpen || hasPreferredDayErrors || hasWorkoutErrors}
             onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
           >
-            <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded text-sm font-medium text-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 [&::-webkit-details-marker]:hidden">
+            <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 rounded text-sm font-medium text-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 [&::-webkit-details-marker]:hidden">
               <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open/advanced:rotate-180">
                 <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
               </svg>
               {t.form.advancedOptions}
+              {(advancedOpen || hasPreferredDayErrors || hasWorkoutErrors) && <button
+                type="button"
+                className="ml-2 rounded border border-stone-300 bg-white px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  restoreDefaultWorkouts();
+                }}
+              >
+                {t.form.backToDefault}
+              </button>}
             </summary>
             <div className="mt-2 grid gap-2">
               {preferredDayInputs.filter(({ visible }) => visible).map(({ field, workoutField }, index) => <fieldset key={field} className="grid gap-2 rounded-lg border border-stone-200 p-2">

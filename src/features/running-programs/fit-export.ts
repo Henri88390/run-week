@@ -97,7 +97,7 @@ export function downloadWorkoutFit(
   const blob = new Blob([buffer], { type: "application/vnd.ant.fit" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `run-week-${week.number}-${WEEKDAYS[workout.day].toLowerCase()}-${workout.type ?? "easy"}.fit`;
+  link.download = `${WEEKDAYS[workout.day].toLowerCase()}-run-week-${week.number}-${workout.type ?? "easy"}.fit`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }

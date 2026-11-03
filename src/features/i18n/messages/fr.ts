@@ -77,6 +77,7 @@ export const fr = {
     save: "Enregistrer et régénérer la semaine",
     create: "Créer la semaine d’entraînement",
     advancedOptions: "Options avancées",
+    backToDefault: "Rétablir les valeurs par défaut",
     preferredWorkoutDay: "Jour de séance",
     skipWorkout: "Ignorer la séance",
     workout: "Séance",
@@ -140,6 +141,7 @@ export const fr = {
     copyFailed: "Impossible de copier dans le presse-papiers.",
   },
   garmin: {
+    statusFailed: "Impossible de vérifier la connexion Garmin. Rechargez la page pour réessayer.",
     disconnectFailed: "Impossible de déconnecter Garmin. Réessayez.",
     localDeleteFailed: "Garmin est déconnecté, mais les références locales n’ont pas pu être supprimées. Effacez les données du site dans le navigateur.",
     connect: "Connecter Garmin",

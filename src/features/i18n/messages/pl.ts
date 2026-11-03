@@ -77,6 +77,7 @@ export const pl = {
     save: "Zapisz i wygeneruj tydzień ponownie",
     create: "Utwórz tydzień treningowy",
     advancedOptions: "Opcje zaawansowane",
+    backToDefault: "Przywróć ustawienia domyślne",
     preferredWorkoutDay: "Dzień treningu",
     skipWorkout: "Pomiń trening",
     workout: "Trening",
@@ -140,6 +141,7 @@ export const pl = {
     copyFailed: "Nie udało się skopiować do schowka.",
   },
   garmin: {
+    statusFailed: "Nie udało się sprawdzić połączenia Garmin. Odśwież stronę, aby spróbować ponownie.",
     disconnectFailed: "Nie udało się odłączyć Garmin. Spróbuj ponownie.",
     localDeleteFailed: "Garmin odłączony, ale nie usunięto lokalnych odwołań. Wyczyść dane witryny w przeglądarce.",
     connect: "Połącz z Garmin",

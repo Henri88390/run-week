@@ -77,6 +77,7 @@ export const de = {
     save: "Speichern und Woche neu erstellen",
     create: "Trainingswoche erstellen",
     advancedOptions: "Erweiterte Optionen",
+    backToDefault: "Auf Standard zurücksetzen",
     preferredWorkoutDay: "Trainingstag",
     skipWorkout: "Training auslassen",
     workout: "Training",
@@ -140,6 +141,7 @@ export const de = {
     copyFailed: "Kopieren in die Zwischenablage fehlgeschlagen.",
   },
   garmin: {
+    statusFailed: "Die Garmin-Verbindung konnte nicht geprüft werden. Lade die Seite erneut.",
     disconnectFailed: "Garmin konnte nicht getrennt werden. Versuche es erneut.",
     localDeleteFailed: "Garmin wurde getrennt, aber lokale Verweise konnten nicht gelöscht werden. Lösche die Website-Daten im Browser.",
     connect: "Garmin verbinden",

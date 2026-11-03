@@ -21,7 +21,7 @@ import {
 import type { TrainingWeek } from "../types";
 import type { WorkoutSessionStep } from "../domain";
 import { downloadWorkoutFit } from "../fit-export";
-import { useGarmin, type GarminSendResult } from "@/features/garmin/use-garmin";
+import type { GarminConnection, GarminSendResult } from "@/features/garmin/use-garmin";
 import { Dropdown } from "@/components/dropdown";
 
 type WorkoutDetailLine = {
@@ -172,14 +172,13 @@ function workoutCardColor(type: string | undefined): string {
   return "border-emerald-300 bg-emerald-50";
 }
 
-export function WeekView({ week }: { week: TrainingWeek }) {
+export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminConnection }) {
   const { locale, t } = useI18n();
   const headingId = useId();
   const dialogTitleId = useId();
   const workoutDialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const garmin = useGarmin();
   const [garminScope, setGarminScope] = useState<"workouts" | "all">(
     "workouts",
   );
@@ -293,19 +292,6 @@ export function WeekView({ week }: { week: TrainingWeek }) {
     setGarminSending(null);
     setGarminResult({ target, message: garminMessage(result) });
   }
-
-  const garminNotice =
-    garmin.notice === "connected"
-      ? t.garmin.connected
-      : garmin.notice === "error"
-        ? t.garmin.connectFailed
-        : garmin.notice === "disconnectFailed"
-          ? t.garmin.disconnectFailed
-          : garmin.notice === "localDeleteFailed"
-            ? t.garmin.localDeleteFailed
-        : garmin.notice === "unavailable"
-          ? t.garmin.unavailable
-          : null;
 
   useEffect(() => {
     if (selectedDay === null) return;
@@ -440,7 +426,7 @@ export function WeekView({ week }: { week: TrainingWeek }) {
           );
         })}
       </ol>
-      {(garmin.configured || garminNotice) && (
+      {garmin.configured && garmin.connected && (
         <div className="mt-4 border-t border-stone-200 pt-4">
           {garmin.configured &&
             (garmin.connected ? (
@@ -470,16 +456,6 @@ export function WeekView({ week }: { week: TrainingWeek }) {
                     ? t.garmin.sending
                     : t.garmin.sendWeek}
                 </button>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => {
-                    setGarminResult(null);
-                    void garmin.disconnect();
-                  }}
-                >
-                  {t.garmin.disconnect}
-                </button>
               </div>
             ) : (
               <a href="/api/garmin/connect" className="button-secondary">
@@ -489,7 +465,7 @@ export function WeekView({ week }: { week: TrainingWeek }) {
           <p role="status" className="mt-2 text-sm text-stone-600 empty:hidden">
             {garminResult?.target === "week"
               ? garminResult.message
-              : garminNotice}
+              : ""}
           </p>
         </div>
       )}
@@ -636,7 +612,7 @@ export function WeekView({ week }: { week: TrainingWeek }) {
                   </button>
                 )}
               </div>
-              {garmin.configured && garmin.connected && (
+              {garminResult?.target === selectedWorkout.day && (
                 <p
                   role="status"
                   className="mt-2 text-sm text-stone-600 empty:hidden"

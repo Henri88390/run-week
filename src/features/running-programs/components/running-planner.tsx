@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
@@ -10,12 +11,14 @@ import { ConfirmationDialog } from "./confirmation-dialog";
 import { ProfileForm } from "./profile-form";
 import { WeekView } from "./week-view";
 import type { Profile } from "../types";
+import { useGarmin } from "@/features/garmin/use-garmin";
 
 type Action = "update-setup" | "reset" | null;
 
 export function RunningPlanner() {
   const { loaded, state, warning, unreadable } = usePlannerStore();
   const { t } = useI18n();
+  const garmin = useGarmin();
   const [action, setAction] = useState<Action>(null);
   const [notice, setNotice] = useState<"" | "cleared" | "created">("");
   const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
@@ -57,22 +60,48 @@ export function RunningPlanner() {
     setAction(null);
     setPendingProfile(null);
   };
+  const garminNotice = garmin.notice === "error" ? t.garmin.connectFailed
+    : garmin.notice === "unavailable" ? t.garmin.unavailable
+      : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
+        : garmin.notice === "localDeleteFailed" ? t.garmin.localDeleteFailed
+          : garmin.notice === "statusFailed" ? t.garmin.statusFailed : "";
 
   return <div className="space-y-4">
     {warning && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">{t.storage[warning]}</p>}
     <p role="status" className="text-sm text-emerald-900">{notice && t.notices[notice]}</p>
+    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+      {garminNotice && <p role="alert" className="min-w-0 text-sm text-amber-900">{garminNotice}</p>}
+      {garmin.configured && !garmin.connected && <a href="/api/garmin/connect"
+        aria-label={t.garmin.connect} title={t.garmin.connect}
+        className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
+        <Image src="/garmin-logo.svg" alt="" width={85} height={13} unoptimized />
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 5h4v14h-4M9 7l5 5-5 5M4 12h10" />
+        </svg>
+      </a>}
+      {garmin.connected &&
+        <button type="button" aria-label={t.garmin.disconnect} title={t.garmin.disconnect}
+          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
+          onClick={() => void garmin.disconnect()}>
+          <Image src="/garmin-logo.svg" alt="" width={85} height={13} unoptimized />
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H5v14h4m5-12 5 5-5 5m-5-5h11" />
+          </svg>
+        </button>
+      }
+      <LanguageSelect className="ml-auto sm:ml-0" />
+    </div>
 
     {unreadable ? <section className="panel">
       <div className="flex items-start justify-between gap-4">
         <h1 className="text-xl font-semibold">{t.unavailable.title}</h1>
-        <LanguageSelect />
       </div>
       <p className="mt-2 text-sm text-stone-600">{t.unavailable.body}</p>
       <button className="button-secondary mt-4" onClick={() => setAction("reset")}>{t.unavailable.reset}</button>
     </section> : <>
       <div className="relative">
         <details className="group rounded-2xl border border-stone-200 bg-white" open={!state}>
-          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 pr-44 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5 sm:pr-48">
+          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5">
             <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open:rotate-180">
               <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
             </svg>
@@ -101,9 +130,8 @@ export function RunningPlanner() {
             }} />
           </div>
         </details>
-        <LanguageSelect className="absolute top-4 right-4 sm:top-5 sm:right-5" />
       </div>
-      {current && <WeekView key={current.id} week={current} />}
+      {current && <WeekView key={current.id} week={current} garmin={garmin} />}
     </>}
 
     <details className="text-sm text-stone-600">

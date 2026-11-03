@@ -46,6 +46,6 @@ export function watchStepName(step: WorkoutSessionStep, displayLocale: Locale): 
 
 export function watchWorkoutName(workout: Workout, displayLocale: Locale): string {
   const locale = watchLocale(displayLocale);
-  const weekday = weekdayName(locale, workout.day, "short").replace(/\.$/, "");
+  const weekday = weekdayName(locale, workout.day);
   return watchText(`${weekday} ${MESSAGES[locale].workoutsShort[workoutLabelKey(workout.type ?? "easy")]}`);
 }
