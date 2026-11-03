@@ -265,7 +265,8 @@ async function verify() {
     assert.ok(events.some((record) => record.event === event && typeof record.requestId === "string"), event);
   }
   assert.ok(events.some((record) => record.event === "garmin_api_request" && record.operation === "create"
-    && record.payload?.sport === "RUNNING"), "Garmin workout payload must be logged");
+    && record.payload?.sport === "RUNNING" && Array.isArray(record.payload.steps) && record.payload.steps.length > 0
+    && !("segments" in record.payload)), "Garmin V1 workout payload must be logged");
   original.warn("Garmin verification passed: classification, sanitization, route failures, partial uploads, no retries, client parsing and 10 locales.");
 }
 

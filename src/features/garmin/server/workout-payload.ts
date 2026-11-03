@@ -17,7 +17,7 @@ function speedAtPace(pace: number): number {
   return Math.round(1_000_000 / pace) / 1000;
 }
 
-/** Garmin Training API V2 running workout; pace targets are speeds in metres per second. */
+/** Garmin Training API V1 (`/training-api/workout`) running workout; steps are top-level and pace targets are speeds in metres per second. */
 export function garminWorkoutPayload(workout: Workout, vdot: number, locale: Locale) {
   const steps = workoutExportSteps(workout, vdot).map((step, index) => {
     const paces = stepPaces(step, vdot);
@@ -41,7 +41,8 @@ export function garminWorkoutPayload(workout: Workout, vdot: number, locale: Loc
     sport: "RUNNING",
     workoutProvider: "Run Week",
     workoutSourceId: "Run Week",
-    isSessionTransitionEnabled: false,
-    segments: [{ segmentOrder: 1, sport: "RUNNING", poolLength: null, poolLengthUnit: null, steps }],
+    poolLength: null,
+    poolLengthUnit: null,
+    steps,
   };
 }
