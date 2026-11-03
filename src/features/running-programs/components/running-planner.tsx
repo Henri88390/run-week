@@ -77,16 +77,17 @@ export function RunningPlanner() {
         className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
         <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[13px] w-auto" unoptimized />
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 5h4v14h-4M9 7l5 5-5 5M4 12h10" />
+          <circle cx="12" cy="12" r="9" />
+          <path strokeLinecap="round" d="M12 8v8M8 12h8" />
         </svg>
       </a>}
       {garmin.connected &&
         <button type="button" aria-label={t.garmin.disconnect} title={t.garmin.disconnect}
-          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
+          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-400 bg-stone-100 px-3 py-1.5 text-stone-800 hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
           onClick={() => void garmin.disconnect()}>
           <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[13px] w-auto" unoptimized />
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H5v14h4m5-12 5 5-5 5m-5-5h11" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v9M6.34 6.34a8 8 0 1 0 11.32 0" />
           </svg>
         </button>
       }
