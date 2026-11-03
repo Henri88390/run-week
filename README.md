@@ -168,6 +168,10 @@ workout modal: the whole week (workouts and long run, or all runs) or a single d
 day dialog. Each run becomes a Garmin workout scheduled on its date. Sending a
 day again replaces the workout previously sent from this browser for that date
 (the sent workout IDs are kept in localStorage, `run-week.garmin.v1`).
+Garmin Connect does not let users edit or delete workouts created by a partner
+app, so the week controls and workout modal also offer "Remove from Garmin"
+(`DELETE /api/garmin/workouts`), which deletes the workouts sent from this
+browser for those dates, along with their calendar entries.
 The connect button uses a locally hosted Garmin wordmark from the
 [user-supplied logo source](https://zonalogo.com/garmin-logo-png-svg);
 Garmin branding remains Garmin's trademark. Verify its use against the branding
@@ -235,7 +239,7 @@ Use the same database and stable `GARMIN_SESSION_SECRET` across all production
 instances/deployments, and a separate database for local development. Do not
 expose either Redis variable through `NEXT_PUBLIC_*`.
 
-An authenticated, valid `POST /api/garmin/workouts` reserves **one upload request**,
+An authenticated, valid `POST` or `DELETE /api/garmin/workouts` reserves **one upload request**,
 whether it sends one run or a batch of up to seven. Requests must start at least
 **10 seconds apart in every environment**. There are **10 accepted requests per
 UTC calendar day**, resetting at 00:00 UTC, except when the trusted server's
@@ -307,7 +311,9 @@ Uploads also emit `console.info` events sharing that request ID:
 `garmin_upload_request` (the frontend JSON body), `garmin_api_request` (the
 exact workout payload sent to Garmin, plus schedule/delete targets),
 `garmin_api_response` (created workout ID) and `garmin_upload_result` (HTTP
-status, error code and results). Filter by request ID to follow one upload.
+status, error code and results). Removals emit `garmin_delete_request`,
+`garmin_api_request` (`operation: "delete"`) and `garmin_delete_result`.
+Filter by request ID to follow one upload.
 Payloads above 16,000 characters are truncated. Failures from the Garmin
 Training API include up to 2,000 characters of Garmin's error body as
 `upstreamBody`; token-endpoint bodies are never read or logged.

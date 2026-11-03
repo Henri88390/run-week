@@ -23,6 +23,8 @@ import type { WorkoutSessionStep } from "../domain";
 import { downloadWorkoutFit } from "../fit-export";
 import type { GarminConnection, GarminSendResult } from "@/features/garmin/use-garmin";
 import { Dropdown } from "@/components/dropdown";
+import { GarminHelp } from "@/features/garmin/components/garmin-help";
+import { ConfirmationDialog } from "./confirmation-dialog";
 
 type WorkoutDetailLine = {
   key: string;
@@ -186,6 +188,10 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
     null,
   );
   const [garminRemoving, setGarminRemoving] = useState<"week" | number | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    target: "week" | number;
+    resultTarget: "week" | number;
+  } | null>(null);
   const garminBusy = garminSending !== null || garminRemoving !== null;
   const sentDates = (days: number[]) =>
     days.map((day) => addDays(week.startDate, day)).filter((date) => garmin.sentWorkouts[date] !== undefined);
@@ -209,6 +215,9 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
   const selectedSessionPlan = selectedWorkout?.type
     ? weekWorkoutSessionPlan(week, selectedWorkout)
     : null;
+  const canDownloadFit = Boolean(selectedWorkout?.type && selectedWorkout.type !== "easy");
+  const garminActive = garmin.configured && garmin.connected;
+  const selectedSent = selectedWorkout !== undefined && sentDates([selectedWorkout.day]).length > 0;
   const sessionDetailLines = selectedSessionPlan
     ? workoutDetailLines(selectedSessionPlan.steps, vdot, t)
     : null;
@@ -285,14 +294,14 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
     return [done, error ? t.garmin[error] : "", retry, reference].filter(Boolean).join(" ");
   }
 
-  async function removeFromGarmin(target: "week" | number) {
+  async function removeFromGarmin(target: "week" | number, resultTarget: "week" | number = target) {
     const dates = sentDates(target === "week" ? allDays : [target]);
     if (dates.length === 0) return;
     setGarminRemoving(target);
     setGarminResult(null);
     const result = await garmin.remove(dates);
     setGarminRemoving(null);
-    setGarminResult({ target, message: garminMessage(result, "remove"), tone: result.error ? "error" : "success" });
+    setGarminResult({ target: resultTarget, message: garminMessage(result, "remove"), tone: result.error ? "error" : "success" });
   }
 
   async function sendToGarmin(target: "week" | number) {
@@ -414,11 +423,12 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
               )}
             </span>
           );
+          const isSent = Boolean(workout) && garmin.connected && garmin.sentWorkouts[calendarDate] !== undefined;
           return (
             <li
               key={i}
               aria-current={isToday ? "date" : undefined}
-              className={`rounded-lg border ${workout ? workoutCardColor(workout.type) : "border-stone-200 bg-stone-50"} ${isToday ? "ring-2 ring-emerald-700 ring-offset-1" : ""}`}
+              className={`relative rounded-lg border ${workout ? workoutCardColor(workout.type) : "border-stone-200 bg-stone-50"} ${isToday ? "ring-2 ring-emerald-700 ring-offset-1" : ""}`}
             >
               {workout ? (
                 <button
@@ -433,7 +443,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                     {t.workouts[workoutLabelKey(workout.type ?? "easy")]}
                   </span>
                   {workoutDistance && (
-                    <span className="mt-auto block pt-1 text-xs text-stone-600">
+                    <span className={`mt-auto block pt-1 text-xs text-stone-600 ${isSent ? "pr-8" : ""}`}>
                       ~
                       {distanceRange(
                         locale,
@@ -450,6 +460,20 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                   <span className="mt-1.5 block text-sm">{t.week.rest}</span>
                 </div>
               )}
+              {isSent && (
+                <button
+                  type="button"
+                  disabled={garminBusy}
+                  aria-label={`${t.garmin.removeDay}: ${dayName} ${formatDate(locale, calendarDate)}`}
+                  title={t.garmin.removeDay}
+                  onClick={() => setPendingRemoval({ target: i, resultTarget: "week" })}
+                  className="absolute right-2 bottom-2 inline-flex size-7 items-center justify-center rounded-md border border-red-200 bg-white text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                  </svg>
+                </button>
+              )}
             </li>
           );
         })}
@@ -459,41 +483,46 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
           {garmin.configured &&
             (garmin.connected ? (
               <div className="flex flex-wrap items-end gap-2">
-                <label className="min-w-48 flex-1 sm:flex-none">
-                  <span className="field-label">{t.garmin.scope}</span>
-                  <Dropdown
-                    className="field"
-                    aria-label={t.garmin.scope}
-                    value={garminScope}
-                    onChange={(value) => {
-                      if (value === "workouts" || value === "all") setGarminScope(value);
-                    }}
-                    options={[
-                      { value: "workouts", label: t.garmin.scopeWorkouts, text: t.garmin.scopeWorkouts },
-                      { value: "all", label: t.garmin.scopeAll, text: t.garmin.scopeAll },
-                    ]}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="button-primary"
-                  disabled={garminBusy}
-                  onClick={() => sendToGarmin("week")}
-                >
-                  {garminSending === "week"
-                    ? t.garmin.sending
-                    : t.garmin.sendWeek}
-                </button>
+                {sentDates(allDays).length === 0 && (
+                  <>
+                    <label className="min-w-48 flex-1 sm:flex-none">
+                      <span className="field-label">{t.garmin.scope}</span>
+                      <Dropdown
+                        className="field"
+                        aria-label={t.garmin.scope}
+                        value={garminScope}
+                        onChange={(value) => {
+                          if (value === "workouts" || value === "all") setGarminScope(value);
+                        }}
+                        options={[
+                          { value: "workouts", label: t.garmin.scopeWorkouts, text: t.garmin.scopeWorkouts },
+                          { value: "all", label: t.garmin.scopeAll, text: t.garmin.scopeAll },
+                        ]}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="button-primary"
+                      disabled={garminBusy}
+                      onClick={() => sendToGarmin("week")}
+                    >
+                      {garminSending === "week" ? t.garmin.sending : t.garmin.sendWeek}
+                    </button>
+                  </>
+                )}
                 {sentDates(allDays).length > 0 && (
                   <button
                     type="button"
-                    className="button-secondary"
+                    className="button-secondary border-red-300 text-red-700 hover:bg-red-50"
                     disabled={garminBusy}
-                    onClick={() => removeFromGarmin("week")}
+                    onClick={() => setPendingRemoval({ target: "week", resultTarget: "week" })}
                   >
                     {garminRemoving === "week" ? t.garmin.removing : t.garmin.removeWeek}
                   </button>
                 )}
+                <span className="flex min-h-11 items-center">
+                  <GarminHelp t={t.garmin} />
+                </span>
               </div>
             ) : (
               <a href="/api/garmin/connect" className="button-secondary">
@@ -518,7 +547,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
           onClick={(event) => {
             if (event.target === workoutDialog.current) setSelectedDay(null);
           }}
-          className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-stone-300 bg-white p-6 text-stone-900 shadow-xl backdrop:bg-stone-950/40"
+          className="m-auto w-[calc(100%-2rem)] max-w-xl rounded-2xl border border-stone-300 bg-white p-6 text-stone-900 shadow-xl backdrop:bg-stone-950/40"
         >
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -602,20 +631,20 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                   </ol>
                 )
               )}
-              <div className="mt-6 flex flex-wrap gap-2 empty:hidden">
-                {selectedWorkout.type === "repetition" && (
-                  <p className="mt-3 text-sm leading-6 text-stone-600">
-                    {selectedSessionPlan?.steps.some(
-                      (step) => step.kind === "repetition",
-                    )
-                      ? t.week.repetitionNote
-                      : t.week.repetitionEasyNote}
-                  </p>
-                )}
-                {selectedWorkout.type && selectedWorkout.type !== "easy" && (
+              {selectedWorkout.type === "repetition" && (
+                <p className="mt-3 text-sm leading-6 text-stone-600">
+                  {selectedSessionPlan?.steps.some(
+                    (step) => step.kind === "repetition",
+                  )
+                    ? t.week.repetitionNote
+                    : t.week.repetitionEasyNote}
+                </p>
+              )}
+              <div className="mt-6 grid grid-cols-2 gap-2 empty:hidden">
+                {canDownloadFit && (
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 ${garminActive ? "" : "col-span-2"}`}
                     onClick={() =>
                       downloadWorkoutFit(week, selectedWorkout, locale)
                     }
@@ -626,7 +655,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="1.8"
-                      className="size-5"
+                      className="size-5 shrink-0"
                     >
                       <path
                         strokeLinecap="round"
@@ -637,46 +666,72 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                     {t.week.downloadFit}
                   </button>
                 )}
-                {garmin.configured && garmin.connected && (
-                  <button
-                    type="button"
-                    disabled={garminBusy}
-                    className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
-                    onClick={() => sendToGarmin(selectedWorkout.day)}
-                  >
-                    {garminSending === selectedWorkout.day
-                      ? t.garmin.sending
-                      : t.garmin.sendDay}
-                  </button>
+                {garminActive && (
+                  <div className={`flex items-center gap-2 ${canDownloadFit ? "" : "col-span-2"}`}>
+                    {selectedSent ? (
+                      <button
+                        type="button"
+                        disabled={garminBusy}
+                        className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch rounded-xl border border-red-300 bg-white px-4 py-2 text-center text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
+                        onClick={() => setPendingRemoval({ target: selectedWorkout.day, resultTarget: selectedWorkout.day })}
+                      >
+                        {garminRemoving === selectedWorkout.day
+                          ? t.garmin.removing
+                          : t.garmin.removeDay}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={garminBusy}
+                        className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch rounded-xl border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
+                        onClick={() => sendToGarmin(selectedWorkout.day)}
+                      >
+                        {garminSending === selectedWorkout.day
+                          ? t.garmin.sending
+                          : t.garmin.sendDay}
+                      </button>
+                    )}
+                    <GarminHelp t={t.garmin} />
+                  </div>
                 )}
-                {garmin.configured && garmin.connected && sentDates([selectedWorkout.day]).length > 0 && (
-                  <button
-                    type="button"
-                    disabled={garminBusy}
-                    className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 disabled:cursor-not-allowed disabled:text-stone-500"
-                    onClick={() => removeFromGarmin(selectedWorkout.day)}
+                {garminActive && (
+                  <p
+                    role="status"
+                    className={`break-words text-sm empty:hidden ${canDownloadFit ? "col-start-2" : "col-span-2"} ${garminResultClass[garminResult?.target === selectedWorkout.day ? garminResult.tone : "neutral"]}`}
                   >
-                    {garminRemoving === selectedWorkout.day
-                      ? t.garmin.removing
-                      : t.garmin.removeDay}
-                  </button>
+                    {garminResult?.target === selectedWorkout.day
+                      ? garminResult.message
+                      : ""}
+                  </p>
                 )}
               </div>
-              {garminResult?.target === selectedWorkout.day && (
-                <p
-                  role="status"
-                  className={`mt-2 break-words text-sm empty:hidden ${garminResultClass[garminResult.tone]}`}
-                >
-                  {garminResult?.target === selectedWorkout.day
-                    ? garminResult.message
-                    : ""}
-                </p>
-              )}
             </>
           ) : (
             <p className="mt-4 text-sm text-stone-600">{t.week.restDay}</p>
           )}
         </dialog>
+      )}
+      {pendingRemoval && (
+        <ConfirmationDialog
+          tone="danger"
+          title={pendingRemoval.target === "week" ? t.garmin.confirmRemoveWeekTitle : t.garmin.confirmRemoveDayTitle}
+          confirmLabel={t.garmin.confirmRemove}
+          cancelLabel={t.confirm.cancel}
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => {
+            const { target, resultTarget } = pendingRemoval;
+            setPendingRemoval(null);
+            void removeFromGarmin(target, resultTarget);
+          }}
+        >
+          <p>
+            {pendingRemoval.target === "week"
+              ? t.garmin.confirmRemoveWeekBody(sentDates(allDays).length)
+              : t.garmin.confirmRemoveDayBody(
+                  `${weekdayName(locale, pendingRemoval.target)} ${formatDate(locale, addDays(week.startDate, pendingRemoval.target), false)}`,
+                )}
+          </p>
+        </ConfirmationDialog>
       )}
     </section>
   );

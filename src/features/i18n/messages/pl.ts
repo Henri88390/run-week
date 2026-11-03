@@ -165,6 +165,22 @@ export const pl = {
       const text = form === "one" ? "trening usunięty" : form === "few" ? "treningi usunięte" : "treningów usuniętych";
       return `${count} ${text} z Garmin.`;
     },
+    confirmRemoveWeekTitle: "Usunąć tydzień treningowy z Garmin Connect?",
+    confirmRemoveDayTitle: "Usunąć trening z Garmin Connect?",
+    confirmRemove: "Usuń",
+    confirmRemoveWeekBody: (count: number) => `Treningi wysłane z tej przeglądarki (${count}) zostaną usunięte z Garmin Connect, kalendarza Garmin i zegarka po następnej synchronizacji.`,
+    confirmRemoveDayBody: (day: string) => `Trening z dnia ${day} zostanie usunięty z Garmin Connect, kalendarza Garmin i zegarka po następnej synchronizacji.`,
+    helpLabel: "Pomoc Garmin",
+    helpTitle: "Gdzie znaleźć treningi na Garmin",
+    helpClose: "Zamknij",
+    helpItems: [
+      "Każdy bieg jest tworzony jako trening Garmin i planowany na swój dzień.",
+      "Zsynchronizuj zegarek z aplikacją Garmin Connect, aby wczytać treningi.",
+      "Na zegarku otwórz kalendarz treningowy (zwykle Trening > Kalendarz treningów). Garmin pokazuje treningi z aplikacji partnerskich, takich jak Run Week, w kalendarzu, a nie na liście Treningi.",
+      "W zaplanowanym dniu zegarek może zaproponować trening po rozpoczęciu biegu.",
+      "Garmin Connect nie pozwala edytować ani usuwać treningów z aplikacji partnerskich. Aby zmienić bieg, użyj „Usuń z Garmin” w Run Week, a potem wyślij go ponownie.",
+      "Zastąpić lub usunąć można tylko treningi wysłane z tej przeglądarki.",
+    ],
     connected: "Połączono konto Garmin Connect.",
     connectFailed: "Autoryzacja Garmin Connect nie powiodła się.",
     unavailable: "Garmin Connect jest teraz niedostępny. Spróbuj później; sprawdź Garmin przed ponownym wysłaniem biegów.",

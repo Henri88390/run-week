@@ -180,6 +180,20 @@ async function verify() {
   assert.equal((await uploads.POST(request("workouts", { body: { ...input, workouts: [] } }))).status, 400);
   assert.equal((await uploads.POST(request("workouts", { cookie: null }))).status, 401);
 
+  responses(new Response(null, { status: 204 }), new Response(null, { status: 404 }), rejection(503));
+  const removal = await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [11, 12, 13] } }));
+  const removalBody = await removal.json();
+  assert.deepEqual(removalBody.deleted, [11, 12]);
+  assert.equal(removalBody.error, "unavailable");
+  assert.equal(removal.status, 200);
+  assert.equal(calls, 3);
+  assert.equal(records.at(-1).operation, "delete");
+  responses();
+  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [] } }))).status, 400);
+  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [1, 1] } }))).status, 400);
+  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [1] }, origin: "https://other.test" }))).status, 403);
+  assert.equal((await uploads.DELETE(request("workouts", { method: "DELETE", body: { workoutIds: [1] }, cookie: null }))).status, 401);
+
   const callback = load("src\\app\\api\\garmin\\callback\\route.ts");
   const authorization = {
     state: "s".repeat(43), codeVerifier: secret, redirectUri: "https://example.test/api/garmin/callback",
@@ -239,6 +253,17 @@ async function verify() {
     assert.equal(calls, 1);
   }
   assert.ok([...storage.values()].some((value) => value.includes("123")));
+  responses(json({ deleted: [123] }));
+  assert.deepEqual(await client.remove(["2026-11-02", "2026-11-03"]), { count: 1, error: undefined, requestId: undefined });
+  assert.ok(![...storage.values()].some((value) => value.includes("123")));
+  responses();
+  assert.deepEqual(await client.remove(["2026-11-02"]), { count: 0 });
+  for (const messages of Object.values(MESSAGES)) {
+    for (const count of [1, 3, 5]) {
+      assert.ok(messages.garmin.sent(count).includes(String(count)));
+      assert.ok(messages.garmin.removed(count).includes(String(count)));
+    }
+  }
   for (const [response, error] of [
     [new TypeError(secret), "network"], [new Response(secret), "invalidResponse"],
     [json({ results: [], error: secret }), "invalidResponse"],
