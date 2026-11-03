@@ -104,7 +104,9 @@ async function trainingApi(accessToken: string, path: string, init: RequestInit)
     cache: "no-store",
   });
   if (!response.ok && !(init.method === "DELETE" && response.status === 404)) {
-    throw httpFailure(response.status);
+    // Training API error bodies describe workout validation; token-endpoint bodies are never read here.
+    const body = await response.text().catch(() => "");
+    throw httpFailure(response.status, false, body);
   }
   return response;
 }

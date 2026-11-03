@@ -44,7 +44,9 @@ const config = { clientId: "test-client", clientSecret: "test-secret", sessionSe
 const secret = "PRIVATE_SENTINEL_TOKEN_COOKIE_CODE_BODY_STACK";
 const records = [];
 const levels = [];
-const original = { fetch: global.fetch, error: console.error, warn: console.warn, storage: global.localStorage };
+const original = { fetch: global.fetch, error: console.error, warn: console.warn, info: console.info, storage: global.localStorage };
+const events = [];
+console.info = (line) => { events.push(JSON.parse(line)); };
 console.error = (line) => { levels.push("error"); records.push(JSON.parse(line)); };
 console.warn = (line) => { levels.push("warn"); records.push(JSON.parse(line)); };
 const load = loader({
@@ -88,7 +90,8 @@ function responses(...queue) {
   };
 }
 const json = (body, status = 200) => Response.json(body, { status });
-const rejection = (status) => new Response(secret, { status });
+const garminError = "GARMIN_VALIDATION_MESSAGE";
+const rejection = (status) => new Response(garminError, { status });
 const uploads = load("src\\app\\api\\garmin\\workouts\\route.ts");
 async function upload(...queue) {
   responses(...queue);
@@ -111,9 +114,15 @@ async function verify() {
     await assert.rejects(api.createWorkout(secret, { secret }), (caught) => {
       assert.equal(diagnostics.failureDetails(caught).code, code);
       assert.ok(!caught.message.includes(secret));
+      assert.equal(caught.upstreamBody, garminError);
       return true;
     });
   }
+  responses(new Response(secret, { status: 400 }));
+  await assert.rejects(api.requestTokens(config, { grant_type: "refresh_token", refresh_token: secret }), (caught) => {
+    assert.equal(caught.upstreamBody, undefined, "Token-endpoint bodies must never be retained");
+    return true;
+  });
   assert.equal(diagnostics.failureDetails(diagnostics.httpFailure(400, true)).code, "reconnect");
   for (const [response, code, category] of [
     [new TypeError(secret), "network", "network"],
@@ -240,7 +249,7 @@ async function verify() {
     assert.equal(calls, 1);
   }
   await verifyRateLimit({ loader, config, tokens, input, request, records, nextServer, original });
-  const allowed = new Set(["event", "requestId", "operation", "category", "code", "upstreamStatus", "completed"]);
+  const allowed = new Set(["event", "requestId", "operation", "category", "code", "upstreamStatus", "completed", "upstreamBody"]);
   for (const record of records) {
     if (record.event === "garmin_rate_limit_memory_fallback") {
       assert.deepEqual(record, {
@@ -251,6 +260,12 @@ async function verify() {
     }
   }
   assert.ok(!JSON.stringify(records).includes(secret), "Sensitive data leaked into diagnostics");
+  assert.ok(!JSON.stringify(events).includes(secret), "Sensitive data leaked into payload logs");
+  for (const event of ["garmin_upload_request", "garmin_api_request", "garmin_api_response", "garmin_upload_result"]) {
+    assert.ok(events.some((record) => record.event === event && typeof record.requestId === "string"), event);
+  }
+  assert.ok(events.some((record) => record.event === "garmin_api_request" && record.operation === "create"
+    && record.payload?.sport === "RUNNING"), "Garmin workout payload must be logged");
   original.warn("Garmin verification passed: classification, sanitization, route failures, partial uploads, no retries, client parsing and 10 locales.");
 }
 
@@ -258,6 +273,7 @@ verify().catch((error) => { original.error(error); process.exitCode = 1; }).fina
   global.fetch = original.fetch;
   console.error = original.error;
   console.warn = original.warn;
+  console.info = original.info;
   if (original.storage === undefined) delete global.localStorage;
   else global.localStorage = original.storage;
 });

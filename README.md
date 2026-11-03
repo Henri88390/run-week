@@ -216,7 +216,7 @@ Before submitting the policy, identify all actual infrastructure processors in
 `PRIVACY_HOSTING_PROVIDER`, verify their logging/retention settings and ensure the
 operator website provides a working privacy-contact channel. No runtime AI or
 analytics processors are configured. Do not add them without updating the policy,
-consent requirements and processor disclosure. Never log Garmin payloads, tokens
+consent requirements and processor disclosure. Never log tokens, cookies
 or OAuth callback query strings. Have the deployment-specific policy reviewed;
 this page is not a guarantee of Garmin approval or legal compliance.
 
@@ -301,16 +301,22 @@ Each entry includes a generated request ID, a fixed operation (`refresh`,
 category, a safe frontend code, and, when applicable, the upstream HTTP status
 and number of completed runs. Upload responses include the same ID in
 `X-Request-ID` and JSON; localized week and workout-modal errors display it as a
-reference. Other Garmin endpoints include it in the response header. There is
-no per-user identifier, persistent log store or success/payload logging.
+reference. Other Garmin endpoints include it in the response header.
 
-Diagnostics never include credentials, cookies, tokens, OAuth codes, URLs,
-workout contents, upstream bodies, or original exception messages/stacks.
-Unexpected exceptions are categorized as internal failures. HTTP rejection
-categories are indicative only: Garmin's response bodies are deliberately not
-inspected or logged. Configure Vercel/infrastructure retention and access
-appropriately; separately verify that platform/proxy access logs do not retain
-OAuth callback query strings.
+Uploads also emit `console.info` events sharing that request ID:
+`garmin_upload_request` (the frontend JSON body), `garmin_api_request` (the
+exact workout payload sent to Garmin, plus schedule/delete targets),
+`garmin_api_response` (created workout ID) and `garmin_upload_result` (HTTP
+status, error code and results). Filter by request ID to follow one upload.
+Payloads above 16,000 characters are truncated. Failures from the Garmin
+Training API include up to 2,000 characters of Garmin's error body as
+`upstreamBody`; token-endpoint bodies are never read or logged.
+
+Diagnostics never include credentials, cookies, tokens, OAuth codes, URLs
+or original exception messages/stacks.
+Unexpected exceptions are categorized as internal failures. Configure
+Vercel/infrastructure retention and access appropriately; separately verify
+that platform/proxy access logs do not retain OAuth callback query strings.
 
 The UI distinguishes reconnect/permission/rate-limit, rejected workout,
 unavailable service, network, invalid response and generic failures in all ten

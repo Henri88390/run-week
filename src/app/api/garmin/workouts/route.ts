@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { garminConfig } from "@/features/garmin/server/config";
 import { createWorkout, deleteWorkout, scheduleWorkout } from "@/features/garmin/server/garmin-api";
 import {
-  failureDetails, GarminApiError, logGarminFailure, newRequestId, type GarminOperation,
+  failureDetails, GarminApiError, logGarminEvent, logGarminFailure, newRequestId, type GarminOperation,
 } from "@/features/garmin/server/diagnostics";
 import { clearSession, freshTokens, isSameOrigin, readSession, writeSession } from "@/features/garmin/server/session";
 import { garminWorkoutPayload } from "@/features/garmin/server/workout-payload";
@@ -16,11 +16,16 @@ import { addDays, mondayOf } from "@/features/running-programs/domain";
 export async function POST(request: NextRequest) {
   const requestId = newRequestId();
   const results: GarminSyncResponse["results"] = [];
-  const json = (error?: GarminErrorCode, status = 200, retryAfterSeconds?: number) => NextResponse.json(
-    { results, error, requestId, ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}) } satisfies GarminSyncResponse,
-    { status, headers: { "Cache-Control": "no-store", "X-Request-ID": requestId,
-      ...(retryAfterSeconds !== undefined ? { "Retry-After": String(retryAfterSeconds) } : {}) } },
-  );
+  const json = (error?: GarminErrorCode, status = 200, retryAfterSeconds?: number) => {
+    logGarminEvent(requestId, {
+      event: "garmin_upload_result", status, code: error, completed: results.length, results,
+    });
+    return NextResponse.json(
+      { results, error, requestId, ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}) } satisfies GarminSyncResponse,
+      { status, headers: { "Cache-Control": "no-store", "X-Request-ID": requestId,
+        ...(retryAfterSeconds !== undefined ? { "Retry-After": String(retryAfterSeconds) } : {}) } },
+    );
+  };
   const reject = (category: "invalid_request" | "configuration" | "auth", status: number) => {
     const error = new GarminApiError(category);
     logGarminFailure(requestId, "validate", error, results.length);
@@ -34,7 +39,9 @@ export async function POST(request: NextRequest) {
     const session = readSession(request, config);
     if (!session) return reject("auth", 401);
 
-    const parsed = garminSyncRequestSchema.safeParse(await request.json().catch(() => null));
+    const body: unknown = await request.json().catch(() => null);
+    logGarminEvent(requestId, { event: "garmin_upload_request", payload: body });
+    const parsed = garminSyncRequestSchema.safeParse(body);
     const weekStart = parsed.success ? parsed.data.weekStart : "";
     if (!parsed.success || mondayOf(new Date(`${weekStart}T12:00:00`)) !== weekStart
       || new Set(parsed.data.workouts.map((workout) => workout.day)).size !== parsed.data.workouts.length) {
@@ -57,15 +64,22 @@ export async function POST(request: NextRequest) {
       for (const { previousWorkoutId, ...workout } of parsed.data.workouts) {
         const date = addDays(weekStart, workout.day);
         operation = "replace";
-        if (previousWorkoutId) await deleteWorkout(tokens.accessToken, previousWorkoutId);
+        if (previousWorkoutId) {
+          logGarminEvent(requestId, { event: "garmin_api_request", operation, payload: { workoutId: previousWorkoutId } });
+          await deleteWorkout(tokens.accessToken, previousWorkoutId);
+        }
         operation = "create";
-        const workoutId = await createWorkout(tokens.accessToken,
-          garminWorkoutPayload(workout, parsed.data.vdot, parsed.data.locale));
+        const garminPayload = garminWorkoutPayload(workout, parsed.data.vdot, parsed.data.locale);
+        logGarminEvent(requestId, { event: "garmin_api_request", operation, payload: garminPayload });
+        const workoutId = await createWorkout(tokens.accessToken, garminPayload);
+        logGarminEvent(requestId, { event: "garmin_api_response", operation, workoutId });
         operation = "schedule";
         try {
+          logGarminEvent(requestId, { event: "garmin_api_request", operation, payload: { workoutId, date } });
           await scheduleWorkout(tokens.accessToken, workoutId, date);
         } catch (scheduleError) {
           try {
+            logGarminEvent(requestId, { event: "garmin_api_request", operation: "cleanup", payload: { workoutId } });
             await deleteWorkout(tokens.accessToken, workoutId);
           } catch (cleanupError) {
             logGarminFailure(requestId, "cleanup", cleanupError, results.length);
