@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { DEFAULT_LOCALE, detectLocale, isLocale, type Locale } from "./locales";
+
 import type { Messages } from "./messages/en";
 import { MESSAGES } from "./messages";
 
@@ -20,7 +21,9 @@ function readLocale(): Locale {
   } catch {
     // Storage can be unavailable; fall back to the browser preference.
   }
-  return detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language]);
+  return detectLocale(
+    navigator.languages?.length ? navigator.languages : [navigator.language],
+  );
 }
 
 function getSnapshot(): Locale {
@@ -57,6 +60,10 @@ export function setLocale(locale: Locale) {
 }
 
 export function useI18n(): { locale: Locale; t: Messages } {
-  const locale = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_LOCALE);
+  const locale = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => DEFAULT_LOCALE,
+  );
   return { locale, t: MESSAGES[locale] };
 }

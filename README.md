@@ -58,13 +58,17 @@ Clearing browser data deletes the planner. Failed writes show an in-memory-only
 warning; invalid saved data is not silently overwritten. System fonts keep builds
 independent of external font services.
 
-VDOT uses the Daniels–Gilbert race-performance equations. Setup can use an optional desired weekly distance or desired weekly time. A
+VDOT uses the Daniels–Gilbert race-performance equations. Changing the
+performance distance prefills the race time with the equivalent time for the
+same VDOT, based on the last complete time entered. Setup can use an optional desired weekly distance or desired weekly time. A
 distance target is converted to duration using VDOT easy pace; a time target is
 used directly. The resulting duration is distributed among workouts by type and
 neighboring sessions. Without a target, session durations use the VDOT-based
 baseline: the first easy run is the longest, and each additional easy run is
 shorter, by a larger step and down to a lower floor for lower VDOT values. Easy
-runs next to a key session or the long run get the shorter durations. Existing
+runs next to a key session or the long run get the shorter durations. The long
+run is always longer than every easy run: if needed, 10-minute blocks are moved
+to it from the longest easy run, keeping the weekly total. Existing
 local planner data is migrated by estimating volume from its
 saved workout durations and VDOT pace.
 
@@ -73,13 +77,13 @@ equations and limits are shown in the UI. The plan retains the VDOT/profile
 snapshot used to create it. These are illustrative estimates, not personalized
 training or medical advice.
 
-Generated workout categories follow the selected run count: one VO₂ max workout;
-two runs (easy and VO₂ max); three runs (VO₂ max, easy, long); four runs (VO₂ max,
-two easy, long); five or more (VO₂ max, easy, threshold, long, then additional
+Default workout categories follow the selected run count: one interval workout;
+two runs (easy and intervals); three runs (intervals, easy, long); four runs (intervals,
+two easy, long); five or more (intervals, easy, threshold, long, then additional
 easy runs). The total weekly duration is allocated in proportion to workout-type
 and neighboring-session weights. Workout and long runs are spaced as evenly as
 the selected weekdays allow, with the long run favored for a weekend when
-spacing is otherwise equal. Optional preferred days can be set for the VO₂ max
+spacing is otherwise equal. Optional preferred days can be set for the interval
 workout, the threshold workout, and the long run; each option is shown only when
 the run count includes that session. With selected weekdays, preferred days must
 be among them. With a run count, the run days are chosen to include the
@@ -87,15 +91,67 @@ preferred days and keep key sessions as far apart as possible. The displayed dis
 on the VDOT easy-pace range. These are product heuristics, not scientifically
 validated training rules.
 
-VO₂ max sessions use VDOT-derived I-pace estimates and 3-minute repeats with
+Advanced options allow each existing key-session slot to be changed to intervals,
+threshold, repetition or long run, with a separate preferred day for each slot.
+The highlighted "Skip workout" option replaces that slot with an easy run;
+its day preference applies unless it shares a day with another slot. In that case,
+skipped slots become easy runs on other scheduled days and a real workout keeps
+the specified day. Only conflicting non-skipped workouts cause a duplicate-day
+error. Remaining key sessions are spaced around the easy runs.
+The question-mark button beside each workout type shows a short paraphrase of
+Daniels' training definition for the selected type on hover, keyboard focus or
+tap. Escape dismisses it. Definitions are translated into all supported languages.
+Jack Daniels is credited in the bottom method-and-limits text rather than in
+each workout tooltip. Conflicting workout days show errors under every affected
+workout, and changing a day revalidates all day selections.
+All form dropdowns and the language selector use the same accessible dropdown
+component. Arrows rotate when menus open and close; reduced-motion preferences
+disable the animation. Keyboard navigation supports arrows, Home, End, typing,
+Enter, Escape and Tab.
+Types may be repeated, including multiple long runs. The number of key-session
+slots and easy runs remains unchanged; leaving the choices at their defaults
+preserves the existing generation rules. Each long run remains longer than every
+easy run. At the minimum weekly duration, enforcing this can exceed the target.
+Duplicate workouts are user choices, not an assessment of safe training load.
+Saved profiles without workout choices retain their defaults.
+
+Interval sessions use VDOT-derived I-pace estimates and 3-minute repeats with
 2-minute easy jog recoveries. Threshold sessions use VDOT-derived T-pace
 estimates and continuous or repeated efforts, fitted to the planned session
 duration. The pace ranges and example formats follow the [VDOT2 training
 definitions](https://vdoto2.com/Calculator). These are illustrative sessions,
 not individualized coaching advice.
 
-Select a calendar day to view its workout details. Non-easy workouts include an
+Repetition (R) training develops speed and running economy, with short efforts
+and full recovery rather than the incomplete recovery of I training. The
+[official VDOT calculator's training definitions](https://vdoto2.com/calculator)
+describe R pace as similar to current 1500 m or mile race pace, with example
+formats of 8 x 200 m or 4 x 400 m and easy jog recovery. Recover fully before the
+next repetition; extending recovery is preferable to forcing the next effort.
+
+The planner estimates R pace by solving the existing Daniels-Gilbert performance
+equation for an equivalent mile time at the saved VDOT, then converting it to
+seconds/km. This is a continuous approximation, not an exact official R-table
+lookup. Generated sets use 200 m repeats, or 400 m when the session is at least
+50 minutes, each effort fits within two minutes, and the volume budget allows
+at least two 400 m repetitions. Otherwise 200 m repeats are used. Warm-up and cool-down each
+receive at least eight minutes, with a starting recovery of three times the
+effort duration. Rep count is fitted to time and volume, not fixed to the examples.
+If there is not enough room for two repetitions, or a 200 m effort would exceed
+two minutes, the details explicitly prescribe easy running instead.
+
+As a conservative product rule inspired by the
+[Daniels five-week-cycle review](https://fellrnr.com/wiki/Jack_Daniels_Running_Formula),
+total R distance is capped at the smaller of 5% of estimated weekly distance or
+8 km, shared across all selected R sessions. The estimate uses the slower easy
+pace and scheduled minutes, not measured training history. These limits and
+session templates are illustrative heuristics, not personalized coaching.
+
+Select a calendar day to view its workout details. The copy button copies the
+week, including workout steps and paces, as plain text in the current language.
+Non-easy workouts include an
 option to download a Garmin FIT workout file. Files contain timed workout steps
+or distance-based R repetitions
 and VDOT-derived pace targets where available. Transfer the downloaded file to
 a compatible Garmin device using Garmin Connect or the device's supported
 file-transfer method. Easy runs do not have FIT downloads; files are generated
@@ -108,6 +164,11 @@ the whole week (workouts and long run, or all runs) or a single day from the
 day dialog. Each run becomes a Garmin workout scheduled on its date. Sending a
 day again replaces the workout previously sent from this browser for that date
 (the sent workout IDs are kept in localStorage, `run-week.garmin.v1`).
+Repetition workouts are accepted by the sync endpoint, with distance-based
+efforts and R-pace speed targets. FIT exports retain the full week's R-volume
+budget; Garmin sync generates each selected session independently using its
+conservative session-duration-based R budget. Watch names for Russian,
+Ukrainian and Belarusian use English.
 
 The integration uses Garmin's Training API, which requires an approved
 [Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/)
@@ -139,7 +200,7 @@ replacement and deletion.
 ## Languages
 
 The UI is available in English, French, German, Spanish, Portuguese, Polish,
-Russian and Italian. The default language is the first supported language in
+Russian, Ukrainian, Belarusian and Italian. The default language is the first supported language in
 the browser's language settings, with English as the fallback. The language
 selector overrides it and stores the choice in localStorage (`run-week-locale`).
 Translations live in `src/features/i18n/messages`; `en.ts` defines the message
@@ -147,8 +208,8 @@ shape and the other locales must satisfy it.
 
 Language is resolved in the browser rather than through locale URL segments,
 because the app is a single static page with browser-only data. FIT workout
-names are converted to ASCII for Garmin watch fonts; Russian FIT files use
-English names.
+names are converted to ASCII for Garmin watch fonts; Russian, Ukrainian and
+Belarusian FIT files use English names.
 
 ## Architecture
 

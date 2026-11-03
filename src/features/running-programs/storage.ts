@@ -1,4 +1,4 @@
-import { addDays, averageEasyPaceSecondsPerKm, mondayOf, validateProfile } from "./domain";
+import { addDays, averageEasyPaceSecondsPerKm, DEFAULT_WORKOUT_CHOICES, KEY_WORKOUT_TYPES, mondayOf, validateProfile } from "./domain";
 import type { PlannerState, PreferredDays, Profile, TrainingWeek, Workout } from "./types";
 
 export const STORAGE_KEY = "run-week.planner.v1";
@@ -25,6 +25,11 @@ function isProfile(value: unknown): value is Profile {
       const day = (value.preferredDays as Record<string, unknown>)[type];
       return day === undefined || day === null || typeof day === "number";
     }))) return false;
+  if (value.workoutChoices !== undefined) {
+    const choices = value.workoutChoices;
+    if (!isRecord(choices) || !(["vo2max", "threshold", "long"] as const)
+      .every((slot) => KEY_WORKOUT_TYPES.some((type) => type === choices[slot]))) return false;
+  }
   const profile = {
     ...value,
     recentWeeklyVolumeKm: value.recentWeeklyVolumeKm ?? null,
@@ -60,7 +65,7 @@ function isWeek(value: unknown): value is TrainingWeek {
         || workout.intensityAdjustment < -2 || workout.intensityAdjustment > 2))
       || (workout.intensityIncreased !== undefined && typeof workout.intensityIncreased !== "boolean")
       || (workout.intensityDecreased !== undefined && typeof workout.intensityDecreased !== "boolean")
-      || (workout.type !== undefined && !["easy", "long", "workout", "vo2max", "threshold"].includes(String(workout.type)))) return false;
+      || (workout.type !== undefined && !["easy", "long", "workout", "vo2max", "threshold", "repetition"].includes(String(workout.type)))) return false;
     days.add(workout.day);
     return true;
   });
@@ -99,6 +104,7 @@ function normalizeProfile(profile: Profile, fallbackVolume: number | null): Prof
     recentWeeklyVolumeKm: recentWeeklyVolumeKm === undefined ? fallbackVolume : recentWeeklyVolumeKm,
     desiredWeeklyDurationMinutes: profile.desiredWeeklyDurationMinutes ?? null,
     preferredDays: normalizePreferredDays(profile.preferredDays),
+    workoutChoices: { ...(profile.workoutChoices ?? DEFAULT_WORKOUT_CHOICES) },
   };
 }
 

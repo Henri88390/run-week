@@ -10,6 +10,10 @@ export type PreferredDays = {
   long: number | null;
 };
 
+export type KeyWorkoutType = "vo2max" | "threshold" | "repetition" | "long";
+/** Stable default-session slots retain separate day preferences even when types are duplicated. */
+export type WorkoutChoices = Record<keyof PreferredDays, KeyWorkoutType | "easy">;
+
 export type Profile = {
   distanceMeters: number;
   raceSeconds: number;
@@ -20,9 +24,10 @@ export type Profile = {
   recentWeeklyVolumeKm: number | null;
   desiredWeeklyDurationMinutes: number | null;
   preferredDays: PreferredDays;
+  workoutChoices?: WorkoutChoices;
 };
 
-export type WorkoutType = "easy" | "long" | "workout" | "vo2max" | "threshold";
+export type WorkoutType = "easy" | "workout" | KeyWorkoutType;
 export type AdjustmentLevel = -2 | -1 | 0 | 1 | 2;
 
 export type Workout = {

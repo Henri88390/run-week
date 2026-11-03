@@ -11,7 +11,7 @@ export const garminSyncRequestSchema = z.object({
   workouts: z.array(z.object({
     day: z.number().int().min(0).max(6),
     durationMinutes: z.number().int().min(1).max(600),
-    type: z.enum(["easy", "long", "workout", "vo2max", "threshold"]).optional(),
+    type: z.enum(["easy", "long", "workout", "vo2max", "threshold", "repetition"]).optional(),
     intensityAdjustment: z.union([z.literal(-2), z.literal(-1), z.literal(0), z.literal(1), z.literal(2)]).optional(),
     /** Garmin workout previously created for this day; it is replaced. */
     previousWorkoutId: z.number().int().positive().optional(),

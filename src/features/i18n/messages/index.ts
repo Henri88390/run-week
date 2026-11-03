@@ -7,5 +7,7 @@ import { it } from "./it";
 import { pl } from "./pl";
 import { pt } from "./pt";
 import { ru } from "./ru";
+import { uk } from "./uk";
+import { be } from "./be";
 
-export const MESSAGES: Record<Locale, Messages> = { en, fr, de, es, pt, pl, ru, it };
+export const MESSAGES: Record<Locale, Messages> = { en, fr, de, es, pt, pl, ru, uk, be, it };

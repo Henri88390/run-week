@@ -1,12 +1,12 @@
 import type { Locale } from "@/features/i18n/locales";
 import { weekdayName } from "@/features/i18n/locales";
 import { MESSAGES } from "@/features/i18n/messages";
-import { workoutLabelKey, workoutSessionPlan } from "./domain";
+import { workoutLabelKey, workoutSessionPlan, weekWorkoutSessionPlan } from "./domain";
 import type { WorkoutSessionStep } from "./domain";
-import type { Workout } from "./types";
+import type { TrainingWeek, Workout } from "./types";
 
 /** Timed steps used when exporting a run to a watch or Garmin Connect. */
-export function workoutExportSteps(workout: Workout, vdot: number): WorkoutSessionStep[] {
+export function workoutExportSteps(workout: Workout, vdot: number, week?: TrainingWeek): WorkoutSessionStep[] {
   const type = workout.type ?? "easy";
   if (type === "easy") {
     return [{ kind: "easyRun", durationMinutes: workout.durationMinutes, intensity: "active", paceFractions: [0.59, 0.74] }];
@@ -14,7 +14,7 @@ export function workoutExportSteps(workout: Workout, vdot: number): WorkoutSessi
   if (type === "long") {
     return [{ kind: "longRun", durationMinutes: workout.durationMinutes, intensity: "active", paceFractions: [0.59, 0.74] }];
   }
-  const plan = workoutSessionPlan(
+  const plan = week ? weekWorkoutSessionPlan(week, workout) : workoutSessionPlan(
     type,
     vdot,
     workout.durationMinutes,
@@ -34,13 +34,14 @@ export function watchText(text: string): string {
     .replace(/[^\x20-\x7E]/g, "");
 }
 
-// Cyrillic cannot be transliterated reliably for watch fonts, so Russian falls back to English.
+// Cyrillic cannot be transliterated reliably for watch fonts.
 export function watchLocale(locale: Locale): Locale {
-  return locale === "ru" ? "en" : locale;
+  return locale === "ru" || locale === "uk" || locale === "be" ? "en" : locale;
 }
 
 export function watchStepName(step: WorkoutSessionStep, displayLocale: Locale): string {
-  return watchText(MESSAGES[watchLocale(displayLocale)].steps[step.kind]);
+  const t = MESSAGES[watchLocale(displayLocale)];
+  return watchText(step.fullRecovery ? t.week.fullRecovery : t.steps[step.kind]);
 }
 
 export function watchWorkoutName(workout: Workout, displayLocale: Locale): string {
