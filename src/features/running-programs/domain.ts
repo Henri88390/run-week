@@ -79,8 +79,11 @@ export function activePreferredDays(
   if (!preferredDays) return [];
   const types = weeklyWorkoutTypes(runCount);
   const preferred = (["vo2max", "threshold", "long"] as const)
-    .filter((type) => types.includes(type) && preferredDays[type] !== null)
-    .map((type) => ({ type, day: preferredDays[type] as number }));
+    .filter((type) => types.includes(type))
+    .flatMap((type) => {
+      const day = preferredDays[type];
+      return day === null ? [] : [{ type, day }];
+    });
   // A skipped slot cannot displace a real workout or require two runs on one day.
   return preferred.filter(({ type, day }) => choices[type] !== "easy"
     || !preferred.some((other) => other.type !== type && other.day === day));
@@ -544,8 +547,11 @@ export function validateProfile(profile: Profile): string[] {
     const active = activePreferredDays(preferredDays, count, profile.workoutChoices).map(({ day }) => day);
     if (new Set(active).size !== active.length)
       errors.push("Choose a different day for each preferred session.");
-    if (profile.schedule.mode === "days" && active.some((day) => !(profile.schedule as { days: number[] }).days.includes(day)))
-      errors.push("Choose preferred days among the selected weekdays.");
+    if (profile.schedule.mode === "days") {
+      const selectedDays = profile.schedule.days;
+      if (active.some((day) => !selectedDays.includes(day)))
+        errors.push("Choose preferred days among the selected weekdays.");
+    }
   }
   if (!Number.isFinite(profile.vdot) || Math.abs(profile.vdot - vdot) > 0.000001)
     errors.push("VDOT must match the entered performance.");

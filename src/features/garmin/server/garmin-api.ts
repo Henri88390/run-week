@@ -23,6 +23,14 @@ export class GarminApiError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPositiveDuration(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export function authorizationUrl(config: GarminConfig, options: {
   state: string;
   codeChallenge: string;
@@ -53,19 +61,24 @@ export async function requestTokens(
     cache: "no-store",
   });
   if (!response.ok) throw new GarminApiError(response.status, "Garmin token request failed.");
-  const body = await response.json() as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    refresh_token_expires_in?: number;
-  };
-  if (!body.access_token || !body.refresh_token) throw new GarminApiError(502, "Garmin token response is incomplete.");
+  const body: unknown = await response.json();
+  if (!isRecord(body) || typeof body.access_token !== "string" || !body.access_token
+    || typeof body.refresh_token !== "string" || !body.refresh_token
+    || (body.expires_in !== undefined && !isPositiveDuration(body.expires_in))
+    || (body.refresh_token_expires_in !== undefined && !isPositiveDuration(body.refresh_token_expires_in))) {
+    throw new GarminApiError(502, "Garmin token response is invalid.");
+  }
   const now = Date.now();
+  const expiresAt = now + (body.expires_in ?? 3600) * 1000;
+  const refreshExpiresAt = now + (body.refresh_token_expires_in ?? DEFAULT_REFRESH_LIFETIME_SECONDS) * 1000;
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(refreshExpiresAt)) {
+    throw new GarminApiError(502, "Garmin token expiry is invalid.");
+  }
   return {
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
-    expiresAt: now + (body.expires_in ?? 3600) * 1000,
-    refreshExpiresAt: now + (body.refresh_token_expires_in ?? DEFAULT_REFRESH_LIFETIME_SECONDS) * 1000,
+    expiresAt,
+    refreshExpiresAt,
   };
 }
 
@@ -82,10 +95,11 @@ async function trainingApi(accessToken: string, path: string, init: RequestInit)
   return response;
 }
 
-export async function createWorkout(accessToken: string, workout: object): Promise<number> {
+export async function createWorkout(accessToken: string, workout: Record<string, unknown>): Promise<number> {
   const response = await trainingApi(accessToken, "/workout", { method: "POST", body: JSON.stringify(workout) });
-  const body = await response.json() as { workoutId?: number };
-  if (typeof body.workoutId !== "number") throw new GarminApiError(502, "Garmin did not return a workout ID.");
+  const body: unknown = await response.json();
+  if (!isRecord(body) || typeof body.workoutId !== "number" || !Number.isSafeInteger(body.workoutId)
+    || body.workoutId <= 0) throw new GarminApiError(502, "Garmin did not return a valid workout ID.");
   return body.workoutId;
 }
 

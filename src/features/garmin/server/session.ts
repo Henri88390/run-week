@@ -13,6 +13,29 @@ type Authorization = {
   state: string; codeVerifier: string; redirectUri: string; consentVersion: string; consentAt: number;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGarminTokens(value: unknown): value is GarminTokens {
+  return isRecord(value)
+    && typeof value.accessToken === "string" && value.accessToken.length > 0
+    && typeof value.refreshToken === "string" && value.refreshToken.length > 0
+    && typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)
+    && typeof value.refreshExpiresAt === "number" && Number.isFinite(value.refreshExpiresAt)
+    && value.consentVersion === GARMIN_CONSENT_VERSION
+    && typeof value.consentAt === "number" && Number.isFinite(value.consentAt);
+}
+
+function isAuthorization(value: unknown): value is Authorization {
+  return isRecord(value)
+    && typeof value.state === "string" && value.state.length > 0
+    && typeof value.codeVerifier === "string" && value.codeVerifier.length > 0
+    && typeof value.redirectUri === "string" && value.redirectUri.length > 0
+    && value.consentVersion === GARMIN_CONSENT_VERSION
+    && typeof value.consentAt === "number" && Number.isFinite(value.consentAt);
+}
+
 function encryptionKey(secret: string): Buffer {
   return createHash("sha256").update(secret).digest();
 }
@@ -25,13 +48,15 @@ export function seal(value: unknown, secret: string): string {
   return Buffer.concat([iv, cipher.getAuthTag(), data]).toString("base64url");
 }
 
-export function unseal<T>(sealed: string | undefined, secret: string): T | null {
-  if (!sealed) return null;
+export function unseal(sealed: string | undefined, secret: string): unknown | null {
+  if (!sealed || sealed.length > 8192) return null;
   try {
     const bytes = Buffer.from(sealed, "base64url");
+    if (bytes.length < 28) return null;
     const decipher = createDecipheriv("aes-256-gcm", encryptionKey(secret), bytes.subarray(0, 12));
     decipher.setAuthTag(bytes.subarray(12, 28));
-    return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8")) as T;
+    const value: unknown = JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8"));
+    return value;
   } catch {
     return null;
   }
@@ -48,10 +73,8 @@ function cookieOptions(request: NextRequest, maxAgeSeconds: number) {
 }
 
 export function readSession(request: NextRequest, config: GarminConfig): GarminTokens | null {
-  const tokens = unseal<GarminTokens>(request.cookies.get(SESSION_COOKIE)?.value, config.sessionSecret);
-  return tokens && tokens.refreshExpiresAt > Date.now()
-    && tokens.consentVersion === GARMIN_CONSENT_VERSION
-    && typeof tokens.consentAt === "number" ? tokens : null;
+  const tokens = unseal(request.cookies.get(SESSION_COOKIE)?.value, config.sessionSecret);
+  return isGarminTokens(tokens) && tokens.refreshExpiresAt > Date.now() ? tokens : null;
 }
 
 export function writeSession(response: NextResponse, request: NextRequest, config: GarminConfig, tokens: GarminTokens) {
@@ -68,7 +91,8 @@ export function writeAuthorization(response: NextResponse, request: NextRequest,
 }
 
 export function readAuthorization(request: NextRequest, config: GarminConfig): Authorization | null {
-  return unseal<Authorization>(request.cookies.get(AUTHORIZATION_COOKIE)?.value, config.sessionSecret);
+  const authorization = unseal(request.cookies.get(AUTHORIZATION_COOKIE)?.value, config.sessionSecret);
+  return isAuthorization(authorization) ? authorization : null;
 }
 
 export function clearAuthorization(response: NextResponse, request: NextRequest) {
@@ -102,5 +126,5 @@ export function pkceChallenge(verifier: string): string {
 /** Rejects cross-site state-changing requests in addition to the SameSite=Lax session cookie. */
 export function isSameOrigin(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
-  return origin === null || origin === request.nextUrl.origin;
+  return origin === request.nextUrl.origin;
 }

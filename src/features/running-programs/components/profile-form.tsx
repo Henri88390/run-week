@@ -56,8 +56,8 @@ function enteredPerformance(distanceValue: string, hours: string, minutes: strin
   if (!Number.isFinite(distanceMeters) || distanceMeters < 1500 || distanceMeters > 42195) return null;
   const parts = [distanceMeters > 5000 ? (hours.trim() === "" ? 0 : wholeNumber(hours, 8)) : 0,
     wholeNumber(minutes, 59), wholeNumber(seconds, 59)];
-  if (parts.some((part) => part === null)) return null;
-  const [h, m, sec] = parts as number[];
+  const [h, m, sec] = parts;
+  if (h === null || m === null || sec === null) return null;
   const raceSeconds = h * 3600 + m * 60 + sec;
   return raceSeconds >= 180 && raceSeconds <= 28800 && isSupportedPerformance(distanceMeters, raceSeconds)
     ? { distanceMeters, raceSeconds } : null;

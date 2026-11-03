@@ -6,7 +6,9 @@ import { hostingProvider } from "@/features/garmin/server/privacy";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
 
 export async function GET(request: NextRequest) {
-  return NextResponse.redirect(new URL("/garmin/consent", request.nextUrl));
+  const response = NextResponse.redirect(new URL("/garmin/consent", request.nextUrl));
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
 
 export async function POST(request: NextRequest) {
@@ -16,12 +18,21 @@ export async function POST(request: NextRequest) {
   if (!hostingProvider()) {
     return new NextResponse("Garmin authorization is unavailable until the hosting provider is disclosed in the privacy policy.", { status: 503 });
   }
-  const form = await request.formData();
-  if (form.get("consent") !== GARMIN_CONSENT_VERSION) {
+  let consent: FormDataEntryValue | null;
+  try {
+    consent = (await request.formData()).get("consent");
+  } catch {
+    return new NextResponse("Please read the privacy policy and consent before connecting Garmin.", { status: 400 });
+  }
+  if (consent !== GARMIN_CONSENT_VERSION) {
     return new NextResponse("Please read the privacy policy and consent before connecting Garmin.", { status: 400 });
   }
   const config = garminConfig();
-  if (!config) return NextResponse.redirect(new URL("/?garmin=unavailable", request.nextUrl), 303);
+  if (!config) {
+    const response = NextResponse.redirect(new URL("/?garmin=unavailable", request.nextUrl), 303);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
   const state = randomToken();
   const codeVerifier = randomToken(48);
   const redirectUri = config.redirectUri ?? new URL("/api/garmin/callback", request.nextUrl.origin).toString();
@@ -30,6 +41,7 @@ export async function POST(request: NextRequest) {
     codeChallenge: pkceChallenge(codeVerifier),
     redirectUri,
   }), 303);
+  response.headers.set("Cache-Control", "no-store");
   writeAuthorization(response, request, config, {
     state, codeVerifier, redirectUri, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
   });

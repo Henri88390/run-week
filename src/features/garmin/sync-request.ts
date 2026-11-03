@@ -4,17 +4,22 @@ import { LOCALES } from "@/features/i18n/locales";
 export const GARMIN_ERRORS = ["reconnect", "permission", "rateLimited", "failed", "invalid"] as const;
 export type GarminErrorCode = (typeof GARMIN_ERRORS)[number];
 
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+});
+
 export const garminSyncRequestSchema = z.object({
   locale: z.enum(LOCALES),
   vdot: z.number().min(10).max(85),
-  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  weekStart: isoDateSchema,
   workouts: z.array(z.object({
     day: z.number().int().min(0).max(6),
     durationMinutes: z.number().int().min(1).max(600),
     type: z.enum(["easy", "long", "workout", "vo2max", "threshold", "repetition"]).optional(),
     intensityAdjustment: z.union([z.literal(-2), z.literal(-1), z.literal(0), z.literal(1), z.literal(2)]).optional(),
     /** Garmin workout previously created for this day; it is replaced. */
-    previousWorkoutId: z.number().int().positive().optional(),
+    previousWorkoutId: z.number().int().positive().refine(Number.isSafeInteger).optional(),
   })).min(1).max(7),
 });
 
@@ -25,4 +30,18 @@ export type GarminSyncResponse = {
   error?: GarminErrorCode;
 };
 
-export type GarminStatus = { configured: boolean; connected: boolean };
+export const garminSyncResponseSchema = z.object({
+  results: z.array(z.object({
+    day: z.number().int().min(0).max(6),
+    date: isoDateSchema,
+    workoutId: z.number().int().positive().refine(Number.isSafeInteger),
+  })),
+  error: z.enum(GARMIN_ERRORS).optional(),
+});
+
+export const garminStatusSchema = z.object({
+  configured: z.boolean(),
+  connected: z.boolean(),
+});
+
+export type GarminStatus = z.infer<typeof garminStatusSchema>;

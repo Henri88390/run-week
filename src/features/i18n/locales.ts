@@ -16,7 +16,7 @@ export const LOCALE_NAMES: Record<Locale, string> = {
 };
 
 export function isLocale(value: unknown): value is Locale {
-  return typeof value === "string" && (LOCALES as readonly string[]).includes(value);
+  return typeof value === "string" && LOCALES.some((locale) => locale === value);
 }
 
 /** Picks the first supported language from the browser's preference list, e.g. "fr-CA" → "fr". */

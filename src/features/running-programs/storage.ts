@@ -1,74 +1,101 @@
+import { z } from "zod";
 import { addDays, averageEasyPaceSecondsPerKm, DEFAULT_WORKOUT_CHOICES, KEY_WORKOUT_TYPES, mondayOf, validateProfile } from "./domain";
-import type { PlannerState, PreferredDays, Profile, TrainingWeek, Workout } from "./types";
+import type { PlannerState, PreferredDays, Profile, TrainingWeek } from "./types";
 
 export const STORAGE_KEY = "run-week.planner.v1";
+
+const storedProfileSchema = z.object({
+  distanceMeters: z.number(),
+  raceSeconds: z.number(),
+  vdot: z.number(),
+  goal: z.enum(["none", "maintain", "improve"]),
+  goalDistanceMeters: z.number(),
+  schedule: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("days"), days: z.array(z.number()) }),
+    z.object({ mode: z.literal("count"), count: z.number() }),
+  ]),
+  recentWeeklyVolumeKm: z.number().nullable().optional(),
+  desiredWeeklyDurationMinutes: z.number().nullable().optional(),
+  preferredDays: z.object({
+    vo2max: z.number().nullable().optional(),
+    threshold: z.number().nullable().optional(),
+    long: z.number().nullable().optional(),
+  }).optional(),
+  workoutChoices: z.object({
+    vo2max: z.enum(KEY_WORKOUT_TYPES),
+    threshold: z.enum(KEY_WORKOUT_TYPES),
+    long: z.enum(KEY_WORKOUT_TYPES),
+  }).optional(),
+});
+
+type StoredProfile = z.infer<typeof storedProfileSchema>;
+
+const storedWorkoutSchema = z.object({
+  day: z.number().int().min(0).max(6),
+  durationMinutes: z.number().int().min(1),
+  type: z.enum(["easy", "long", "workout", "vo2max", "threshold", "repetition"]).optional(),
+  intensityAdjustment: z.union([
+    z.literal(-2), z.literal(-1), z.literal(0), z.literal(1), z.literal(2),
+  ]).optional(),
+  intensityIncreased: z.boolean().optional(),
+  intensityDecreased: z.boolean().optional(),
+});
+
+const storedWeekSchema = z.object({
+  id: z.string(),
+  number: z.number().int().min(1),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  profile: storedProfileSchema,
+  workouts: z.array(storedWorkoutSchema).min(1).max(7),
+  targetWeeklyVolumeKm: z.number().finite().positive().nullable().optional(),
+  rationale: z.string(),
+});
+
+type StoredWeek = Omit<z.infer<typeof storedWeekSchema>, "profile"> & { profile: StoredProfile };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isProfile(value: unknown): value is Profile {
-  if (!isRecord(value) || !isRecord(value.schedule)) return false;
-  const schedule = value.schedule;
-  if (schedule.mode === "days") {
-    if (!Array.isArray(schedule.days) || !schedule.days.every((day: unknown) => typeof day === "number")) return false;
-  } else if (schedule.mode !== "count" || typeof schedule.count !== "number") return false;
-  if (typeof value.distanceMeters !== "number" || typeof value.raceSeconds !== "number"
-    || typeof value.vdot !== "number" || typeof value.goalDistanceMeters !== "number"
-    || (value.recentWeeklyVolumeKm !== undefined && value.recentWeeklyVolumeKm !== null
-      && typeof value.recentWeeklyVolumeKm !== "number")
-    || (value.desiredWeeklyDurationMinutes !== undefined && value.desiredWeeklyDurationMinutes !== null
-      && typeof value.desiredWeeklyDurationMinutes !== "number")
-    || !["none", "maintain", "improve"].includes(String(value.goal))) return false;
-  if (value.preferredDays !== undefined && (!isRecord(value.preferredDays)
-    || !(["vo2max", "threshold", "long"] as const).every((type) => {
-      const day = (value.preferredDays as Record<string, unknown>)[type];
-      return day === undefined || day === null || typeof day === "number";
-    }))) return false;
-  if (value.workoutChoices !== undefined) {
-    const choices = value.workoutChoices;
-    if (!isRecord(choices) || !(["vo2max", "threshold", "long"] as const)
-      .every((slot) => KEY_WORKOUT_TYPES.some((type) => type === choices[slot]))) return false;
-  }
-  const profile = {
-    ...value,
-    recentWeeklyVolumeKm: value.recentWeeklyVolumeKm ?? null,
-    desiredWeeklyDurationMinutes: value.desiredWeeklyDurationMinutes ?? null,
-    preferredDays: normalizePreferredDays(value.preferredDays),
-  } as unknown as Profile;
-  return validateProfile(profile).length === 0;
+function normalizePreferredDays(value: StoredProfile["preferredDays"]): PreferredDays {
+  return {
+    vo2max: value?.vo2max ?? null,
+    threshold: value?.threshold ?? null,
+    long: value?.long ?? null,
+  };
 }
 
-function normalizePreferredDays(value: unknown): PreferredDays {
-  const stored = isRecord(value) ? value : {};
-  const day = (type: keyof PreferredDays) => typeof stored[type] === "number" ? stored[type] as number : null;
-  return { vo2max: day("vo2max"), threshold: day("threshold"), long: day("long") };
+function parseStoredProfile(value: unknown): StoredProfile | null {
+  const parsed = storedProfileSchema.safeParse(value);
+  if (!parsed.success) return null;
+
+  const profile: Profile = {
+    ...parsed.data,
+    recentWeeklyVolumeKm: parsed.data.recentWeeklyVolumeKm ?? null,
+    desiredWeeklyDurationMinutes: parsed.data.desiredWeeklyDurationMinutes ?? null,
+    preferredDays: normalizePreferredDays(parsed.data.preferredDays),
+    workoutChoices: { ...DEFAULT_WORKOUT_CHOICES, ...parsed.data.workoutChoices },
+  };
+  return validateProfile(profile).length === 0 ? parsed.data : null;
 }
 
-function isWeek(value: unknown): value is TrainingWeek {
-  if (!isRecord(value) || typeof value.startDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.startDate)
-    || value.id !== value.startDate || typeof value.number !== "number" || !Number.isInteger(value.number) || value.number < 1
-    || typeof value.rationale !== "string" || !isProfile(value.profile) || !Array.isArray(value.workouts)
-    || (value.targetWeeklyVolumeKm !== undefined && value.targetWeeklyVolumeKm !== null && (typeof value.targetWeeklyVolumeKm !== "number"
-      || !Number.isFinite(value.targetWeeklyVolumeKm) || value.targetWeeklyVolumeKm <= 0))
-    || value.workouts.length < 1 || value.workouts.length > 7) return false;
-  const date = new Date(`${value.startDate}T12:00:00`);
-  if (!Number.isFinite(date.getTime()) || mondayOf(date) !== value.startDate) return false;
+function parseStoredWeek(value: unknown): StoredWeek | null {
+  const parsed = storedWeekSchema.safeParse(value);
+  if (!parsed.success) return null;
+
+  const profile = parseStoredProfile(parsed.data.profile);
+  if (!profile || parsed.data.id !== parsed.data.startDate) return null;
+
+  const date = new Date(`${parsed.data.startDate}T12:00:00`);
   const days = new Set<number>();
-  return value.workouts.every((workout: unknown) => {
-    if (!isRecord(workout) || typeof workout.day !== "number" || !Number.isInteger(workout.day)
-      || workout.day < 0 || workout.day > 6 || days.has(workout.day)
-      || typeof workout.durationMinutes !== "number" || !Number.isInteger(workout.durationMinutes)
-      || workout.durationMinutes < 1
-      || (workout.intensityAdjustment !== undefined && (typeof workout.intensityAdjustment !== "number"
-        || !Number.isInteger(workout.intensityAdjustment)
-        || workout.intensityAdjustment < -2 || workout.intensityAdjustment > 2))
-      || (workout.intensityIncreased !== undefined && typeof workout.intensityIncreased !== "boolean")
-      || (workout.intensityDecreased !== undefined && typeof workout.intensityDecreased !== "boolean")
-      || (workout.type !== undefined && !["easy", "long", "workout", "vo2max", "threshold", "repetition"].includes(String(workout.type)))) return false;
-    days.add(workout.day);
-    return true;
-  });
+  if (!Number.isFinite(date.getTime()) || mondayOf(date) !== parsed.data.startDate
+    || !parsed.data.workouts.every((workout) => {
+      if (days.has(workout.day)) return false;
+      days.add(workout.day);
+      return true;
+    })) return null;
+
+  return { ...parsed.data, profile };
 }
 
 function inferWeeklyVolume(profile: Profile, workouts: TrainingWeek["workouts"]): number {
@@ -77,65 +104,67 @@ function inferWeeklyVolume(profile: Profile, workouts: TrainingWeek["workouts"])
   return Math.max(1, Math.round(totalMinutes * 60 / easyPaceSecondsPerKm));
 }
 
-function normalizeWeek(week: TrainingWeek): TrainingWeek {
-  const inferredVolume = inferWeeklyVolume(week.profile, week.workouts);
-  const storedProfileVolume = (week.profile as Profile & { recentWeeklyVolumeKm?: number | null }).recentWeeklyVolumeKm;
-  const storedTargetVolume = (week as TrainingWeek & { targetWeeklyVolumeKm?: number | null }).targetWeeklyVolumeKm;
-  const workouts = week.workouts.map((storedWorkout) => {
-    const workout = { ...storedWorkout };
-    delete (workout as Workout & { feedback?: unknown }).feedback;
-    return workout;
-  });
+function normalizeProfile(profile: StoredProfile, fallbackVolume: number | null): Profile {
   return {
-    ...week,
-    workouts,
-    profile: normalizeProfile({
-      ...week.profile,
-      recentWeeklyVolumeKm: storedProfileVolume === undefined ? inferredVolume : storedProfileVolume,
-    }, inferredVolume),
-    targetWeeklyVolumeKm: storedTargetVolume === undefined ? inferredVolume : storedTargetVolume,
+    ...profile,
+    recentWeeklyVolumeKm: profile.recentWeeklyVolumeKm === undefined ? fallbackVolume : profile.recentWeeklyVolumeKm,
+    desiredWeeklyDurationMinutes: profile.desiredWeeklyDurationMinutes ?? null,
+    preferredDays: normalizePreferredDays(profile.preferredDays),
+    workoutChoices: { ...DEFAULT_WORKOUT_CHOICES, ...profile.workoutChoices },
   };
 }
 
-function normalizeProfile(profile: Profile, fallbackVolume: number | null): Profile {
-  const recentWeeklyVolumeKm = (profile as Profile & { recentWeeklyVolumeKm?: number | null }).recentWeeklyVolumeKm;
+function normalizeWeek(week: StoredWeek): TrainingWeek {
+  const inferredVolume = inferWeeklyVolume(normalizeProfile(week.profile, null), week.workouts);
+  const storedProfileVolume = week.profile.recentWeeklyVolumeKm;
+  const storedTargetVolume = week.targetWeeklyVolumeKm;
   return {
-    ...profile,
-    recentWeeklyVolumeKm: recentWeeklyVolumeKm === undefined ? fallbackVolume : recentWeeklyVolumeKm,
-    desiredWeeklyDurationMinutes: profile.desiredWeeklyDurationMinutes ?? null,
-    preferredDays: normalizePreferredDays(profile.preferredDays),
-    workoutChoices: { ...(profile.workoutChoices ?? DEFAULT_WORKOUT_CHOICES) },
+    ...week,
+    profile: normalizeProfile(week.profile, storedProfileVolume === undefined ? inferredVolume : storedProfileVolume),
+    targetWeeklyVolumeKm: storedTargetVolume === undefined ? inferredVolume : storedTargetVolume,
   };
 }
 
 /** Validate untrusted browser data before allowing it into the planner. */
 export function parsePlanner(raw: string): PlannerState {
   const value: unknown = JSON.parse(raw);
-  if (!isRecord(value) || !isProfile(value.profile)) throw new Error("Unrecognized saved planner.");
+  if (!isRecord(value)) throw new Error("Unrecognized saved planner.");
+
+  const profile = parseStoredProfile(value.profile);
+  if (!profile) throw new Error("Unrecognized saved planner.");
 
   if (value.version === 2) {
-    if (!isWeek(value.currentWeek)) throw new Error("Unrecognized saved planner.");
-    const currentWeek = normalizeWeek(value.currentWeek);
+    const storedWeek = parseStoredWeek(value.currentWeek);
+    if (!storedWeek) throw new Error("Unrecognized saved planner.");
+    const currentWeek = normalizeWeek(storedWeek);
     return {
       version: 2,
-      profile: normalizeProfile(value.profile, currentWeek.profile.recentWeeklyVolumeKm),
+      profile: normalizeProfile(profile, currentWeek.profile.recentWeeklyVolumeKm),
       currentWeek,
     };
   }
 
   if (value.version !== 1 || typeof value.currentWeekId !== "string"
-    || !Array.isArray(value.weeks) || !value.weeks.length || !value.weeks.every(isWeek))
+    || !Array.isArray(value.weeks) || !value.weeks.length)
     throw new Error("Unrecognized saved planner.");
-  const savedWeeks = value.weeks as TrainingWeek[];
-  const currentIndex = savedWeeks.findIndex((week) => week.id === value.currentWeekId);
-  if (currentIndex < 0 || currentIndex < savedWeeks.length - 2 || savedWeeks[0].number !== 1 ||
-    savedWeeks.some((week, index) => index > 0 && (week.startDate !== addDays(savedWeeks[index - 1].startDate, 7)
-      || week.number !== savedWeeks[index - 1].number + 1))) throw new Error("Invalid saved week history.");
 
-  const currentWeek = normalizeWeek(savedWeeks[currentIndex]);
+  const parsedWeeks = value.weeks.map(parseStoredWeek);
+  if (parsedWeeks.some((week) => week === null)) throw new Error("Unrecognized saved planner.");
+  const savedWeeks = parsedWeeks.filter((week): week is StoredWeek => week !== null);
+  const currentIndex = savedWeeks.findIndex((week) => week.id === value.currentWeekId);
+  if (currentIndex < 0 || currentIndex < savedWeeks.length - 2 || savedWeeks[0]?.number !== 1
+    || savedWeeks.some((week, index) => {
+      if (index === 0) return false;
+      const previous = savedWeeks[index - 1];
+      return previous === undefined || week.startDate !== addDays(previous.startDate, 7)
+        || week.number !== previous.number + 1;
+    })) throw new Error("Invalid saved week history.");
+
+  const currentWeek = savedWeeks[currentIndex];
+  if (!currentWeek) throw new Error("Invalid saved week history.");
   return {
     version: 2,
-    profile: normalizeProfile(value.profile, currentWeek.profile.recentWeeklyVolumeKm),
-    currentWeek,
+    profile: normalizeProfile(profile, normalizeWeek(currentWeek).profile.recentWeeklyVolumeKm),
+    currentWeek: normalizeWeek(currentWeek),
   };
 }

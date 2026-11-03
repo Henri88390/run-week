@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
   const config = garminConfig();
   const finish = (result: "connected" | "error" | "unavailable") => {
     const response = NextResponse.redirect(new URL(`/?garmin=${result}`, request.nextUrl));
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
     clearAuthorization(response, request);
     return response;
   };
@@ -25,7 +27,8 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
   if (!authorization || authorization.consentVersion !== GARMIN_CONSENT_VERSION
     || typeof authorization.consentAt !== "number"
-    || !code || !state || !sameState(state, authorization.state)) return finish("error");
+    || !code || code.length > 2048 || !state || state.length !== 43
+    || !sameState(state, authorization.state)) return finish("error");
 
   try {
     const tokens = await requestTokens(config, {

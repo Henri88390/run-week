@@ -5,6 +5,7 @@ import { clearAuthorization, clearSession, isSameOrigin } from "@/features/garmi
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return new NextResponse(null, { status: 403 });
   const response = new NextResponse(null, { status: 204 });
+  response.headers.set("Cache-Control", "no-store");
   clearSession(response, request);
   clearAuthorization(response, request);
   return response;

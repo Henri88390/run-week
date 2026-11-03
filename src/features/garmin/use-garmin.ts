@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { Locale } from "@/features/i18n/locales";
 import { addDays } from "@/features/running-programs/domain";
 import type { TrainingWeek, Workout } from "@/features/running-programs/types";
-import type { GarminErrorCode, GarminStatus, GarminSyncRequest, GarminSyncResponse } from "./sync-request";
+import {
+  garminStatusSchema, garminSyncResponseSchema,
+  type GarminErrorCode, type GarminStatus, type GarminSyncRequest,
+} from "./sync-request";
 import { GARMIN_SENT_KEY } from "./privacy";
 
 const SENT_KEY = GARMIN_SENT_KEY;
@@ -12,12 +15,17 @@ const NOTICES = ["connected", "error", "unavailable", "disconnectFailed", "local
 export type GarminNotice = (typeof NOTICES)[number];
 export type GarminSendResult = { count: number; error?: GarminErrorCode };
 
+function isGarminNotice(value: string): value is GarminNotice {
+  return NOTICES.some((notice) => notice === value);
+}
+
 function readSent(): Record<string, number> {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(SENT_KEY) ?? "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     return Object.fromEntries(Object.entries(value)
-      .filter((entry): entry is [string, number] => Number.isInteger(entry[1]) && entry[1] > 0));
+      .filter((entry): entry is [string, number] => /^\d{4}-\d{2}-\d{2}$/.test(entry[0])
+        && typeof entry[1] === "number" && Number.isSafeInteger(entry[1]) && entry[1] > 0));
   } catch {
     return {};
   }
@@ -49,22 +57,23 @@ export function useGarmin() {
       window.history.replaceState(window.history.state, "", url);
       // Reading the OAuth callback result requires the browser URL.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if ((NOTICES as readonly string[]).includes(param)) setNotice(param as GarminNotice);
+      if (isGarminNotice(param)) setNotice(param);
     }
     let active = true;
-    fetch("/api/garmin/status", { cache: "no-store" })
+    const controller = new AbortController();
+    fetch("/api/garmin/status", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Garmin status request failed.");
         const value: unknown = await response.json();
-        if (!value || typeof value !== "object"
-          || !("configured" in value) || typeof value.configured !== "boolean"
-          || !("connected" in value) || typeof value.connected !== "boolean") {
-          throw new Error("Invalid Garmin status response.");
-        }
-        if (active) setStatus({ configured: value.configured, connected: value.connected });
+        const parsed = garminStatusSchema.safeParse(value);
+        if (!parsed.success) throw new Error("Invalid Garmin status response.");
+        if (active) setStatus(parsed.data);
       })
-      .catch(() => { if (active) setNotice("statusFailed"); });
-    return () => { active = false; };
+      .catch(() => { if (active && !controller.signal.aborted) setNotice("statusFailed"); });
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const send = useCallback(async (week: TrainingWeek, workouts: Workout[], locale: Locale): Promise<GarminSendResult> => {
@@ -82,24 +91,28 @@ export function useGarmin() {
         previousWorkoutId: sent[addDays(week.startDate, workout.day)],
       })),
     };
-    let data: GarminSyncResponse;
+    let response: Response;
+    let data: ReturnType<typeof garminSyncResponseSchema.parse>;
     try {
-      const response = await fetch("/api/garmin/workouts", {
+      response = await fetch("/api/garmin/workouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      data = await response.json() as GarminSyncResponse;
+      const value: unknown = await response.json();
+      const parsed = garminSyncResponseSchema.safeParse(value);
+      if (!parsed.success || (!response.ok && !parsed.data.error)) return { count: 0, error: "failed" };
+      data = parsed.data;
     } catch {
       return { count: 0, error: "failed" };
     }
-    for (const result of data.results ?? []) sent[result.date] = result.workoutId;
+    for (const result of data.results) sent[result.date] = result.workoutId;
     writeSent(sent);
     if (data.error === "reconnect") {
       setStatus((current) => ({ ...current, connected: false }));
       setNotice("error");
     }
-    return { count: data.results?.length ?? 0, error: data.error };
+    return { count: data.results.length, error: data.error };
   }, []);
 
   const disconnect = useCallback(async () => {

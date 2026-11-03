@@ -190,7 +190,7 @@ application with the workout import permission. Copy `.env.example` to
 | `GARMIN_CLIENT_ID` | Application consumer key |
 | `GARMIN_CLIENT_SECRET` | Application consumer secret |
 | `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt the session cookie |
-| `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Register it with Garmin. |
+| `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Must be an HTTPS URL (HTTP is allowed only on localhost), without credentials or a fragment; register the exact URI with Garmin. |
 | `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, CDN/proxy and managed logging processors. |
 
 For `https://run-week.fyi`, register the OAuth callback as
