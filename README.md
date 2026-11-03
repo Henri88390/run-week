@@ -38,6 +38,7 @@ console.
 | `npm start` | Serve the production build |
 | `npm run db:migrate` | Create and apply a migration in development (`prisma migrate dev`) |
 | `npm run db:deploy` | Apply pending migrations in production (`prisma migrate deploy`) |
+| `npm run test:e2e` | Run the Playwright end-to-end tests (see [End-to-end tests](#end-to-end-tests)) |
 
 ## Structure
 
@@ -412,6 +413,30 @@ deterministic clock; a separate check runs the unmodified script with Redis TIME
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.
 
+## End-to-end tests
+
+Playwright tests in `e2e/` cover accounts and Garmin: sign-in by email code,
+Garmin controls hidden when signed out, one Garmin account per Run Week account,
+reconnecting, and sending and deleting a week.
+
+Requirements: Docker running and Chromium installed once with
+`npx playwright install chromium`. Then run:
+
+```powershell
+npm run test:e2e
+```
+
+- The tests start their own dev server on port 3100 (build directory
+  `.next-e2e`, so `npm run dev` can keep running) and a Garmin mock on port 3101.
+- Each run creates a new PostgreSQL container (`run-week-e2e-db`,
+  `postgres:17-alpine`, `127.0.0.1:55432`, data in memory), applies the
+  migrations, and removes the container at the end, with all test accounts.
+  The development database is not used. Do not run two e2e runs at once.
+- Email delivery is disabled; the tests replace the stored sign-in code
+  directly in the database.
+- Garmin is never called. `GARMIN_E2E_MOCK_ORIGIN` redirects the Garmin URLs to
+  the mock and is ignored outside development.
+
 ## Languages
 
 The UI is available in English, French, German, Spanish, Portuguese, Polish,
@@ -435,7 +460,7 @@ UI components when another feature needs them. Keep route composition in
 
 The route remains a Server Component; interactive planner UI and browser storage
 are Client Components. Calculation and generation helpers are independent of
-React. No test framework is configured; use the commands above to verify builds.
+React. Use the commands above to verify changes.
 
 ## Custom agents
 

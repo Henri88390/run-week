@@ -28,8 +28,8 @@ Do not add other server-side services or stored data without user approval.
 3. Delegate independent verification to **QA Engineer**. Ask QA to check
    acceptance criteria, browser behavior, accessibility, edge cases, and
    available project checks. The configured checks are `npm run lint`,
-   `npm run typecheck`, and `npm run build`; there is no test script or
-   configured test framework at present.
+   `npm run typecheck`, `npm run build` and the Playwright end-to-end tests
+   (`npm run test:e2e`, requires Docker).
 4. Delegate an independent read-only review to **Code Reviewer** when the
    change is substantial or benefits from a second review. Resolve in-scope
    findings and rerun affected checks.

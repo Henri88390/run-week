@@ -64,9 +64,9 @@ it.
 - Read the available scripts in `package.json` and run the checks relevant to
   the change.
 - Available project checks are `npm run lint`, `npm run typecheck`,
-  `npm run build`, `node scripts/verify-garmin.mjs` and
-  `node scripts/verify-garmin-rate-limit.mjs`. There is no configured test
-  framework; do not claim tests ran unless they were actually run.
+  `npm run build`, `node scripts/verify-garmin.mjs`,
+  `node scripts/verify-garmin-rate-limit.mjs` and `npm run test:e2e`
+  (Playwright, `e2e/`). Do not claim tests ran unless they were actually run.
 - Report the exact commands run and their actual results. Explain any checks
   that could not run.
 

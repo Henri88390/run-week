@@ -2,12 +2,19 @@ import "server-only";
 import type { GarminConfig } from "./config";
 import { GarminApiError, httpFailure } from "./diagnostics";
 
-const AUTHORIZE_URL = "https://connect.garmin.com/oauth2Confirm";
-const TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token";
-const TRAINING_API_URL = "https://apis.garmin.com/training-api";
-const USER_ID_URL = "https://apis.garmin.com/wellness-api/rest/user/id";
 const TIMEOUT_MS = 15_000;
 const DEFAULT_REFRESH_LIFETIME_SECONDS = 90 * 24 * 3600;
+
+/** End-to-end tests point every Garmin request at a local mock server. Ignored outside development. */
+function garminOrigin(origin: string): string {
+  const mock = process.env.NODE_ENV === "development" ? process.env.GARMIN_E2E_MOCK_ORIGIN?.trim() : "";
+  return mock || origin;
+}
+
+const authorizeUrl = () => `${garminOrigin("https://connect.garmin.com")}/oauth2Confirm`;
+const tokenUrl = () => `${garminOrigin("https://diauth.garmin.com")}/di-oauth2-service/oauth/token`;
+const trainingApiUrl = () => `${garminOrigin("https://apis.garmin.com")}/training-api`;
+const userIdUrl = () => `${garminOrigin("https://apis.garmin.com")}/wellness-api/rest/user/id`;
 
 export type GarminTokens = {
   accessToken: string;
@@ -47,7 +54,7 @@ export function authorizationUrl(config: GarminConfig, options: {
   codeChallenge: string;
   redirectUri: string;
 }): string {
-  const url = new URL(AUTHORIZE_URL);
+  const url = new URL(authorizeUrl());
   url.search = new URLSearchParams({
     client_id: config.clientId,
     response_type: "code",
@@ -64,7 +71,7 @@ export async function requestTokens(
   grant: { grant_type: "authorization_code"; code: string; code_verifier: string; redirect_uri: string }
     | { grant_type: "refresh_token"; refresh_token: string },
 ): Promise<GarminTokens> {
-  const response = await garminFetch(TOKEN_URL, {
+  const response = await garminFetch(tokenUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams({ ...grant, client_id: config.clientId, client_secret: config.clientSecret }),
@@ -95,7 +102,7 @@ export async function requestTokens(
 
 /** Garmin's stable user ID; it is the same across tokens and reconnections. */
 export async function garminUserId(accessToken: string): Promise<string> {
-  const response = await garminFetch(USER_ID_URL, {
+  const response = await garminFetch(userIdUrl(), {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
   });
   if (!response.ok) throw httpFailure(response.status);
@@ -107,7 +114,7 @@ export async function garminUserId(accessToken: string): Promise<string> {
 }
 
 async function trainingApi(accessToken: string, path: string, init: RequestInit): Promise<Response> {
-  const response = await garminFetch(`${TRAINING_API_URL}${path}`, {
+  const response = await garminFetch(`${trainingApiUrl()}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
