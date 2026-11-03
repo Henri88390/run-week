@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Locale } from "@/features/i18n/locales";
 import type { TrainingWeek, Workout } from "@/features/running-programs/types";
 import {
-  GARMIN_ERRORS, garminDeleteResponseSchema, garminSentResponseSchema, garminStatusSchema,
-  garminSyncResponseSchema,
+  GARMIN_ERRORS, garminDeleteResponseSchema, garminDisconnectResponseSchema, garminSentResponseSchema,
+  garminStatusResponseSchema, garminSyncResponseSchema,
   type GarminDeleteRequest, type GarminErrorCode, type GarminStatus, type GarminSyncRequest,
 } from "./sync-request";
 
-const NOTICES = [...GARMIN_ERRORS, "connected", "error", "disconnectFailed", "statusFailed"] as const;
+const NOTICES = [...GARMIN_ERRORS, "connected", "disconnectFailed", "error", "statusFailed"] as const;
 export type GarminNotice = (typeof NOTICES)[number];
 export type GarminSendResult = {
   count: number;
@@ -18,6 +18,12 @@ export type GarminSendResult = {
   error?: GarminErrorCode;
   requestId?: string;
   retryAfterSeconds?: number;
+};
+export type GarminDisconnectResult = {
+  deleted: number;
+  remaining: number;
+  error?: GarminErrorCode;
+  requestId?: string;
 };
 
 const DISCONNECTED: GarminStatus = { configured: false, connected: false };
@@ -34,6 +40,8 @@ export function useGarmin(userId: string | null) {
   const [status, setStatus] = useState<GarminStatus>(DISCONNECTED);
   const [notice, setNotice] = useState<GarminNotice | null>(null);
   const [sent, setSent] = useState<{ weekStart: string; dates: ReadonlySet<string> } | null>(null);
+  // Workouts that stayed in Garmin Connect after the last disconnect.
+  const [leftInGarmin, setLeftInGarmin] = useState(0);
   // Incremented by every send or removal so that an older read never overwrites newer results.
   const mutations = useRef({ generation: 0, pending: 0 });
 
@@ -60,15 +68,16 @@ export function useGarmin(userId: string | null) {
     fetch("/api/garmin/status", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Garmin status request failed.");
-        const parsed = garminStatusSchema.safeParse(await response.json());
+        const parsed = garminStatusResponseSchema.safeParse(await response.json());
         if (!parsed.success) throw new Error("Invalid Garmin status response.");
-        if (active) setStatus(parsed.data);
+        if (active) setStatus({ configured: parsed.data.configured, connected: parsed.data.connected });
       })
       .catch(() => { if (active && !controller.signal.aborted) setNotice("statusFailed"); });
     return () => {
       active = false;
       controller.abort();
       setSent(null);
+      setLeftInGarmin(0);
     };
   }, [userId]);
 
@@ -175,20 +184,39 @@ export function useGarmin(userId: string | null) {
         ? { retryAfterSeconds: data.retryAfterSeconds } : {}) };
   }, [mutate, update]);
 
-  const disconnect = useCallback(async () => {
+  /** Counts the workouts recorded as sent from this account, in any week. `null` when the count is unknown. */
+  const countSent = useCallback(async (): Promise<number | null> => {
     try {
-      const response = await fetch("/api/garmin/disconnect", { method: "POST" });
-      if (!response.ok) {
-        setNotice("disconnectFailed");
-        return;
-      }
-      setStatus((current) => ({ ...current, connected: false }));
-      setSent(null);
-      setNotice(null);
+      const response = await fetch("/api/garmin/status", { cache: "no-store" });
+      if (!response.ok) return null;
+      const parsed = garminStatusResponseSchema.safeParse(await response.json());
+      return parsed.success ? parsed.data.sentWorkouts : null;
     } catch {
-      setNotice("disconnectFailed");
+      return null;
     }
   }, []);
+
+  /**
+   * Deletes the sent workouts from Garmin Connect, then disconnects. With `error`, the account stays connected;
+   * `notify` also shows the failure as a notice.
+   */
+  const disconnect = useCallback(async ({ notify = false } = {}): Promise<GarminDisconnectResult> => {
+    const result = await mutate(() => fetch("/api/garmin/disconnect", { method: "POST" }), garminDisconnectResponseSchema);
+    const failed = (outcome: GarminDisconnectResult) => {
+      if (notify) setNotice("disconnectFailed");
+      return outcome;
+    };
+    if ("error" in result) return failed({ deleted: 0, remaining: 0, error: result.error });
+    const { data, ok } = result;
+    if (!ok || data.error) {
+      return failed({ deleted: data.deleted, remaining: data.remaining, error: data.error ?? "failed", requestId: data.requestId });
+    }
+    setStatus((current) => ({ ...current, connected: false }));
+    setSent(null);
+    setNotice(null);
+    setLeftInGarmin(data.remaining);
+    return { deleted: data.deleted, remaining: data.remaining };
+  }, [mutate]);
 
   const isSent = useCallback((weekStart: string, date: string) =>
     sent?.weekStart === weekStart && sent.dates.has(date), [sent]);
@@ -213,7 +241,8 @@ export function useGarmin(userId: string | null) {
   }, [remove]);
 
   return {
-    ...status, signedIn: userId !== null, notice, isSent, sentCount, loadWeek, send, remove, clearWeek, disconnect,
+    ...status, signedIn: userId !== null, notice, leftInGarmin, isSent, sentCount, loadWeek, send, remove, clearWeek,
+    disconnect, countSent,
   };
 }
 

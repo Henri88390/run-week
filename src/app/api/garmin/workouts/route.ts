@@ -5,14 +5,12 @@ import { createWorkout, deleteWorkout, scheduleWorkout } from "@/features/garmin
 import {
   failureDetails, GarminApiError, logGarminEvent, logGarminFailure, newRequestId, type GarminOperation,
 } from "@/features/garmin/server/diagnostics";
-import { freshTokens, isSameOrigin } from "@/features/garmin/server/session";
+import { isSameOrigin } from "@/features/garmin/server/session";
 import {
-  forgetTokens, forgetWorkout, loadTokens, recordWorkout, sentWorkouts, updateTokens,
+  accessTokens, forgetTokens, forgetWorkout, loadTokens, recordWorkout, sentWorkouts,
 } from "@/features/garmin/server/store";
 import { garminWorkoutPayload } from "@/features/garmin/server/workout-payload";
 import { reserveUpload } from "@/features/garmin/server/upload-rate-limit";
-import type { GarminConfig } from "@/features/garmin/server/config";
-import type { GarminTokens } from "@/features/garmin/server/garmin-api";
 import {
   garminDeleteRequestSchema, garminSyncRequestSchema,
   type GarminDeleteResponse, type GarminErrorCode, type GarminSentResponse, type GarminSyncResponse,
@@ -21,12 +19,6 @@ import { addDays, mondayOf } from "@/features/running-programs/domain";
 
 function isWeekStart(value: string | null): value is string {
   return value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value) && mondayOf(new Date(`${value}T12:00:00`)) === value;
-}
-
-async function accessTokens(config: GarminConfig, userId: string, stored: GarminTokens): Promise<GarminTokens> {
-  const { tokens, refreshed } = await freshTokens(config, stored);
-  if (refreshed) await updateTokens(config, userId, tokens);
-  return tokens;
 }
 
 /** Lists which days of one week hold a workout sent from the signed-in account. */

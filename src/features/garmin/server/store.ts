@@ -5,7 +5,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { GarminConfig } from "./config";
 import { GarminApiError } from "./diagnostics";
 import type { GarminTokens } from "./garmin-api";
-import { isGarminTokens, seal, unseal } from "./session";
+import { freshTokens, isGarminTokens, seal, unseal } from "./session";
 import { GARMIN_CONSENT_VERSION } from "../privacy";
 
 /** Tokens of a usable connection, or null when none exists, it expired or predates the current consent. */
@@ -52,6 +52,13 @@ export async function updateTokens(config: GarminConfig, userId: string, tokens:
   await db().garminConnection.updateMany({ where: { userId }, data: { tokens: seal(tokens, config.sessionSecret) } });
 }
 
+/** Refreshes expired access tokens and stores the result. */
+export async function accessTokens(config: GarminConfig, userId: string, stored: GarminTokens): Promise<GarminTokens> {
+  const { tokens, refreshed } = await freshTokens(config, stored);
+  if (refreshed) await updateTokens(config, userId, tokens);
+  return tokens;
+}
+
 /** Forgets the tokens only; sent-workout records stay so a reconnect can still remove them. */
 export async function forgetTokens(userId: string): Promise<void> {
   await db().garminConnection.deleteMany({ where: { userId } });
@@ -71,13 +78,17 @@ function toSent(row: { date: string; workoutId: bigint }): SentWorkout {
   return { date: row.date, workoutId: Number(row.workoutId) };
 }
 
-export async function sentWorkouts(userId: string, dates: string[]): Promise<SentWorkout[]> {
+export async function sentWorkouts(userId: string, dates?: string[]): Promise<SentWorkout[]> {
   const rows = await db().garminWorkout.findMany({
-    where: { userId, date: { in: dates } },
+    where: { userId, ...(dates ? { date: { in: dates } } : {}) },
     select: { date: true, workoutId: true },
     orderBy: { date: "asc" },
   });
   return rows.map(toSent);
+}
+
+export async function countSentWorkouts(userId: string): Promise<number> {
+  return db().garminWorkout.count({ where: { userId } });
 }
 
 /**

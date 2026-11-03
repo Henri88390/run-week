@@ -108,6 +108,35 @@ test("a user can reconnect the same Garmin account after disconnecting", async (
   await expectGarminConnected(page, true);
 });
 
+test("disconnecting Garmin asks for confirmation and deletes sent workouts", async ({ page }) => {
+  const garminUser = uniqueGarminUser();
+  await signIn(page, uniqueEmail("disconnect"));
+  await connectGarmin(page, garminUser);
+  await createWeek(page);
+  await page.getByRole("button", { name: "Send week to Garmin" }).click();
+  await expect(page.getByText(/^\d+ workouts? sent to Garmin\.$/)).toBeVisible();
+  const sent = await garminWorkouts(garminUser);
+  expect(sent.length).toBeGreaterThan(0);
+
+  const dialog = page.getByRole("dialog", { name: "Disconnect Garmin?" });
+  await test.step("cancelling keeps the connection and the workouts", async () => {
+    await openAccountMenu(page);
+    await disconnectGarminButton(page).click();
+    await expect(dialog).toContainText("will be deleted from Garmin Connect");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    await expectGarminConnected(page, true);
+    expect(await garminWorkouts(garminUser)).toHaveLength(sent.length);
+  });
+
+  await openAccountMenu(page);
+  await disconnectGarminButton(page).click();
+  await dialog.getByRole("button", { name: "Delete workouts and disconnect" }).click();
+  await expect(dialog).toBeHidden();
+  expect(await garminWorkouts(garminUser)).toEqual([]);
+  await expectGarminConnected(page, false);
+});
+
 test("sent runs are recorded in the account and can be deleted from Garmin", async ({ page }) => {
   const garminUser = uniqueGarminUser();
   await signIn(page, uniqueEmail("sender"));

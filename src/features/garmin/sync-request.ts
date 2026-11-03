@@ -85,3 +85,29 @@ export const garminStatusSchema = z.object({
 });
 
 export type GarminStatus = z.infer<typeof garminStatusSchema>;
+
+/** `sentWorkouts` counts the workouts recorded as sent from the signed-in account. */
+export const garminStatusResponseSchema = garminStatusSchema.extend({
+  sentWorkouts: z.number().int().nonnegative(),
+});
+
+export type GarminStatusResponse = z.infer<typeof garminStatusResponseSchema>;
+
+/**
+ * `deleted` workouts were removed from Garmin Connect. `remaining` workouts could not be removed because
+ * Garmin no longer accepts the authorization; they stay in Garmin Connect. With `error`, the account
+ * is still connected.
+ */
+export type GarminDisconnectResponse = {
+  deleted: number;
+  remaining: number;
+  error?: GarminErrorCode;
+  requestId?: string;
+};
+
+export const garminDisconnectResponseSchema = z.object({
+  deleted: z.number().int().min(0),
+  remaining: z.number().int().min(0),
+  error: z.enum(GARMIN_ERRORS).optional(),
+  requestId: z.uuid().optional(),
+});

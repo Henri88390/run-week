@@ -264,10 +264,16 @@ For Garmin's branding image, use
 The privacy policy and consent pages are in English; the planner footer link is
 localized. Consent is required before authorization; its version and time are
 stored with the connection, and connections under an earlier version require
-reconnection. Disconnect deletes the stored tokens and sent-workout records.
+reconnection. Disconnecting first deletes every workout sent from the account
+from Garmin Connect, then deletes the stored tokens and sent-workout records.
+The menu asks for confirmation only when the account has sent workouts
+(`sentWorkouts` in `GET /api/garmin/status`). If Garmin rejects the
+authorization, the account is disconnected anyway and the remaining workouts
+are reported as left in Garmin Connect; other failures keep the connection so
+the user can retry.
 The privacy page provides JSON export of account and browser data, consent
 withdrawal, browser-data deletion and account deletion. It never exports
-credentials or claims to delete Garmin-side workouts. Users manage those and
+credentials. Deleting the account does not delete Garmin-side workouts. Users
 revoke the OAuth grant in Garmin Connect.
 
 Before submitting the policy, identify all actual infrastructure processors in

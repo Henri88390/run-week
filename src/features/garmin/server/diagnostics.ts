@@ -59,7 +59,8 @@ type GarminEvent =
   | { event: "garmin_api_request"; operation: "create" | "schedule" | "cleanup" | "delete"; payload: unknown }
   | { event: "garmin_api_response"; operation: "create"; workoutId: number }
   | { event: "garmin_upload_result"; status: number; code?: GarminErrorCode; completed: number; results: unknown }
-  | { event: "garmin_delete_result"; status: number; code?: GarminErrorCode; deleted: string[] };
+  | { event: "garmin_delete_result"; status: number; code?: GarminErrorCode; deleted: string[] }
+  | { event: "garmin_disconnect_result"; status: number; code?: GarminErrorCode; deleted: number; remaining: number };
 
 /** Training payloads only. Callers must never pass tokens, cookies, headers or OAuth values. */
 export function logGarminEvent(requestId: string, details: GarminEvent) {

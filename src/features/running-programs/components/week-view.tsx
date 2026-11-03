@@ -24,7 +24,7 @@ import { downloadWorkoutFit } from "../fit-export";
 import type { GarminConnection, GarminSendResult } from "@/features/garmin/use-garmin";
 import { Dropdown } from "@/components/dropdown";
 import { GarminHelp } from "@/features/garmin/components/garmin-help";
-import { ConfirmationDialog } from "./confirmation-dialog";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 
 type WorkoutDetailLine = {
   key: string;

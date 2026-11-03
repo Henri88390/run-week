@@ -9,7 +9,7 @@ import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
 import { useAccountPlanner } from "../use-account-planner";
 import { savePlanner, usePlannerStore } from "../use-planner-store";
-import { ConfirmationDialog } from "./confirmation-dialog";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { ProfileForm } from "./profile-form";
 import { WeekView } from "./week-view";
 import type { PlannerState, Profile } from "../types";
@@ -96,9 +96,10 @@ export function RunningPlanner() {
   };
   const garminNotice = garmin.notice === "error" ? t.garmin.connectFailed
     : garmin.notice === "unavailable" ? t.garmin.unavailable
-      : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
-        : garmin.notice === "statusFailed" ? t.garmin.statusFailed
-          : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice] : "";
+      : garmin.notice === "statusFailed" ? t.garmin.statusFailed
+        : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
+          : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice]
+            : garmin.leftInGarmin > 0 ? t.garmin.leftInGarmin(garmin.leftInGarmin) : "";
   const accountLoadFailed = Boolean(userId) && account.loadFailed;
 
   return <div className="space-y-4">

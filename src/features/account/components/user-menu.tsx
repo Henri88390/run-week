@@ -4,11 +4,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
+import type { GarminDisconnectResult } from "@/features/garmin/use-garmin";
 import { Flag } from "@/features/i18n/language-select";
 import { LOCALE_NAMES, LOCALES } from "@/features/i18n/locales";
 import { setLocale, useI18n } from "@/features/i18n/use-i18n";
 
-type GarminControls = { configured: boolean; connected: boolean; disconnect: () => Promise<void> };
+type GarminControls = {
+  configured: boolean;
+  connected: boolean;
+  countSent: () => Promise<number | null>;
+  disconnect: (options?: { notify?: boolean }) => Promise<GarminDisconnectResult>;
+};
 
 const ITEMS = '[role="menuitem"], [role="menuitemradio"]';
 const itemClass = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left whitespace-nowrap text-stone-700 hover:bg-stone-100 focus-visible:bg-stone-100 focus-visible:outline-none disabled:opacity-60";
@@ -24,6 +31,9 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
   const [open, setOpen] = useState(false);
   const [languagesOpen, setLanguagesOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState("");
   const menuId = useId();
   const languagesId = useId();
   const container = useRef<HTMLDivElement>(null);
@@ -68,6 +78,36 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
   const close = () => {
     setOpen(false);
     trigger.current?.focus();
+  };
+  const startDisconnect = async () => {
+    close();
+    setDisconnectError("");
+    setDisconnecting(true);
+    // Confirm only when workouts would be deleted from Garmin, or when that cannot be determined.
+    const count = await garmin.countSent();
+    if (count !== 0) {
+      setDisconnecting(false);
+      setConfirmingDisconnect(true);
+      return;
+    }
+    await garmin.disconnect({ notify: true });
+    setDisconnecting(false);
+  };
+  const disconnectGarmin = async () => {
+    setDisconnecting(true);
+    setDisconnectError("");
+    const result = await garmin.disconnect();
+    setDisconnecting(false);
+    if (!result.error) {
+      setConfirmingDisconnect(false);
+      return;
+    }
+    setDisconnectError([
+      t.garmin.disconnectFailed,
+      result.deleted > 0 ? t.garmin.removed(result.deleted) : "",
+      t.garmin[result.error],
+      result.requestId ? `${t.garmin.reference}: ${result.requestId}` : "",
+    ].filter(Boolean).join(" "));
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     const items = [...(menu.current?.querySelectorAll<HTMLElement>(ITEMS) ?? [])];
@@ -118,7 +158,7 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
         <li role="none">
           {garmin.connected
             ? <button type="button" role="menuitem" tabIndex={-1} className={itemClass}
-              onClick={() => { close(); void garmin.disconnect(); }}>
+              disabled={disconnecting} onClick={() => void startDisconnect()}>
               <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[11px] w-auto" unoptimized />
               <span className="ml-auto">{t.garmin.disconnect}</span>
             </button>
@@ -168,5 +208,11 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
         </button>
       </li>
     </ul>
+    {confirmingDisconnect && <ConfirmationDialog title={t.garmin.disconnectTitle} tone="danger" busy={disconnecting}
+      confirmLabel={disconnecting ? t.garmin.disconnecting : t.garmin.disconnectConfirm} cancelLabel={t.confirm.cancel}
+      onCancel={() => setConfirmingDisconnect(false)} onConfirm={() => void disconnectGarmin()}>
+      <p>{t.garmin.disconnectBody}</p>
+      {disconnectError && <p role="alert" className="text-red-700">{disconnectError}</p>}
+    </ConfirmationDialog>}
   </div>;
 }

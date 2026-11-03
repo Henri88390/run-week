@@ -78,11 +78,13 @@ export async function connectGarmin(page: Page, garminUser: string) {
   await page.waitForURL((url) => url.origin === APP_URL && url.pathname === "/");
 }
 
+/** Disconnects an account that has not sent workouts: no confirmation is asked. */
 export async function disconnectGarmin(page: Page) {
   await openAccountMenu(page);
   await disconnectGarminButton(page).click();
   await openAccountMenu(page);
   await expect(connectGarminLink(page)).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await closeAccountMenu(page);
 }
 
