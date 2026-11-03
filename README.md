@@ -152,7 +152,10 @@ week, including workout steps and paces, as plain text in the current language.
 Non-easy workouts include an
 option to download a Garmin FIT workout file. Files contain timed workout steps
 or distance-based R repetitions
-and VDOT-derived pace targets where available. Transfer the downloaded file to
+and VDOT-derived pace targets where available. Easy runs and long runs carry
+their easy-pace range as step text only, without a pace target, so the watch
+does not alert when the pace leaves the range. This also applies to Garmin
+Connect uploads. Transfer the downloaded file to
 a compatible Garmin device using Garmin Connect or the device's supported
 file-transfer method. Easy runs do not have FIT downloads; files are generated
 in the browser and are not uploaded automatically.

@@ -7,12 +7,13 @@ import type {
 } from "@garmin/fitsdk";
 import type { Locale } from "@/features/i18n/locales";
 import {
-  stepPaces,
   WEEKDAYS,
 } from "./domain";
 import type { WorkoutSessionStep } from "./domain";
 import type { TrainingWeek, Workout } from "./types";
 import {
+  stepPaceTarget,
+  watchPaceNote,
   watchStepName,
   watchWorkoutName,
   workoutExportSteps,
@@ -39,12 +40,17 @@ function workoutStepMessage(
     targetValue: 0,
     intensity: step.intensity,
   };
-  const paces = stepPaces(step, vdot);
+  const paces = stepPaceTarget(step, vdot);
   if (paces) {
     const [slow, fast] = paces;
     message.targetType = "speed";
     message.customTargetValueLow = Math.round(1_000_000 / slow);
     message.customTargetValueHigh = Math.round(1_000_000 / fast);
+  }
+  const paceNote = watchPaceNote(step, vdot);
+  if (paceNote) {
+    message.wktStepName = `${watchStepName(step, locale)} ${paceNote}`;
+    message.notes = paceNote;
   }
   return message;
 }

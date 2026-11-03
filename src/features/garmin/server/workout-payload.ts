@@ -1,9 +1,8 @@
 import "server-only";
 import type { Locale } from "@/features/i18n/locales";
-import { stepPaces } from "@/features/running-programs/domain";
 import type { WorkoutSessionStep } from "@/features/running-programs/domain";
 import type { Workout } from "@/features/running-programs/types";
-import { watchStepName, watchWorkoutName, workoutExportSteps } from "@/features/running-programs/workout-export";
+import { watchPaceNote, stepPaceTarget, watchStepName, watchWorkoutName, workoutExportSteps } from "@/features/running-programs/workout-export";
 
 const INTENSITY: Record<WorkoutSessionStep["intensity"], string> = {
   warmup: "WARMUP",
@@ -20,12 +19,13 @@ function speedAtPace(pace: number): number {
 /** Garmin Training API V1 (`/training-api/workout`) running workout; steps are top-level and pace targets are speeds in metres per second. */
 export function garminWorkoutPayload(workout: Workout, vdot: number, locale: Locale) {
   const steps = workoutExportSteps(workout, vdot).map((step, index) => {
-    const paces = stepPaces(step, vdot);
+    const paces = stepPaceTarget(step, vdot);
+    const paceNote = watchPaceNote(step, vdot);
     return {
     type: "WorkoutStep",
     stepOrder: index + 1,
     intensity: INTENSITY[step.intensity],
-    description: watchStepName(step, locale),
+    description: paceNote ? `${watchStepName(step, locale)} ${paceNote}` : watchStepName(step, locale),
     durationType: step.distanceMeters !== undefined ? "DISTANCE" : "TIME",
     durationValue: step.distanceMeters ?? step.durationMinutes * 60,
     durationValueType: null,

@@ -292,6 +292,10 @@ async function verify() {
   assert.ok(events.some((record) => record.event === "garmin_api_request" && record.operation === "create"
     && record.payload?.sport === "RUNNING" && Array.isArray(record.payload.steps) && record.payload.steps.length > 0
     && !("segments" in record.payload)), "Garmin V1 workout payload must be logged");
+  const easyPayload = events.find((record) => record.event === "garmin_api_request" && record.operation === "create")?.payload;
+  assert.ok(easyPayload.steps.every((step) => step.targetType === "OPEN" && step.targetValueLow === null && step.targetValueHigh === null),
+    "Easy runs must not set a pace target");
+  assert.ok(easyPayload.steps.some((step) => /\d:\d{2}-\d:\d{2}\/km$/.test(step.description)), "Easy runs must show pace as text");
   original.warn("Garmin verification passed: classification, sanitization, route failures, partial uploads, no retries, client parsing and 10 locales.");
 }
 
