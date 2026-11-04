@@ -419,6 +419,7 @@ Strava importer, without its single-athlete storage, auth fallback or AI code.
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Generate route types and check TypeScript |
 | `npm run build` | Create the production build |
+| `npm run build:vercel` | Apply migrations in Vercel Production, then build; other environments only build |
 | `npm start` | Serve the production build |
 | `npm run db:migrate` | Create and apply a migration in development (`prisma migrate dev`) |
 | `npm run db:deploy` | Apply pending migrations in production (`prisma migrate deploy`) |
@@ -582,8 +583,9 @@ deletes it (`DELETE /api/account`), which removes all its rows.
 | `AUTH_EMAIL_FROM` | Sender address on a domain verified in Resend |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Optional Google OAuth client; redirect URI `<origin>/api/auth/callback/google` |
 
-Migrations are applied by the **Migrate database** CI job on each push to
-`main` (see [CI and deployment](#ci-and-deployment)). To apply them by hand, run
+Migrations are applied before each Vercel Production build and by the
+**Migrate database** CI job on each push to `main`
+(see [CI and deployment](#ci-and-deployment)). To apply them by hand, run
 `npm run db:deploy` with `DIRECT_URL` set to the production database. The email
 body is in English.
 
@@ -862,8 +864,26 @@ In the GitHub repository:
    5432, user `postgres.<project-ref>`). The direct host `db.<project-ref>.supabase.co`
    is IPv6-only and unreachable from GitHub-hosted runners.
 
-Vercel deploys `main` through its GitHub integration. To promote a production
-deployment only when all three jobs pass, in the Vercel project:
+Vercel deploys `main` through its GitHub integration.
+
+The checked-in `vercel.json` sets the build command to `npm run build:vercel`.
+When `VERCEL_ENV=production`, this runs `prisma migrate deploy` before `next build`.
+Missing migration configuration or a failed migration fails the build, leaving
+the current production deployment live. Preview/development builds skip migrations.
+The ordinary `npm run build` remains database-independent for CI and local use.
+
+Set `DIRECT_URL` in **Vercel Settings → Environment Variables**, scoped to
+**Production** and pointing to the same database as production `DATABASE_URL`.
+For Supabase use the Session pooler URL (port 5432), not the transaction pooler.
+The GitHub secret is not automatically available in Vercel. Redeploy after adding
+the variable to apply the pending Strava migrations and resolve `P2021`/`P2022`.
+Do not promote a Preview build to production: deploy it as a Production build so
+this migration step runs. `node scripts/verify-vercel-build.mjs` verifies the
+build ordering and failure paths without connecting to any database.
+The existing CI migration job stays as an additional gate; applying migrations
+again is safe because Prisma only applies pending migrations.
+
+To promote a production deployment only when all three jobs pass, in the Vercel project:
 
 1. **Settings → Environments → Production**: keep automatic aliasing of
    production deployments on.

@@ -31,6 +31,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: node scripts/verify-vercel-build.mjs
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
