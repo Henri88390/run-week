@@ -1,17 +1,27 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import NextAuth from "next-auth";
+import { headers } from "next/headers";
 import type { Provider } from "next-auth/providers";
 import Google from "next-auth/providers/google";
 import Resend from "next-auth/providers/resend";
 import { accountAdapter } from "./adapter";
 import { reserveCodeSend } from "./sign-in-limits";
+import { requestUserId } from "./request-user";
+import { mobileSessionFromAuthorization } from "@/features/mobile/server/session";
 
 export const EMAIL_CODE_MAX_AGE_SECONDS = 10 * 60;
 
 type CodeRequest = { identifier: string; token: string; provider: { from?: string; apiKey?: string } };
 
-async function sendCode({ identifier, token, provider }: CodeRequest): Promise<void> {
+class EmailDeliveryError extends Error {
+  constructor(readonly status: number) {
+    super(`Resend responded with ${status}.`);
+    this.name = "EmailDeliveryError";
+  }
+}
+
+export async function sendCode({ identifier, token, provider }: CodeRequest): Promise<void> {
   const text = `Your Run Week sign-in code is ${token}.\n\nIt expires in 10 minutes. If you did not request it, ignore this email.`;
   if (!provider.apiKey) {
     if (process.env.NODE_ENV === "production") throw new Error("AUTH_RESEND_KEY is not set.");
@@ -24,7 +34,7 @@ async function sendCode({ identifier, token, provider }: CodeRequest): Promise<v
     body: JSON.stringify({ from: provider.from, to: identifier, subject: `Run Week sign-in code: ${token}`, text }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new Error(`Resend responded with ${response.status}.`);
+  if (!response.ok) throw new EmailDeliveryError(response.status);
 }
 
 function providers(): Provider[] {
@@ -74,8 +84,12 @@ export const { handlers, auth, signOut } = NextAuth(() => ({
   },
 }));
 
-/** The signed-in user's ID, or null. Reads request cookies, so call only in request-time code. */
+/** The signed-in user's ID, from a native bearer session or the existing browser cookie. */
 export async function currentUserId(): Promise<string | null> {
+  const mobileUser = requestUserId();
+  if (mobileUser !== undefined) return mobileUser;
+  const authorization = (await headers()).get("authorization");
+  if (authorization !== null) return (await mobileSessionFromAuthorization(authorization))?.userId ?? null;
   const session = await auth();
   return session?.user?.id ?? null;
 }

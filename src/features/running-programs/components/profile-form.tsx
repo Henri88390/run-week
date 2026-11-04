@@ -12,6 +12,7 @@ import {
 import type { PreferredDays, Profile, Schedule } from "../types";
 import { createProfileFormSchema, preferredDaysFromForm, type ProfileFormValues } from "./profile-form.schema";
 import { SelectField } from "./select-field";
+import { profilesMatch, samePerformance } from "../profile-comparison";
 
 type PreferredDayField = "preferredVo2maxDay" | "preferredThresholdDay" | "preferredLongRunDay";
 type WorkoutChoiceField = "intervalWorkout" | "thresholdWorkout" | "longWorkout";
@@ -21,33 +22,6 @@ function scheduledPreferredDays(preferredDays: PreferredDays, runCount: number):
   const scheduled = { ...NO_PREFERRED_DAYS };
   for (const { type, day } of activePreferredDays(preferredDays, runCount)) scheduled[type] = day;
   return scheduled;
-}
-
-/** A different distance with the time derived from the saved performance is the same performance. */
-function samePerformance(saved: Profile, entered: Pick<Profile, "distanceMeters" | "raceSeconds">): boolean {
-  return saved.distanceMeters === entered.distanceMeters
-    ? saved.raceSeconds === entered.raceSeconds
-    : entered.raceSeconds === equivalentRaceSeconds(saved.vdot, entered.distanceMeters);
-}
-
-function profilesMatch(a: Profile, b: Profile): boolean {
-  const schedulesMatch = a.schedule.mode === b.schedule.mode && (
-    a.schedule.mode === "count" && b.schedule.mode === "count"
-      ? a.schedule.count === b.schedule.count
-      : a.schedule.mode === "days" && b.schedule.mode === "days"
-        && [...a.schedule.days].sort().join(",") === [...b.schedule.days].sort().join(",")
-  );
-  return samePerformance(a, b)
-    && a.recentWeeklyVolumeKm === b.recentWeeklyVolumeKm
-    && a.desiredWeeklyDurationMinutes === b.desiredWeeklyDurationMinutes
-    && a.goal === b.goal
-    && a.goalDistanceMeters === b.goalDistanceMeters
-    && a.preferredDays.vo2max === b.preferredDays.vo2max
-    && a.preferredDays.threshold === b.preferredDays.threshold
-    && a.preferredDays.long === b.preferredDays.long
-    && (["vo2max", "threshold", "long"] as const).every((slot) =>
-      (a.workoutChoices ?? DEFAULT_WORKOUT_CHOICES)[slot] === (b.workoutChoices ?? DEFAULT_WORKOUT_CHOICES)[slot])
-    && schedulesMatch;
 }
 
 type Performance = { distanceMeters: number; raceSeconds: number };

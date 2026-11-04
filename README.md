@@ -27,6 +27,99 @@ On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`. Without
 `AUTH_RESEND_KEY`, development sign-in codes are printed to the dev server
 console.
 
+## Android app
+
+The [mobile](mobile) directory contains a React Native app built with Expo, not a
+WebView. It shares the web planner's TypeScript domain logic, validation and
+translations. The existing Next.js app remains the backend; deploy the new
+mobile API routes before using an installed app.
+
+Install the root dependencies first (`npm ci`), then:
+
+```sh
+cd mobile
+npm ci
+npm run typecheck
+npm test
+npx expo run:android
+```
+
+Running Android locally requires Android Studio, an SDK, a compatible JDK and an
+emulator or USB-connected device. Google sign-in and Garmin use the system
+browser and return through `runweek://auth`; use an Android development build,
+not Expo Go, to test that callback.
+
+The native startup loads `Intl.PluralRules` support and locale data before the
+shared translations are used: Android's Hermes engine does not supply that API.
+`npm test` in `mobile` checks pluralization in all supported languages with the
+native API removed, and checks changed versus equivalent training parameters.
+
+On Android, use **Edit setup** to change parameters. The save-and-regenerate
+button appears only when parameters differ from the saved plan and disappears
+if those changes are reverted. Selecting an equivalent performance distance
+alone does not require regeneration.
+
+When signed in on Android, the account planner always takes precedence over
+the device planner, including when the account has no saved plan. A failed
+account load shows a retry error rather than switching to the device planner.
+The signed-out device planner remains unchanged.
+
+If requesting an email code returns 503, inspect the backend's
+`mobile_request_failed` JSON log. It includes a request ID, the failed operation,
+safe Prisma error codes or email-provider HTTP status, and configuration-presence
+flags, not credentials or email contents. Configure `AUTH_SECRET` and
+`DATABASE_URL` in the repository root's `.env.local` (not only in `mobile`), start
+PostgreSQL and apply migrations. To actually deliver email in local development,
+also set `AUTH_RESEND_KEY` and a verified `AUTH_EMAIL_FROM`; without the key,
+development codes are printed in the backend terminal instead.
+
+Set `EXPO_PUBLIC_API_URL` in the mobile environment to your backend's HTTPS
+origin (defaults to `https://run-week.fyi`). For an Android emulator with the
+backend running locally, use `http://10.0.2.2:3000` in development. A physical
+device needs a reachable development server address. Never put database,
+Resend, Auth.js or Garmin secrets in the mobile environment.
+
+For local Garmin browser authentication in the Android emulator, forward the
+backend port before connecting:
+
+```powershell
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" -s emulator-5554 reverse tcp:3000 tcp:3000
+```
+
+This makes `http://localhost:3000` in the emulator reach the computer's backend,
+including browser handoff URLs and a localhost Garmin callback. Keep the backend
+running and repeat the command after restarting the emulator; use its actual
+serial from `adb devices` if different. The `GARMIN_REDIRECT_URI` must still match
+the callback registered with Garmin. A physical phone without USB forwarding
+needs a reachable HTTPS backend and matching registered callback instead.
+
+Only native authentication and browser handoff endpoints are under `/api/mobile`.
+The app uses the existing `/api/planner`, `/api/account` and `/api/garmin/*`
+endpoints directly, authenticated with its bearer token. Browser cookie
+requests retain their existing same-origin checks. Email-code sign-in uses the same Resend
+delivery, code expiry and attempt limits as the website. Native sessions are
+independent of browser sessions: a revocable bearer token is stored in Android
+secure storage, and only its SHA-256 hash is stored in the existing `Session`
+table. Sessions expire after 30 days; signing out revokes the mobile session.
+Planner, account and Garmin requests reuse the existing server-side validation
+and operations under that authenticated account. Browser cookies alone cannot
+authenticate the native session-management endpoint. Invalid bearer tokens
+never fall back to a browser cookie.
+
+Google sign-in uses the existing website sign-in screen in the system browser.
+Garmin authorization remains on the existing HTTPS callback; no new Garmin or
+Google provider callback registration is needed for the app return. Short-lived
+browser tickets bind the flow to a SHA-256 PKCE challenge, and a single-use,
+60-second code is exchanged by the app. No session token is put in a redirect
+URL. Garmin linking uses the account signed in on Android even if the browser
+is signed in to a different account. Tickets use the existing
+`VerificationToken` table; no database migration is needed.
+
+The mobile integration tests in [e2e/mobile.spec.ts](e2e/mobile.spec.ts) cover
+email code limits, session revocation, account isolation, planner sharing,
+PKCE/replay protection and Garmin linking, sending and disconnecting against the
+mock server. They do not replace testing the Android app on a device.
+
 ## Commands
 
 | Command | Purpose |
@@ -452,14 +545,17 @@ npm run test:e2e
 ## CI and deployment
 
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests to `main`
-and manually. Its first two jobs need no secrets:
+and manually. Its web and Android validation jobs need no secrets:
 
 - **Lint, typecheck and build**: `npm run lint`, `npm run typecheck`,
   `npm run build`.
 - **E2E tests**: `npm run test:e2e`. On failure, the Playwright report and
   traces are uploaded as the `playwright-report` artifact.
+- **Android app checks**: installs the native app dependencies, type-checks
+  the app and exports its production Android JavaScript bundle. This is not
+  an APK build or emulator test.
 - **Migrate database**: runs only on `main` (push or manual run), after both
-  jobs pass, and applies pending migrations to production with
+  web jobs and the Android app checks pass, and applies pending migrations to production with
   `npm run db:deploy`. Runs never overlap or cancel each other. Pull requests
   skip it.
 

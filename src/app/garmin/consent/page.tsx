@@ -6,6 +6,7 @@ import { currentUserId } from "@/features/account/server/auth";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
 import { hostingProvider } from "@/features/garmin/server/privacy";
 import { garminConfig } from "@/features/garmin/server/config";
+import { mobileGarminBrowser } from "@/features/mobile/server/browser";
 
 export const metadata: Metadata = { title: "Connect Garmin · Run Week" };
 
@@ -17,7 +18,8 @@ async function GarminConsentContent() {
   await connection();
   const host = hostingProvider();
   const ready = Boolean(host && garminConfig());
-  const signedIn = ready && await currentUserId() !== null;
+  const mobile = await mobileGarminBrowser();
+  const signedIn = ready && (mobile?.value.userId !== undefined || await currentUserId() !== null);
   return <main lang="en" className="mx-auto w-full max-w-2xl space-y-5 px-6 py-8 text-sm leading-6">
     <Link href="/" className="underline">Back to Run Week</Link>
     <h1 className="text-2xl font-semibold">Connect Garmin</h1>
@@ -29,7 +31,7 @@ async function GarminConsentContent() {
     {ready && !signedIn && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3">
       <Link href="/signin?callbackUrl=%2Fgarmin%2Fconsent" className="underline">Sign in</Link> to connect Garmin.
     </p>}
-    <form action="/api/garmin/connect" method="post" className="space-y-4">
+    <form action={mobile ? "/api/mobile/browser/garmin" : "/api/garmin/connect"} method="post" className="space-y-4">
       <label className="flex items-start gap-3">
         <input type="checkbox" name="consent" value={GARMIN_CONSENT_VERSION} required disabled={!signedIn} className="mt-1 shrink-0" />
         <span>I have read the <Link href="/privacy" className="underline">privacy policy</Link> and consent to Run Week and its disclosed infrastructure processing and storing Garmin authorization tokens, a keyed hash of my Garmin user ID, workout identifiers and the runs I select for Garmin synchronization, and to Upstash processing the pseudonymous quota metadata described above.</span>

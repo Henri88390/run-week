@@ -59,9 +59,34 @@ jobs:
             test-results/
           retention-days: 7
 
+  mobile:
+    name: Android app checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run typecheck
+        working-directory: mobile
+      - run: npm test
+        working-directory: mobile
+      - run: npx expo export --platform android
+        working-directory: mobile
+        env:
+          CI: "1"
+
   migrate:
     name: Migrate database
-    needs: [checks, e2e]
+    needs: [checks, e2e, mobile]
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

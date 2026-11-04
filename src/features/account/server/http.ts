@@ -3,9 +3,11 @@ import type { NextRequest } from "next/server";
 
 export const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-/** Rejects cross-site state-changing requests in addition to SameSite=Lax cookies. */
+/** Cookie mutations stay same-origin. Native bearer requests are authenticated separately. */
 export function isSameOrigin(request: NextRequest): boolean {
-  return request.headers.get("origin") === request.nextUrl.origin;
+  const origin = request.headers.get("origin");
+  return origin === request.nextUrl.origin
+    || (origin === null && /^Bearer [A-Za-z0-9_-]{43}$/.test(request.headers.get("authorization") ?? ""));
 }
 
 /** Reads a JSON body of at most `maxBytes`; returns undefined when it is missing, too large or invalid. */

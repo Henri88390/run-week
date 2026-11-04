@@ -8,6 +8,7 @@ import { saveConnection } from "@/features/garmin/server/store";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
 import { failureDetails, GarminApiError, logGarminFailure, newRequestId } from "@/features/garmin/server/diagnostics";
 import type { GarminErrorCode } from "@/features/garmin/sync-request";
+import { finishBrowser, mobileGarminBrowser } from "@/features/mobile/server/browser";
 
 function sameState(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -18,8 +19,10 @@ function sameState(a: string, b: string): boolean {
 export async function GET(request: NextRequest) {
   await connection();
   const requestId = newRequestId();
-  const finish = (result: "connected" | "error" | GarminErrorCode) => {
-    const response = NextResponse.redirect(new URL(`/?garmin=${result}`, request.nextUrl));
+  let mobileFlow = false;
+  const finish = async (result: "connected" | "error" | GarminErrorCode) => {
+    const response = (mobileFlow ? await finishBrowser(request, result) : null)
+      ?? NextResponse.redirect(new URL(`/?garmin=${result}`, request.nextUrl));
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("Referrer-Policy", "no-referrer");
     response.headers.set("X-Request-ID", requestId);
@@ -30,6 +33,7 @@ export async function GET(request: NextRequest) {
     const config = garminConfig();
     if (!config) throw new GarminApiError("configuration");
     const authorization = readAuthorization(request, config);
+    mobileFlow = authorization?.mobile === true;
     const code = request.nextUrl.searchParams.get("code");
     const state = request.nextUrl.searchParams.get("state");
     if (!authorization || authorization.consentVersion !== GARMIN_CONSENT_VERSION
@@ -38,7 +42,9 @@ export async function GET(request: NextRequest) {
       || !code || code.length > 2048 || !state || state.length !== 43
       || !sameState(state, authorization.state)) throw new GarminApiError("invalid_request");
     // The connection belongs to the account that started the authorization.
-    if (await currentUserId() !== authorization.userId) throw new GarminApiError("invalid_request");
+    const mobile = mobileFlow ? await mobileGarminBrowser() : null;
+    const userId = mobileFlow ? mobile?.value.userId : await currentUserId();
+    if (userId !== authorization.userId) throw new GarminApiError("invalid_request");
     const tokens = await requestTokens(config, {
       grant_type: "authorization_code",
       code,
@@ -49,10 +55,10 @@ export async function GET(request: NextRequest) {
     await saveConnection(config, authorization.userId, garminUser, tokens, {
       version: authorization.consentVersion, at: new Date(authorization.consentAt),
     });
-    return finish("connected");
+    return await finish("connected");
   } catch (error) {
     logGarminFailure(requestId, "callback", error);
     const code = failureDetails(error).code;
-    return finish(code === "invalid" ? "error" : code);
+    return await finish(code === "invalid" ? "error" : code);
   }
 }

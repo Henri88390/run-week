@@ -10,6 +10,7 @@ const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 type Authorization = {
   userId: string; state: string; codeVerifier: string; redirectUri: string; consentVersion: string; consentAt: number;
+  mobile?: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -31,6 +32,7 @@ function isAuthorization(value: unknown): value is Authorization {
     && typeof value.codeVerifier === "string" && value.codeVerifier.length > 0
     && typeof value.redirectUri === "string" && value.redirectUri.length > 0
     && value.consentVersion === GARMIN_CONSENT_VERSION
+    && (value.mobile === undefined || typeof value.mobile === "boolean")
     && typeof value.consentAt === "number" && Number.isFinite(value.consentAt);
 }
 

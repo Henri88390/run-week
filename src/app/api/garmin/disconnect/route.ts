@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       return json(403, "invalid");
     }
     const userId = await currentUserId();
+    if (!userId && request.headers.has("authorization")) return json(401, "reconnect");
     if (userId) {
       operation = "record";
       const sent = await sentWorkouts(userId);

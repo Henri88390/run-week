@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Run Week",
+    "slug": "run-week",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "runweek",
+    "android": {
+      "package": "fyi.runweek.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#ecfdf5"
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

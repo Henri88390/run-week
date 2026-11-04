@@ -6,6 +6,7 @@ import { pkceChallenge, randomToken, writeAuthorization } from "@/features/garmi
 import { hostingProvider } from "@/features/garmin/server/privacy";
 import { GARMIN_CONSENT_VERSION } from "@/features/garmin/privacy";
 import { failureDetails, GarminApiError, logGarminFailure, newRequestId } from "@/features/garmin/server/diagnostics";
+import { requestUserId } from "@/features/account/server/request-user";
 
 export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(new URL("/garmin/consent", request.nextUrl));
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
     response.headers.set("X-Request-ID", requestId);
     writeAuthorization(response, request, config, {
       userId, state, codeVerifier, redirectUri, consentVersion: GARMIN_CONSENT_VERSION, consentAt: Date.now(),
+      ...(requestUserId() !== undefined ? { mobile: true } : {}),
     });
     return response;
   } catch (error) {

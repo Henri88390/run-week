@@ -1,0 +1,35 @@
+{
+  "name": "run-week-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@formatjs/intl-pluralrules": "^7.0.2",
+    "@garmin/fitsdk": "^21.218.0",
+    "@hookform/resolvers": "^7.0.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~54.0.0",
+    "expo-clipboard": "~8.0.7",
+    "expo-crypto": "~15.0.7",
+    "expo-file-system": "~19.0.17",
+    "expo-secure-store": "~15.0.7",
+    "expo-sharing": "~14.0.7",
+    "expo-web-browser": "~15.0.8",
+    "react": "19.1.0",
+    "react-hook-form": "^7.91.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
+  }
+}

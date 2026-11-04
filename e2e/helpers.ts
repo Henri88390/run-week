@@ -23,6 +23,12 @@ async function query(sql: string, params: unknown[]) {
   }
 }
 
+export async function setEmailCode(email: string) {
+  const hash = createHash("sha256").update(`${SIGN_IN_CODE}${AUTH_SECRET}`).digest("hex");
+  const updated = await query('UPDATE "VerificationToken" SET token = $1 WHERE identifier = $2', [hash, email]);
+  expect(updated.rowCount).toBe(1);
+}
+
 /** Signs in with the email-code flow. Email delivery is disabled, so the stored code is replaced by a known one. */
 export async function signIn(page: Page, email: string) {
   await page.goto("/signin");
@@ -33,9 +39,7 @@ export async function signIn(page: Page, email: string) {
   const code = page.getByLabel("Code");
   await expect(code).toBeVisible();
   // Auth.js stores sha256(code + secret).
-  const hash = createHash("sha256").update(`${SIGN_IN_CODE}${AUTH_SECRET}`).digest("hex");
-  const updated = await query('UPDATE "VerificationToken" SET token = $1 WHERE identifier = $2', [hash, email]);
-  expect(updated.rowCount).toBe(1);
+  await setEmailCode(email);
   await code.fill(SIGN_IN_CODE);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(accountMenuButton(page)).toBeVisible();
