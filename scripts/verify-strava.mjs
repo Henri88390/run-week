@@ -34,7 +34,21 @@ const { WEEKLY_VOLUME_MESSAGES } = load("src/features/strava/weekly-volume-messa
 const { METRIC_DEFINITIONS } = load("src/features/strava/metric-definitions.ts");
 const { INDICATOR_MESSAGES } = load("src/features/strava/indicator-messages.ts");
 const { DANIELS_MESSAGES } = load("src/features/strava/daniels-messages.ts");
-const { periodSynchronized } = load("src/features/strava/sync-history.ts");
+const { periodSynchronized, missingSyncPeriods, rangePreviouslySynchronized } = load("src/features/strava/sync-history.ts");
+const currentMonthPeriod = { view: "month", month: "2026-11" };
+assert.deepEqual(missingSyncPeriods([], currentMonthPeriod), [currentMonthPeriod, { view: "month", month: "2026-10" }]);
+assert.deepEqual(missingSyncPeriods([], { view: "month", month: "2026-06" }), [{ view: "month", month: "2026-06" }]);
+assert.deepEqual(missingSyncPeriods([], { view: "month", month: "2026-01" }),
+  [{ view: "month", month: "2026-01" }, { view: "month", month: "2025-12" }]);
+const previouslySynced = [{ start: "2026-10-01", end: "2026-12-01", syncedAt: "2026-11-04T10:00:00Z" }];
+assert.deepEqual(missingSyncPeriods(previouslySynced, currentMonthPeriod), [],
+  "Current periods synchronized before completion do not automatically refresh");
+assert.equal(rangePreviouslySynchronized([
+  { start: "2026-10-01", end: "2026-10-15", syncedAt: "2026-11-04T10:00:00Z" },
+  { start: "2026-10-15", end: "2026-11-01", syncedAt: "2026-11-04T10:00:00Z" },
+], { start: "2026-10-01", end: "2026-11-01" }), true);
+assert.deepEqual(missingSyncPeriods(previouslySynced, { view: "week", date: "2026-11-04" }), []);
+assert.deepEqual(missingSyncPeriods(previouslySynced, { view: "year", year: "2026" }), [{ view: "year", year: "2026" }]);
 const { volumeBuckets, volumeAxisMaximum } = load("src/features/strava/volume-chart.ts");
 for (const values of [[], [0], [.1], [4.9], [19.9], [20], [20.1], [567.8]]) {
   for (const increment of [1, 5]) {

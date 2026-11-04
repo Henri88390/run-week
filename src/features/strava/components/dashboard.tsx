@@ -25,6 +25,7 @@ import { METRIC_DEFINITIONS } from "../metric-definitions";
 import { INDICATOR_MESSAGES } from "../indicator-messages";
 import { DANIELS_MESSAGES } from "../daniels-messages";
 import { VolumeChart } from "./volume-chart";
+import { useAutomaticSync } from "./use-automatic-sync";
 
 const zoneColors: Record<number, string> = {
   1: "border-sky-300 bg-sky-50", 2: "border-emerald-300 bg-emerald-50",
@@ -36,6 +37,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice }
   const syncHelpId = useId();
   const query = useActivityQuery(initialData);
   const data = query.data;
+  useAutomaticSync(data, !metrics);
   const calendarMonths = useMemo(() => {
     if (!data.months.length) return [];
     const byMonth = new Map<string, DashboardData["activities"]>();

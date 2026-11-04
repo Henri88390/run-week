@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { APP_URL, DATABASE_URL, REDIS_URL } from "./env";
 import { createClient } from "redis";
 import { createWeek, signIn, uniqueEmail } from "./helpers";
+import { syncPeriodSchema } from "../src/features/strava/sync-period";
 
 const MOCK = "http://127.0.0.1:3102";
 const CONSENT = "2026-11-04-v1";
@@ -58,6 +59,60 @@ async function fullImport(page: Page, email: string) {
   }
   throw new Error("Bounded import did not finish");
 }
+
+test("automatic sync covers unvisited ranges and the visible previous month without retry loops", async ({ page }) => {
+  test.setTimeout(120_000);
+  const email = uniqueEmail("strava-auto");
+  await control({ history: false, latest: false, rate: false, delay: 0 });
+  const bodies: unknown[] = [];
+  let fail = false;
+  await page.route("**/api/strava/sync", async (route) => {
+    const period = syncPeriodSchema.parse(route.request().postDataJSON());
+    bodies.push(period);
+    if (fail) {
+      await route.fulfill({ status: 503, json: { error: "unavailable" } });
+      return;
+    }
+    await route.continue();
+  });
+  await page.goto("/planner");
+  await signIn(page, email);
+  await connect(page, 8601);
+  const today = new Date().toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
+  await expect.poll(() => bodies.length).toBeGreaterThan(0);
+  await expect.poll(async () => (await (await page.request.get(`/api/strava/activities?view=month&month=${month}`)).json()).missingSyncPeriods, { timeout: 45_000 }).toEqual([]);
+  const count = bodies.length;
+  await page.reload();
+  await page.waitForTimeout(1500);
+  expect(bodies).toHaveLength(count);
+  await page.goto("/activities?month=2024-01");
+  await expect.poll(() => bodies.slice(count)).toEqual([
+    { view: "month", month: "2024-01" },
+  ]);
+  await expect.poll(async () => (await (await page.request.get("/api/strava/activities?view=month&month=2024-01")).json()).missingSyncPeriods).toEqual([]);
+  await page.goto("/activities?month=2024-02");
+  await expect.poll(() => bodies.at(-1)).toEqual({ view: "month", month: "2024-02" });
+  await expect.poll(async () => (await (await page.request.get("/api/strava/activities?view=month&month=2024-02")).json()).missingSyncPeriods).toEqual([]);
+  await page.goto("/activities?month=2023-01");
+  await expect.poll(() => bodies.slice(-2)).toEqual([
+    { view: "month", month: "2023-01" }, { view: "month", month: "2022-12" },
+  ]);
+  await expect.poll(async () => (await (await page.request.get("/api/strava/activities?view=month&month=2023-01")).json()).missingSyncPeriods).toEqual([]);
+  await page.goto("/activities?view=week&date=2023-01-03");
+  await page.waitForTimeout(1500);
+  expect(bodies.at(-1)).toEqual({ view: "month", month: "2022-12" });
+  fail = true;
+  await page.goto("/activities?month=2021-01");
+  await expect(page.getByRole("alert").filter({ hasText: "Unable to complete this request" })).toBeVisible();
+  const failedCount = bodies.length;
+  await page.waitForTimeout(11_000);
+  expect(bodies).toHaveLength(failedCount);
+  expect(bodies.at(-1)).toEqual({ view: "month", month: "2021-01" });
+  await page.goto("/running-metrics?month=2020-01");
+  await page.waitForTimeout(1500);
+  expect(bodies).toHaveLength(failedCount);
+});
 
 test("account menu connects and disconnects Strava with confirmation", async ({ page }) => {
   await page.goto("/planner");
@@ -746,7 +801,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
   } finally { await control({ rate: false, delay: 0, tokenDelay: 0 }); await second.close(); }
 });
 
-test("one explicit sync request imports only the selected period, without background retries", async ({ page }) => {
+test("manual refresh of previously visited ranges imports only the selected period", async ({ page }) => {
   test.setTimeout(180_000);
   const email = uniqueEmail("strava-history");
   const athlete = 8401;
@@ -755,18 +810,29 @@ test("one explicit sync request imports only the selected period, without backgr
   await control({ history: true, latest: false, delay: 0 });
   try {
     const syncBodies: unknown[] = [];
+    let initializing = true;
     const activityReads: string[] = [];
     page.on("request", (request) => {
       if (request.method() === "GET" && new URL(request.url()).pathname === "/api/strava/activities")
         activityReads.push(request.url());
     });
     await page.route("**/api/strava/sync", async (route) => {
+      if (initializing) {
+        await route.fulfill({ status: 503, json: { error: "unavailable" } });
+        return;
+      }
       syncBodies.push(route.request().postDataJSON());
       await route.continue();
     });
     await page.goto("/planner");
     await signIn(page, email);
     await connect(page, athlete);
+    // Previously visited, unfinished ranges suppress auto-sync but allow manual refresh.
+    const visited = JSON.stringify([{ start: `${previousYear}-01-01`,
+      end: `${new Date().getUTCFullYear() + 1}-01-01`, syncedAt: `${previousYear}-01-01T00:00:00Z` }]);
+    await query(`UPDATE "StravaConnection" SET "syncHistory"=$1::jsonb WHERE "userId"=(SELECT id FROM "User" WHERE email=$2)`, [visited, email]);
+    initializing = false;
+    await page.reload();
     await page.waitForTimeout(1500);
     expect(syncBodies).toHaveLength(0);
     const stored = async () => (await query(`SELECT a."sourceId", a."localDate", a."streamState"
@@ -864,7 +930,7 @@ test("one explicit sync request imports only the selected period, without backgr
     await expect(page.getByLabel("Month", { exact: true })).toHaveValue(`${previousYear}-06`);
     const beforeMonth = (await ownCalls()).length;
     await expect(synchronize).toBeDisabled();
-    await query(`UPDATE "StravaConnection" SET "syncHistory"='[]' WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+    await query(`UPDATE "StravaConnection" SET "syncHistory"=$1::jsonb WHERE "userId"=(SELECT id FROM "User" WHERE email=$2)`, [visited, email]);
     await page.reload();
     await expect(synchronize).toBeEnabled();
     await synchronize.click();

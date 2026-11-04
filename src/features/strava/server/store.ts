@@ -10,7 +10,7 @@ import type { StravaConfig } from "./config";
 import { saveSummary } from "./save-summary";
 import { clearActivityCache } from "./cache";
 import { weeklyVolumes } from "../weekly-volume";
-import { periodSynchronized, syncHistorySchema } from "../sync-history";
+import { missingSyncPeriods, periodSynchronized, syncHistorySchema } from "../sync-history";
 import { syncPeriodRange } from "../sync-period";
 import { volumeBuckets } from "../volume-chart";
 
@@ -199,6 +199,7 @@ export async function dashboard(userId: string, month: string, weekDate?: string
     syncActive: connection?.syncActive ?? false, syncPage: connection?.syncPage ?? 1,
     lastSyncedAt: connection?.lastSyncedAt?.toISOString() ?? null, retryAt: connection?.retryAt?.toISOString() ?? null,
     periodSynchronized: periodSynchronized(history, syncRange, today), periodLastSyncedAt,
+    missingSyncPeriods: missingSyncPeriods(history, period),
     pending, month, year: year ?? null, weekDate: weekDate ? range.start : null, activities: monthActivities, settings: settings.data, ...heartRateTimes(samples, settings.data),
     weeks: calendarWeeks(month, activities, measurements, settings.data.maxHr, weekDate),
     months: year ? Array.from({ length: 12 }, (_, i) => {

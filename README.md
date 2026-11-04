@@ -171,13 +171,20 @@ The Synchronize Strava button sends exactly one website API request for the
 selected week, month or year, including summaries and missing HR/pace recordings.
 The server fetches up to 200 summaries per Strava page, then one stream response
 per missing activity, with 8-second outbound timeouts and bounded bodies/sample counts.
-Synchronization starts only when Synchronize Strava is clicked, never on connection,
-page load, reopening the website or calendar navigation. The visible Stop button
+Opening Activities or changing the selected date automatically synchronizes ranges
+not yet covered by successful synchronization history. Month view also synchronizes
+the previous month when its days are visible in the calendar. Requests run sequentially
+and respect the existing cooldown. Already-covered current periods do not automatically
+refresh; use the manual button for newer activities. Running Metrics does not auto-sync.
+The visible Stop button
 aborts the browser request; the server checks cancellation between upstream calls.
 A header spinner/status remains visible while syncing. Calendar navigation does
-not start requests or change the period of an in-flight import. The calendar reads
+not change the period of an in-flight import. A newly selected unsynchronized period
+starts after the current request and cooldown finish. The calendar reads
 imported database rows only and refreshes when the request finishes.
-There is no browser request loop or automatic retry. Rate limits and the server's
+There is no polling or automatic retry after failure/cancellation during the same
+calendar visit. Navigating away and back can try an unsynchronized range again.
+Rate limits and the server's
 four-minute request budget stop the import explicitly; hosting limits may stop it sooner.
 Errors display briefly in red. Another explicit click retries the selected period,
 reusing summaries and recordings already saved.

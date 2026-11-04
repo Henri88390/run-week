@@ -18,12 +18,13 @@ function useImportController() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState(false);
   const [retryAt, setRetryAt] = useState<string | null>(null);
+  const [stopVersion, setStopVersion] = useState(0);
   const activeRequest = useRef<AbortController | null>(null);
   const [coolingDown, setCoolingDown] = useState(false);
   const nextStart = useRef(0);
   useEffect(() => {
     if (!coolingDown) return;
-    const timer = setTimeout(() => setCoolingDown(false), Math.max(0, nextStart.current - Date.now()));
+    const timer = setTimeout(() => setCoolingDown(false), Math.max(0, nextStart.current - Date.now()) + 50);
     return () => clearTimeout(timer);
   }, [coolingDown, retryAt]);
   useEffect(() => {
@@ -31,8 +32,9 @@ function useImportController() {
     const timer = setTimeout(() => setError(false), 3000);
     return () => clearTimeout(timer);
   }, [error]);
-  useEffect(() => () => { activeRequest.current?.abort(); activeRequest.current = null; }, []);
+  useEffect(() => () => { activeRequest.current?.abort(); }, []);
   const stop = useCallback(() => {
+    setStopVersion((value) => value + 1);
     activeRequest.current?.abort();
     activeRequest.current = null;
     setImporting(false);
@@ -40,7 +42,7 @@ function useImportController() {
     setRetryAt(null);
   }, []);
   const start = useCallback(async (period: SyncPeriod) => {
-    if (activeRequest.current || Date.now() < nextStart.current) return;
+    if (activeRequest.current || Date.now() < nextStart.current) return null;
     const controller = new AbortController();
     activeRequest.current = controller;
     nextStart.current = Date.now() + 10_000;
@@ -48,6 +50,7 @@ function useImportController() {
     setCoolingDown(true);
     setError(false);
     setRetryAt(null);
+    let success = false;
     try {
       const response = await fetch("/api/strava/sync", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -65,6 +68,7 @@ function useImportController() {
         throw new Error("Import failed");
       }
       progressSchema.parse(value);
+      success = true;
     } catch {
       if (activeRequest.current === controller) setError(true);
     } finally {
@@ -77,9 +81,10 @@ function useImportController() {
         router.refresh();
       }
     }
+    return success;
   }, [queries, router]);
-  return useMemo(() => ({ importing, error, retryAt, coolingDown, start, stop }),
-    [importing, error, retryAt, coolingDown, start, stop]);
+  return useMemo(() => ({ importing, error, retryAt, coolingDown, stopVersion, start, stop }),
+    [importing, error, retryAt, coolingDown, stopVersion, start, stop]);
 }
 
 const ImportContext = createContext<ReturnType<typeof useImportController> | null>(null);
