@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     logGarminFailure(requestId, "connect", error);
     const code = failureDetails(error).code;
-    const response = NextResponse.redirect(new URL(`/?garmin=${code === "invalid" ? "error" : code}`, request.nextUrl), 303);
+    const response = NextResponse.redirect(new URL(`/planner?garmin=${code === "invalid" ? "error" : code}`, request.nextUrl), 303);
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("X-Request-ID", requestId);
     return response;

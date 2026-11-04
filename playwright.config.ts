@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import {
   APP_PORT, APP_URL, AUTH_SECRET, DATABASE_URL, GARMIN_CLIENT_ID, GARMIN_CLIENT_SECRET, GARMIN_MOCK_ORIGIN,
-  GARMIN_MOCK_PORT,
+  GARMIN_MOCK_PORT, REDIS_URL,
 } from "./e2e/env";
 
 const databaseUrl = DATABASE_URL;
@@ -25,6 +25,11 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
+      command: "node e2e/strava-mock.mjs",
+      url: "http://127.0.0.1:3102/health",
+      reuseExistingServer: false,
+    },
+    {
       command: "node e2e/garmin-mock.mjs",
       url: `${GARMIN_MOCK_ORIGIN}/health`,
       reuseExistingServer: false,
@@ -44,6 +49,7 @@ export default defineConfig({
         NEXT_DIST_DIR: ".next-e2e",
         DATABASE_URL: databaseUrl,
         DIRECT_URL: databaseUrl,
+        REDIS_URL,
         AUTH_SECRET,
         AUTH_TRUST_HOST: "true",
         AUTH_URL: APP_URL,
@@ -58,8 +64,11 @@ export default defineConfig({
         GARMIN_REDIRECT_URI: "",
         GARMIN_E2E_MOCK_ORIGIN: GARMIN_MOCK_ORIGIN,
         PRIVACY_HOSTING_PROVIDER: "E2E test host",
-        UPSTASH_REDIS_REST_URL: "",
-        UPSTASH_REDIS_REST_TOKEN: "",
+        STRAVA_CLIENT_ID: "1234",
+        STRAVA_CLIENT_SECRET: "e2e-strava-client-secret",
+        STRAVA_TOKEN_ENCRYPTION_KEY: "e2e-strava-encryption-secret-0123456789",
+        STRAVA_REDIRECT_URI: `${APP_URL}/api/strava/callback`,
+        STRAVA_E2E_MOCK_ORIGIN: "http://127.0.0.1:3102",
       },
     },
   ],

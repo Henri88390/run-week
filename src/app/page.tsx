@@ -1,11 +1,14 @@
-import { DocumentLanguage } from "@/features/i18n/language-select";
-import { RunningPlanner } from "@/features/running-programs/components/running-planner";
+import { redirect } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import { currentUserId } from "@/features/account/server/auth";
+
+async function HomeRedirect() {
+  await connection();
+  const userId = await currentUserId();
+  return redirect(userId ? "/activities" : "/planner");
+}
 
 export default function Home() {
-  return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-6 sm:px-10 sm:py-8">
-      <DocumentLanguage />
-      <RunningPlanner />
-    </main>
-  );
+  return <Suspense fallback={null}><HomeRedirect /></Suspense>;
 }

@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac } from "node:crypto";
+import { redisClient, RedisConfigurationError } from "@/server/redis";
 import type { GarminConfig } from "./config";
 import { GarminApiError } from "./diagnostics";
 
@@ -59,21 +60,6 @@ function reserveInMemory(key: string, development: boolean): UploadReservation {
   return { allowed: true };
 }
 
-function redisConfig(): { url: string; token: string } | null {
-  const rawUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-  if (!rawUrl && !token) return null;
-  try {
-    if (!rawUrl || !token || /[\r\n]/.test(token)) throw new Error();
-    const url = new URL(rawUrl);
-    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash
-      || url.pathname !== "/" || !url.hostname.endsWith(".upstash.io") || url.port) throw new Error();
-    return { url: url.origin, token };
-  } catch {
-    throw new GarminApiError("configuration");
-  }
-}
-
 /** Keyed by an HMAC of the account ID so Redis never holds the raw ID. */
 export function uploadIdentity(userId: string, config: GarminConfig): string {
   return createHmac("sha256", config.sessionSecret).update("run-week:garmin:upload-identity:v2\0").update(userId).digest("hex");
@@ -81,30 +67,24 @@ export function uploadIdentity(userId: string, config: GarminConfig): string {
 
 /** Configured Redis failures never fall back: a lost response may have reserved quota. */
 export async function reserveUpload(config: GarminConfig, userId: string): Promise<UploadReservation> {
-  const redis = redisConfig();
   const development = process.env.NODE_ENV === "development";
   const key = `run-week:garmin:upload:v2:${development ? "development" : "production"}:${uploadIdentity(userId, config)}`;
-  if (!redis) return reserveInMemory(key, development);
   try {
-    const response = await fetch(redis.url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${redis.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(["EVAL", RESERVE_UPLOAD_LUA, "1", key, development ? "0" : "1"]),
-      cache: "no-store",
-      redirect: "error",
-      signal: AbortSignal.timeout(5000),
+    const redis = await redisClient();
+    if (!redis) return reserveInMemory(key, development);
+    const result: unknown = await redis.eval(RESERVE_UPLOAD_LUA, {
+      keys: [key],
+      arguments: [development ? "0" : "1"],
     });
-    if (!response.ok) throw new Error();
-    const body: unknown = await response.json();
-    if (typeof body !== "object" || body === null || !("result" in body) || "error" in body
-      || !Array.isArray(body.result) || body.result.length !== 2) throw new Error();
-    const [allowed, retryAfterSeconds]: unknown[] = body.result;
+    if (!Array.isArray(result) || result.length !== 2) throw new Error();
+    const [allowed, retryAfterSeconds]: unknown[] = result;
     if (allowed === 1 && retryAfterSeconds === 0) return { allowed: true };
     if (allowed === 0 && typeof retryAfterSeconds === "number" && Number.isInteger(retryAfterSeconds)
       && retryAfterSeconds >= 1 && retryAfterSeconds <= 86400) return { allowed: false, retryAfterSeconds };
     throw new Error();
-  } catch {
+  } catch (error) {
     // Never propagate provider bodies, keys, URLs, credentials or network exception details.
+    if (error instanceof RedisConfigurationError) throw new GarminApiError("configuration");
     throw new GarminApiError("unavailable");
   }
 }

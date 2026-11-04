@@ -49,7 +49,7 @@ export function PrivacyControls() {
       link.download = "run-week-data.json";
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage("Data export downloaded. Garmin tokens are excluded.");
+      setMessage("Data export downloaded. Garmin and Strava tokens are excluded; Strava imports and HR settings are included.");
     } catch {
       setMessage("Could not export the data. Try again.");
     } finally {
@@ -130,7 +130,7 @@ export function PrivacyControls() {
       </div>
     </div>}
     {confirm === "account" && <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-      <p>This permanently deletes your account, its planner, sign-in methods, Garmin tokens and sent-workout records, and signs you out. Workouts already in Garmin Connect are not deleted; disconnect Garmin first to delete them. Data saved in this browser is not affected.</p>
+      <p>This permanently deletes your account, its planner, sign-in methods, Garmin tokens and sent-workout records, Strava imports, tokens and HR settings, cancels pending imports, and signs you out. Workouts already in Garmin Connect are not deleted; disconnect Garmin first to delete them. Original Strava activities and data saved in this browser are not affected.</p>
       <div className="flex gap-2">
         <button type="button" className="button-secondary" disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>
         <button type="button" className="button-primary" disabled={busy} onClick={() => void deleteAccount()}>Delete account</button>

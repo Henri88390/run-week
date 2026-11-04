@@ -14,7 +14,7 @@ async function expectGarminConnected(page: Page, connected: boolean) {
 }
 
 test("Garmin controls are available only to signed-in users", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/planner");
   await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: /^Language/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create training week" })).toBeVisible();
@@ -33,6 +33,10 @@ test("the account menu holds Garmin, language and sign-out and works with the ke
   const button = accountMenuButton(page);
   const menu = page.getByRole("menu", { name: "Account menu" });
 
+  // The shared header can be ready before the asynchronous Garmin status.
+  await openAccountMenu(page);
+  await expect(connectGarminLink(page)).toBeVisible();
+  await closeAccountMenu(page);
   await button.focus();
   await page.keyboard.press("ArrowDown");
   await expect(menu).toBeVisible();
@@ -103,6 +107,14 @@ test("a user can reconnect the same Garmin account after disconnecting", async (
   await signIn(page, uniqueEmail("reconnect"));
   await connectGarmin(page, garminUser);
   await expectGarminConnected(page, true);
+  await openAccountMenu(page);
+  await disconnectGarminButton(page).click();
+  const dialog = page.getByRole("dialog", { name: "Disconnect Garmin?" });
+  await expect(dialog).toContainText("Run Week's access to your Garmin account is then removed.");
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expectGarminConnected(page, true);
   await disconnectGarmin(page);
   await connectGarmin(page, garminUser);
   await expectGarminConnected(page, true);
@@ -151,13 +163,13 @@ test("sent runs are recorded in the account and can be deleted from Garmin", asy
 
   await test.step("the sent state comes from the account, in a new tab", async () => {
     const other = await page.context().newPage();
-    await other.goto("/");
+    await other.goto("/planner");
     await expect(other.getByRole("button", { name: "Delete training week from Garmin" })).toBeVisible();
     await expect(other.getByRole("button", { name: "Send week to Garmin" })).toHaveCount(0);
     await other.close();
   });
 
-  // Without Upstash, development allows one Garmin upload or delete per user every 10 seconds.
+  // Development allows one Garmin upload or delete per user every 10 seconds.
   await page.waitForTimeout(11_000);
   await page.getByRole("button", { name: "Delete training week from Garmin" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
@@ -186,7 +198,7 @@ test("regenerating a week deletes its workouts from Garmin first", async ({ page
   )).toBeVisible();
 
   await test.step("a failed deletion keeps the week and its Garmin workouts", async () => {
-    // Without Upstash, development allows one Garmin upload or delete per user every 10 seconds.
+    // Development allows one Garmin upload or delete per user every 10 seconds.
     await dialog.getByRole("button", { name: "Save and regenerate" }).click();
     await expect(dialog.getByRole("alert")).toContainText("The week was not regenerated");
     expect(await garminWorkouts(garminUser)).toHaveLength(sent.length);

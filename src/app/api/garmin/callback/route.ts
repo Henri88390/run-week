@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   let mobileFlow = false;
   const finish = async (result: "connected" | "error" | GarminErrorCode) => {
     const response = (mobileFlow ? await finishBrowser(request, result) : null)
-      ?? NextResponse.redirect(new URL(`/?garmin=${result}`, request.nextUrl));
+      ?? NextResponse.redirect(new URL(`/planner?garmin=${result}`, request.nextUrl));
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("Referrer-Policy", "no-referrer");
     response.headers.set("X-Request-ID", requestId);

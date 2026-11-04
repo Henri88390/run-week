@@ -7,8 +7,15 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import type { GarminDisconnectResult } from "@/features/garmin/use-garmin";
 import { Flag } from "@/features/i18n/language-select";
-import { LOCALE_NAMES, LOCALES } from "@/features/i18n/locales";
+import { LOCALE_NAMES, LOCALES, type Locale } from "@/features/i18n/locales";
 import { setLocale, useI18n } from "@/features/i18n/use-i18n";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useStravaStatus, STRAVA_STATUS_KEY } from "@/features/strava/components/connection-status";
+import { ACTIVITY_QUERY_KEY } from "@/features/strava/components/activity-query";
+import { useActivityImport } from "@/features/strava/components/use-activity-import";
+import { STRAVA_MESSAGES } from "@/features/strava/messages";
+import { RequestError } from "@/features/strava/components/request-error";
 
 type GarminControls = {
   configured: boolean;
@@ -19,16 +26,28 @@ type GarminControls = {
 
 const ITEMS = '[role="menuitem"], [role="menuitemradio"]';
 const itemClass = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left whitespace-nowrap text-stone-700 hover:bg-stone-100 focus-visible:bg-stone-100 focus-visible:outline-none disabled:opacity-60";
+const disconnectLabels: Record<Locale, string> = {
+  en: "Disconnect", fr: "Déconnecter", de: "Trennen", es: "Desconectar", pt: "Desligar",
+  pl: "Odłącz", ru: "Отключить", uk: "Відключити", be: "Адключыць", it: "Scollega",
+};
 
 function Separator() {
   return <li role="separator" className="my-1 border-t border-stone-200" />;
 }
 
-/** Signed in: one menu with Garmin, language and sign-out. Signed out: language selector rendered by the caller and a Sign in link. */
+/** Signed in: connections, language and sign-out. Signed out: a Sign in link. */
 export function UserMenu({ garmin }: { garmin: GarminControls }) {
   const { data: session, status } = useSession();
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
+  const strava = useStravaStatus(status === "authenticated" && open);
+  const stravaText = STRAVA_MESSAGES[locale];
+  const queries = useQueryClient();
+  const activityImport = useActivityImport();
+  const router = useRouter();
+  const [confirmingStrava, setConfirmingStrava] = useState(false);
+  const [stravaBusy, setStravaBusy] = useState(false);
+  const [stravaError, setStravaError] = useState(0);
   const [languagesOpen, setLanguagesOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
@@ -79,19 +98,10 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
     setOpen(false);
     trigger.current?.focus();
   };
-  const startDisconnect = async () => {
+  const startDisconnect = () => {
     close();
     setDisconnectError("");
-    setDisconnecting(true);
-    // Confirm only when workouts would be deleted from Garmin, or when that cannot be determined.
-    const count = await garmin.countSent();
-    if (count !== 0) {
-      setDisconnecting(false);
-      setConfirmingDisconnect(true);
-      return;
-    }
-    await garmin.disconnect({ notify: true });
-    setDisconnecting(false);
+    setConfirmingDisconnect(true);
   };
   const disconnectGarmin = async () => {
     setDisconnecting(true);
@@ -108,6 +118,23 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
       t.garmin[result.error],
       result.requestId ? `${t.garmin.reference}: ${result.requestId}` : "",
     ].filter(Boolean).join(" "));
+  };
+  const disconnectStrava = async () => {
+    setStravaBusy(true);
+    setStravaError(0);
+    try {
+      const response = await fetch("/api/strava/disconnect", { method: "POST", cache: "no-store",
+        signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) throw new Error("Strava disconnect failed");
+      activityImport.stop();
+      await queries.cancelQueries({ queryKey: ACTIVITY_QUERY_KEY });
+      queries.removeQueries({ queryKey: ACTIVITY_QUERY_KEY });
+      await queries.cancelQueries({ queryKey: STRAVA_STATUS_KEY });
+      queries.setQueryData(STRAVA_STATUS_KEY, { connected: false, consentCurrent: false });
+      setConfirmingStrava(false);
+      router.refresh();
+    } catch { setStravaError(Date.now()); }
+    finally { setStravaBusy(false); }
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     const items = [...(menu.current?.querySelectorAll<HTMLElement>(ITEMS) ?? [])];
@@ -154,13 +181,30 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
       <li role="none" className="mb-1 border-b border-stone-200 px-2 pt-1.5 pb-2.5 text-stone-600 [overflow-wrap:anywhere] sm:hidden">
         {t.account.signedInAs(email)}
       </li>
+      <li role="none">
+        {strava.data ? strava.data.connected
+          ? <button type="button" role="menuitem" tabIndex={-1} className={itemClass} disabled={stravaBusy}
+            aria-label={`Strava · ${disconnectLabels[locale]}`}
+            onClick={() => { close(); setStravaError(0); setConfirmingStrava(true); }}>
+            <span className="font-semibold text-[#fc4c02]">Strava</span>
+            <span className="ml-auto">{disconnectLabels[locale]}</span>
+          </button>
+          : <Link href="/strava/consent" role="menuitem" tabIndex={-1} className={itemClass} onClick={close}>
+            <span className="font-semibold text-[#fc4c02]">Strava</span>
+            <span className="ml-auto">{stravaText.connect}</span>
+          </Link>
+          : <button type="button" role="menuitem" tabIndex={-1} className={itemClass} disabled={strava.isFetching}
+            onClick={() => void strava.refetch()}>Strava · {strava.isError ? stravaText.error : "…"}</button>}
+      </li>
+      <Separator />
       {garmin.configured && <>
         <li role="none">
           {garmin.connected
             ? <button type="button" role="menuitem" tabIndex={-1} className={itemClass}
+              aria-label={t.garmin.disconnect}
               disabled={disconnecting} onClick={() => void startDisconnect()}>
               <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[11px] w-auto" unoptimized />
-              <span className="ml-auto">{t.garmin.disconnect}</span>
+              <span className="ml-auto">{disconnectLabels[locale]}</span>
             </button>
             : <a href="/api/garmin/connect" role="menuitem" tabIndex={-1} className={itemClass}>
               <Image src="/garmin-logo.svg" alt="" width={425} height={61} className="h-[11px] w-auto" unoptimized />
@@ -213,6 +257,12 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
       onCancel={() => setConfirmingDisconnect(false)} onConfirm={() => void disconnectGarmin()}>
       <p>{t.garmin.disconnectBody}</p>
       {disconnectError && <p role="alert" className="text-red-700">{disconnectError}</p>}
+    </ConfirmationDialog>}
+    {confirmingStrava && <ConfirmationDialog title={stravaText.disconnect} tone="danger" busy={stravaBusy}
+      confirmLabel={stravaText.disconnect} cancelLabel={t.confirm.cancel}
+      onCancel={() => setConfirmingStrava(false)} onConfirm={() => void disconnectStrava()}>
+      <p>{stravaText.confirmDelete}</p>
+      {stravaError > 0 && <RequestError key={stravaError} message={stravaText.error} />}
     </ConfirmationDialog>}
   </div>;
 }

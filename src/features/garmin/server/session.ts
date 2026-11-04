@@ -48,8 +48,8 @@ export function seal(value: unknown, secret: string): string {
   return Buffer.concat([iv, cipher.getAuthTag(), data]).toString("base64url");
 }
 
-export function unseal(sealed: string | undefined, secret: string): unknown | null {
-  if (!sealed || sealed.length > 8192) return null;
+export function unseal(sealed: string | undefined, secret: string, maxLength = 8192): unknown | null {
+  if (!sealed || sealed.length > maxLength) return null;
   try {
     const bytes = Buffer.from(sealed, "base64url");
     if (bytes.length < 28) return null;

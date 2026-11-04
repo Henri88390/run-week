@@ -19,7 +19,7 @@ async function fillTime(page: Page, hours: string, minutes: string, seconds: str
 
 /** Creates a week from a saved performance and opens its setup form. */
 async function setUp(page: Page, distance: Distance | number, time: [string, string, string]) {
-  await page.goto("/");
+  await page.goto("/planner");
   if (typeof distance === "number") {
     await chooseDistance(page, "Custom distance (metres)");
     await page.getByLabel("Distance in metres (1500–42,195)").fill(String(distance));

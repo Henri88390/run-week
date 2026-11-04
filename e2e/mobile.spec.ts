@@ -53,7 +53,7 @@ test("mobile email codes are single-use, rate-limited and sessions can be revoke
 });
 
 test("native and browser sessions share existing endpoints without weakening cookie CSRF protection", async ({ request, page }) => {
-  await page.goto("/");
+  await page.goto("/planner");
   await createWeek(page);
   const stored = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
   const planner = parsePlannerValue(JSON.parse(stored ?? "null"));
@@ -118,7 +118,7 @@ test("system-browser sign-in returns a single-use PKCE code, not a session token
 });
 
 test("mobile Garmin uses the native account, preserves the browser account and deletes sent workouts", async ({ page, request }) => {
-  await page.goto("/");
+  await page.goto("/planner");
   await createWeek(page);
   const stored = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
   const planner = parsePlannerValue(JSON.parse(stored ?? "null"));

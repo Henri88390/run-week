@@ -3,7 +3,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
 
 // Keeps the code step after a wrong code, because Auth.js reloads this page with ?error=Verification.
@@ -109,7 +108,6 @@ export function SignInForm({ callbackUrl, error, google }: { callbackUrl: string
   return <div className="space-y-5">
     <div className="flex items-center justify-between gap-2">
       <Link href="/" className="text-sm underline">{t.account.back}</Link>
-      <LanguageSelect />
     </div>
     <section className="panel space-y-4">
       <h1 className="text-xl font-semibold">{t.account.title}</h1>

@@ -20,6 +20,9 @@ model User {
   planner          Planner?
   garminConnection GarminConnection?
   garminWorkouts   GarminWorkout[]
+  stravaConnection StravaConnection?
+  stravaActivities StravaActivity[]
+  runningAnalyticsSettings RunningAnalyticsSettings?
 }
 
 /// Sign-in methods linked to a user. Provider OAuth tokens are not stored.
@@ -94,4 +97,59 @@ model GarminWorkout {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+}
+
+/// Website-only activity ingestion. OAuth tokens never leave server modules.
+model StravaConnection {
+  userId         String   @id
+  athleteKey     String   @unique
+  tokens         String
+  consentVersion String
+  consentAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  syncActive     Boolean  @default(true)
+  syncPage       Int      @default(1)
+  syncAfter      Int      @default(0)
+  syncBefore     Int
+  lastSyncedAt   DateTime?
+  syncHistory    Json     @default("[]")
+  retryAt        DateTime?
+  leaseId        String?
+  leaseUntil     DateTime?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StravaActivity {
+  id             String   @id @default(cuid())
+  userId         String
+  sourceId       String
+  name           String
+  sport          String
+  startedAt      DateTime
+  localDate      String
+  distanceMeters Float
+  movingSeconds  Int
+  elapsedSeconds Int
+  averageHr      Float?
+  maxHr          Float?
+  /// Only time, heartrate, velocity_smooth and distance; never GPS.
+  streams        Json?
+  streamState    String   @default("pending")
+  maximalEffort  Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceId])
+  @@index([userId, localDate])
+  @@index([userId, streamState])
+}
+
+/// Explicitly supplied settings, not inferred physiological thresholds.
+model RunningAnalyticsSettings {
+  userId       String @id
+  zoneBounds   Json
+  thresholdBpm Int?
+  maxHr        Int?
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

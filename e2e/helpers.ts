@@ -31,7 +31,7 @@ export async function setEmailCode(email: string) {
 
 /** Signs in with the email-code flow. Email delivery is disabled, so the stored code is replaced by a known one. */
 export async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
+  await page.goto("/signin?callbackUrl=%2Fplanner");
   // Auth.js sets the CSRF cookie from the first session requests; submitting before they settle fails.
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Email").fill(email);
@@ -42,6 +42,7 @@ export async function signIn(page: Page, email: string) {
   await setEmailCode(email);
   await code.fill(SIGN_IN_CODE);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(`${APP_URL}/planner`);
   await expect(accountMenuButton(page)).toBeVisible();
   // The desktop trigger shows the email; the "Signed in as" menu line is mobile-only.
   await expect(accountMenuButton(page)).toContainText(email);
@@ -77,15 +78,17 @@ export async function connectGarmin(page: Page, garminUser: string) {
   await openAccountMenu(page);
   await connectGarminLink(page).click();
   await expect(page).toHaveURL(/\/garmin\/consent$/);
+  await expect(accountMenuButton(page)).toBeVisible();
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Agree and continue to Garmin" }).click();
-  await page.waitForURL((url) => url.origin === APP_URL && url.pathname === "/");
+  await page.waitForURL((url) => url.origin === APP_URL && url.pathname === "/planner");
 }
 
-/** Disconnects an account that has not sent workouts: no confirmation is asked. */
+/** Confirms disconnecting an account that has not sent workouts. */
 export async function disconnectGarmin(page: Page) {
   await openAccountMenu(page);
   await disconnectGarminButton(page).click();
+  await page.getByRole("dialog", { name: "Disconnect Garmin?" }).getByRole("button", { name: "Delete workouts and disconnect" }).click();
   await openAccountMenu(page);
   await expect(connectGarminLink(page)).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);

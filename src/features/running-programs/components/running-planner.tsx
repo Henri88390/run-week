@@ -3,8 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { UserMenu } from "@/features/account/components/user-menu";
-import { LanguageSelect } from "@/features/i18n/language-select";
+import { useSiteGarmin } from "@/components/site-shell";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { createPlanner, distanceLabel, generateWeek, selectDays } from "../domain";
 import { useAccountPlanner } from "../use-account-planner";
@@ -13,7 +12,6 @@ import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { ProfileForm } from "./profile-form";
 import { WeekView } from "./week-view";
 import type { PlannerState, Profile } from "../types";
-import { useGarmin } from "@/features/garmin/use-garmin";
 
 type Action = "update-setup" | "reset" | null;
 
@@ -28,7 +26,7 @@ export function RunningPlanner() {
   const { state, warning, unreadable } = store;
   const loaded = sessionStatus !== "loading" && store.loaded;
   const { t } = useI18n();
-  const garmin = useGarmin(userId);
+  const garmin = useSiteGarmin();
   const [action, setAction] = useState<Action>(null);
   const [notice, setNotice] = useState<"" | "cleared" | "created">("");
   const [pendingProfile, setPendingProfile] = useState<Profile | null>(null);
@@ -94,12 +92,6 @@ export function RunningPlanner() {
     }
     closeDialog();
   };
-  const garminNotice = garmin.notice === "error" ? t.garmin.connectFailed
-    : garmin.notice === "unavailable" ? t.garmin.unavailable
-      : garmin.notice === "statusFailed" ? t.garmin.statusFailed
-        : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
-          : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice]
-            : garmin.leftInGarmin > 0 ? t.garmin.leftInGarmin(garmin.leftInGarmin) : "";
   const accountLoadFailed = Boolean(userId) && account.loadFailed;
 
   return <div className="space-y-4">
@@ -107,14 +99,6 @@ export function RunningPlanner() {
       {accountLoadFailed && <button type="button" className="ml-2 underline" onClick={account.retry}>{t.storage.retry}</button>}
     </p>}
     <p role="status" className="text-sm text-emerald-900">{notice && t.notices[notice]}</p>
-    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-      {garminNotice && <p role="alert" className="min-w-0 text-sm text-amber-900">{garminNotice}</p>}
-      {!userId && <LanguageSelect className="ml-auto sm:ml-0" />}
-      <div className={userId ? "ml-auto sm:ml-0" : ""}>
-        <UserMenu garmin={garmin} />
-      </div>
-    </div>
-
     {accountLoadFailed ? null : unreadable ? <section className="panel">
       <div className="flex items-start justify-between gap-4">
         <h1 className="text-xl font-semibold">{t.unavailable.title}</h1>
@@ -125,6 +109,11 @@ export function RunningPlanner() {
       <div className="relative">
         <details className="group rounded-2xl border border-stone-200 bg-white" open={!state}>
           <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+              className="size-5 shrink-0 text-stone-600">
+              <path d="M4 7h3m4 0h9M4 17h9m4 0h3" />
+              <circle cx="9" cy="7" r="2" /><circle cx="15" cy="17" r="2" />
+            </svg>
             <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0 transition-transform group-open:rotate-180">
               <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
             </svg>

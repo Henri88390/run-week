@@ -18,10 +18,12 @@ export function ConfirmationDialog({ title, children, confirmLabel, cancelLabel,
   const descriptionId = useId();
   useEffect(() => {
     const opener = document.activeElement;
-    dialog.current?.showModal();
+    const modal = dialog.current;
+    modal?.showModal();
     cancel.current?.focus();
     return () => {
-      if (opener instanceof HTMLElement) opener.focus();
+      modal?.close();
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
   }, []);
   return (

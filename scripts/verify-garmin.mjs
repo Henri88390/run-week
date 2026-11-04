@@ -55,6 +55,11 @@ const store = {
   async loadTokens(_config, userId) { return tokenRows.get(userId) ?? null; },
   async saveConnection(_config, userId, _garminUserId, tokens) { tokenRows.set(userId, tokens); },
   async updateTokens(_config, userId, tokens) { if (tokenRows.has(userId)) tokenRows.set(userId, tokens); },
+  async accessTokens(config, userId, stored) {
+    const { tokens, refreshed } = await load("src\\features\\garmin\\server\\session.ts").freshTokens(config, stored);
+    if (refreshed) await store.updateTokens(config, userId, tokens);
+    return tokens;
+  },
   async forgetTokens(userId) { tokenRows.delete(userId); },
   async deleteConnection(userId) {
     tokenRows.delete(userId);
@@ -145,7 +150,7 @@ async function verify() {
   workoutRows.set(key("user-a", "2026-11-02"), { date: "2026-11-02", workoutId: 900 });
   let response = await routes.POST(request("POST", input));
   let body = await response.json();
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, JSON.stringify({ body, diagnostics: logs.filter((entry) => entry.event === "garmin_failure") }));
   assert.ok(garminSyncResponseSchema.safeParse(body).success);
   assert.deepEqual(body.results, [
     { day: 0, date: "2026-11-02", existing: true }, { day: 2, date: "2026-11-04" },

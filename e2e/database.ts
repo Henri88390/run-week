@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import pg from "pg";
-import { DATABASE_URL, DB_CONTAINER, DB_IMAGE, DB_PORT } from "./env";
+import { DATABASE_URL, DB_CONTAINER, DB_IMAGE, DB_PORT, REDIS_CONTAINER, REDIS_PORT, REDIS_URL } from "./env";
+import { createClient } from "redis";
 
 function docker(args: string[]): string {
   try {
@@ -17,6 +18,11 @@ export function removeDatabase() {
     execFileSync("docker", ["rm", "--force", "--volumes", DB_CONTAINER], { stdio: "ignore" });
   } catch {
     // The container did not exist.
+  }
+  try {
+    execFileSync("docker", ["rm", "--force", "--volumes", REDIS_CONTAINER], { stdio: "ignore" });
+  } catch {
+    // The test cache container did not exist.
   }
 }
 
@@ -37,6 +43,24 @@ async function waitForDatabase(timeoutMs = 60_000) {
   }
 }
 
+async function waitForCache(timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const cache = createClient({ url: REDIS_URL, socket: { connectTimeout: 2000, reconnectStrategy: false } });
+    cache.on("error", () => {});
+    try {
+      await cache.connect();
+      await cache.withAbortSignal(AbortSignal.timeout(2000)).ping();
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw new Error("The e2e Redis cache did not start", { cause: error });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } finally {
+      if (cache.isOpen) cache.destroy();
+    }
+  }
+}
+
 /** Starts a new PostgreSQL container with in-memory storage and applies the migrations. */
 export async function createDatabase() {
   removeDatabase();
@@ -51,7 +75,9 @@ export async function createDatabase() {
     DB_IMAGE,
   ]);
   try {
-    await waitForDatabase();
+    docker(["run", "--detach", "--rm", "--name", REDIS_CONTAINER,
+      "--publish", `127.0.0.1:${REDIS_PORT}:6379`, "redis:7-alpine", "redis-server", "--save", "", "--appendonly", "no"]);
+    await Promise.all([waitForCache(), waitForDatabase()]);
     execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], {
       env: { ...process.env, DATABASE_URL, DIRECT_URL: DATABASE_URL },
       stdio: "inherit",

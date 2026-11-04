@@ -120,7 +120,298 @@ email code limits, session revocation, account isolation, planner sharing,
 PKCE/replay protection and Garmin linking, sending and disconnecting against the
 mock server. They do not replace testing the Android app on a device.
 
-## Commands
+## Website Strava activity dashboards
+
+`/activities` provides a month calendar, real run summaries, configured HR-zone
+and threshold duration charts; `/activities/[id]` shows recorded non-GPS streams.
+`/running-metrics` includes critical speed for explicitly confirmed whole-activity
+maximal race/test efforts. Marked efforts supply descriptive speed indicators and
+theoretical Daniels VMA/threshold estimates; training history supplies demonstrated
+endurance. These are not physiological measurements or standardized fitness scores.
+The planner has an activity navigation entry and still works signed out.
+This integration does **not** change Garmin workout sending or the Android app.
+Strava is a separate connection, not an Auth.js sign-in provider.
+The signed-in account menu provides Strava connect/disconnect controls on every
+page. Connection status reads only the local database, never Strava. Connecting
+opens consent; disconnecting confirms removal of local imports and tokens while
+keeping original Strava activities. Failed disconnects remain actionable in the dialog.
+The planner's activity link is shown only when signed in. Activity overview,
+metrics and detail pages require a current Strava connection and otherwise
+prompt the signed-in user to connect.
+
+If `strava_request_failed` appears in backend logs, diagnostics include a request
+ID, operation, safe Prisma error code/type, configuration-presence flags and an
+actionable hint, never tokens or activity contents. Upstream failures also include
+the stage (request/token/summaries/streams), reason (such as timeout, HTTP error,
+schema validation, timestamp order or sample alignment), HTTP status when relevant,
+and rejected schema field names, without response bodies or field values.
+`P2021`/`P2022` indicates a
+missing table/column: check `npx prisma migrate status`, then apply pending
+migrations to the intended database with `npm run db:deploy`.
+
+Configure server-only `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
+`STRAVA_TOKEN_ENCRYPTION_KEY` (at least 32 random characters, independent of Garmin;
+never use a development fallback) and `STRAVA_REDIRECT_URI`.
+Register callback domain `run-week.fyi` in your Strava API application and use
+`https://run-week.fyi/api/strava/callback`. Local development may use
+`http://localhost:3000/api/strava/callback` with the corresponding registered domain.
+Set `PRIVACY_HOSTING_PROVIDER` as described in the privacy configuration before
+authorization. Review Strava's API agreement, application/athlete capacity and
+branding requirements before enabling the feature in production.
+
+Consent `2026-11-04-v1` requests only `read,activity:read_all` (including private
+runs). The documented Strava OAuth flow does not specify PKCE; this integration
+uses encrypted HttpOnly, SameSite=Lax cookies, random state bound to the signed-in
+website account, and cancellable one-use database tickets with 10-minute expiry.
+Access and refresh tokens are AES-256-GCM encrypted on the server. A keyed athlete
+identity uniquely links an athlete to one Run Week account. Never rotate the
+encryption key without reconnecting/migrating both tokens and athlete keys.
+
+The Synchronize Strava button sends exactly one website API request for the
+selected week, month or year, including summaries and missing HR/pace recordings.
+The server fetches up to 200 summaries per Strava page, then one stream response
+per missing activity, with 8-second outbound timeouts and bounded bodies/sample counts.
+Synchronization starts only when Synchronize Strava is clicked, never on connection,
+page load, reopening the website or calendar navigation. The visible Stop button
+aborts the browser request; the server checks cancellation between upstream calls.
+A header spinner/status remains visible while syncing. Calendar navigation does
+not start requests or change the period of an in-flight import. The calendar reads
+imported database rows only and refreshes when the request finishes.
+There is no browser request loop or automatic retry. Rate limits and the server's
+four-minute request budget stop the import explicitly; hosting limits may stop it sooner.
+Errors display briefly in red. Another explicit click retries the selected period,
+reusing summaries and recordings already saved.
+TanStack Query retains activity dashboards in account-scoped browser memory for
+five minutes. It deduplicates reads and does not refetch on focus/reconnect or retry
+failed requests. This cache is not written to localStorage and is discarded on
+sign-out/account changes; disconnect clears activity queries.
+Locally, run `docker compose up -d redis` and set server-only
+`REDIS_URL=redis://127.0.0.1:6379` for the five-minute Redis cache.
+Production (`NODE_ENV=production`) uses Upstash REST instead: set
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (read/write token).
+Production ignores `REDIS_URL`; local development ignores the Upstash variables.
+Both the activity cache and Garmin rate limiter use this environment-selected backend.
+Dashboard snapshots and successful period-import markers are encrypted with the
+Strava encryption key and keyed by an opaque account hash. Repeating a completed
+period import within five minutes makes no Strava requests. Incomplete/failed
+imports are never marked complete. Mutations invalidate dashboard snapshots;
+disconnect, reconnect and account deletion remove the account's Redis entries.
+The database remains authoritative and authorization is checked before cache reads.
+Redis entries have independent five-minute expirations. Redis is optional when the
+selected backend is unconfigured (a server warning is logged); a configured but unavailable Redis
+service produces an explicit error, not a misleading synchronization success.
+Include the Redis hosting provider in `PRIVACY_HOSTING_PROVIDER`.
+Strava exposes paginated activity summaries and a separate stream endpoint per
+activity, not a bulk monthly/yearly stream endpoint. Importing HR/pace history
+therefore still needs one stream request per activity; already imported streams
+are retained and not fetched again by incremental synchronization.
+Periods use activity-local calendar dates; upstream timestamp queries include a
+one-day boundary margin to cover timezone offsets. Imports do not delete data
+outside the selected period. Disconnect is
+available in privacy controls and deletes all local imports and tokens; original
+Strava activities remain unchanged. Only Run, TrailRun and VirtualRun are retained.
+Streams request only `time,heartrate,velocity_smooth,distance`; no GPS, profile
+details, AI or Garmin activity API is involved. Missing HR remains null. Available
+streams are retained on reimport; Strava deletions are not automatically
+reconciled (disconnect removes everything locally).
+Numeric summary heart rates outside 30–240 bpm are imported as unavailable, just
+like invalid recorded HR samples, rather than blocking the whole summary page.
+A sanitized warning records excluded-field counts, never activity values or IDs.
+Incorrect field types still fail validation.
+Repeated stream timestamps are collapsed to their last sample, using the same
+indices for HR, speed and distance; zero-duration duplicates cannot add zone time.
+A sanitized warning reports only the removed count. Decreasing timestamps and
+mismatched sample-array lengths still fail explicitly rather than inventing timing.
+Opening an activity with pending streams imports that activity's samples
+automatically, without advancing the history-import cursor. Its detail page also
+provides a manual stream-import retry and displays average HR when available.
+The same per-account lease, token refresh, rate limits and connection checks apply;
+missing heart-rate recordings remain unavailable rather than being estimated.
+Rate-limit/read-limit headers and 429 responses persist a retry time; per-account
+90-second leases serialize token refresh and imports across instances. A durable
+one-second cooldown after requests applies to synchronization and activity
+stream requests, including across tabs/instances. Within a period import, outbound
+calls are spaced by at least one second; longer Strava quota delays stop the request.
+The browser limits manual starts to once per ten seconds. No worker,
+webhook, cron, or automatic full-history import is introduced.
+
+Calendar HR/pace statistics use the full displayed calendar range, including
+adjacent-month boundary days (at most 1,000 displayed runs). Monthly headline
+totals use the selected month only; performance metrics use all marked efforts.
+The activities calendar supports yearly, monthly and Monday–Sunday weekly views.
+Previous/next arrows move one month or week; a prominent native date/month
+picker opens when clicking anywhere in its input. The selected view and date
+are kept in the URL. Weekly headline totals and statistics use that week's runs,
+including days crossing month/year boundaries.
+Year view uses January 1–December 31 without adjacent-year days, includes all
+imported runs in that year (not the monthly 1,000-run display limit), and shows
+annual distance, moving time, pace, HR-zone and threshold statistics, plus the pace histogram.
+Twelve monthly cards link to their month view and show measured HR-zone bars.
+Hover or keyboard focus opens a viewport-positioned summary with monthly distance,
+moving time, weighted average HR, pace and zone durations/percentages.
+Arrows and the year selector navigate between years.
+The simplified UI temporarily uses a shared HRmax preset of 190 bpm, not a
+personalized measurement. Manual HR settings and maximal-effort confirmation
+controls are hidden on the dashboard. Each activity detail has a saved maximal-effort
+checkbox and hover/focus help explaining provisional performance, critical speed
+and D′, minimum effort requirements and elapsed-time use. Race-equivalent VDOT
+does not update the planner or change HR zones.
+Existing stored settings/confirmations remain intact;
+stored HR settings do not override the preset.
+Zones are Z1 <70%, Z2 70–80%, Z3 80–85%, Z4 85–90%, Z5 90–100% HRmax;
+lower bounds are inclusive and upper bounds exclusive except 100% in Z5.
+Above threshold is strictly >90% HRmax (exactly 90% is not above threshold).
+Intervals over 15 seconds, missing/invalid HR and HR above configured HRmax are
+excluded. Calendar day colors use the zone with the most measured time across
+the day's runs (ties choose the lower zone); missing HR is unclassified.
+Workout planning is available at `/planner`; `/` redirects signed-in users to
+`/activities` and signed-out users to `/planner`, based on their account session.
+The same top navigation, language/account controls and page gutters are shared
+across the website. Each Monday–Sunday week includes total kilometers, moving time
+in hours/minutes, measured time above threshold, moving-time-weighted average HR
+(excluding activities without HR), and average moving pace (total time / distance).
+Boundary weeks include adjacent-month days.
+Calendar cells replace the separate run list: hover or keyboard focus shows each
+run's distance, moving time, average HR and moving pace. Each active day shows a
+five-color HR-zone bar chart based on valid recorded interval durations, with all five
+percentages in the floating summary (combined across runs for multi-run days).
+Day and weekly hover cards open above or below based on available viewport space,
+reposition on scrolling/resizing, and scroll internally if necessary.
+Percentages use measured HR time only; missing samples are not inferred.
+Days without valid HR intervals show neutral bars and unavailable percentages.
+Single-run cells link directly to details;
+multi-run cells open an activity chooser (also usable by touch and keyboard).
+Same-day activities are ordered by start time, earliest first. Cells show a
+top-left date badge, total moving time, and a run count when there are multiple runs.
+Maximal efforts have a purple star in the day cell and a label in the hover card.
+The bottom of the Running Metrics page lists all marked efforts, regardless of the selected period,
+with direct links to their details. Each has a trash button that asks for confirmation
+before removing only the maximal-effort mark. The activity remains in the calendar
+and on Strava; performance metrics are recalculated.
+Period controls cannot select future weeks, months or years. Future URL periods
+redirect to the current period; future months in the year overview are disabled.
+Day cells and weekly summary cells share a uniform height, including empty days.
+Request failures display in red for three seconds; successful imports clear stale
+import errors. Dismissing an error does not retry failed requests or hide retry limits.
+Weekly summary cells also open on hover, focus or tap, combining the week's
+distance, moving time, distance-weighted pace (total time / total distance),
+moving-time-weighted average HR, and measured time/percentage in each HR zone.
+All summary durations use hours and minutes, rounded to the nearest minute.
+The training-volume chart below the calendar switches between distance (km, blue)
+and moving time (hours, green), with one series selected at a time and its axis
+always on the left. Points display their values and are joined by lines. Displayed distances are
+rounded to the nearest kilometer; point positions retain the exact totals.
+Month view labels the X axis with the selected month's localized name and year.
+Year view groups
+by month, month view by Monday–Sunday weeks clipped to that month's dates, and
+week view by day. Empty buckets remain visible as zero. Hover or keyboard focus
+shows exact totals, with duration in hours/minutes. It uses all stored summaries
+for the selected period, not the calendar display limit, and makes no Strava calls.
+Distance-axis ticks are multiples of 5 km; duration-axis ticks are whole hours.
+Both axes round up to cover the largest bucket without rounding the underlying totals.
+The average-weekly-volume card is no longer displayed.
+The orange Strava synchronization button shows the latest synchronization time
+on hover or keyboard focus. Completed past periods are disabled once fully
+synchronized; persisted coverage also recognizes enclosing years and adjacent
+completed ranges. Current periods remain synchronizable. A sync performed before
+the end of a period does not mark that whole period complete. Only successful
+full imports record coverage; reconnect/disconnect reset it. This requires the
+`20261104200000_strava_sync_history` database migration.
+Weekly summaries use compact labels and show measured above-threshold time as a
+percentage of the week's full moving time, not just its HR-covered duration.
+The pace distribution is a histogram with a linear seconds/km horizontal axis
+(labels use min:sec/km) and measured time in hours and minutes on the vertical axis.
+It has no named training categories and does not require a saved plan or VDOT.
+The slow-end cutoff is the selected period's time-weighted 99th-percentile pace,
+not a fixed speed: at most 1% of valid recorded time is omitted. All samples tied
+at the cutoff stay included, so sustained slower running is retained.
+The horizontal axis ends at the cutoff rounded up to the bin boundary.
+Equal-width numeric bins span qualifying samples through that cutoff; width adapts
+in five-second/km steps, keeping at most 25 bars. Each sample contributes its
+recorded interval duration exactly once; bars can be inspected with hover or keyboard focus.
+The dashed vertical line shows average pace (included time / included distance),
+excluding the same slow-tail intervals. This is a display heuristic, not walking
+detection. Bar details use hours and minutes and appear only on hover or focus;
+the chart does not display a separate total-duration label.
+Only recorded speeds of at least 0.5 m/s and intervals up to 15 seconds count.
+Missing speed data shows unavailable, not a fabricated distribution.
+No measured HR means unavailable, not zero. Older manual zone/threshold values
+remain stored for deployment compatibility but no longer define these calculations.
+Critical speed reuses the
+user-owned running-data OLS method: ≥3 confirmed maximal efforts, distinct
+durations of 2–120 minutes, R² ≥ .90, nonnegative D′. It uses elapsed time,
+including stops, and is descriptive, not personalized training advice.
+Metrics use maximal efforts across all imported dates. The metrics page has no sync
+button, period picker or period-summary cards; synchronization stays on Activities. Without a reliable
+multi-effort fit, even one eligible marked effort supplies a provisional average
+speed and race-equivalent VDOT using the fastest effort's elapsed-time speed and
+the planner's existing Daniels–Gilbert equation. A low-confidence warning is shown;
+these values are not critical speed, and no D′ or fit quality is invented. They do
+not update the planner or HR zones.
+The Speed, Endurance and Speed-endurance cards show descriptive estimates, not
+validated physiological measurements or scores. Speed reuses the fastest marked
+effort's elapsed-time average (km/h and min/km), not sprint speed or VMA.
+Endurance shows the longest imported run by moving time in the last 84 calendar
+days, including today, with distance and a link to the source activity; future
+activities are excluded. It indicates demonstrated volume, not maximal capacity.
+Speed-endurance is critical speed divided by fastest marked-effort speed × 100,
+only when the existing critical-speed fit is reliable and the ratio is valid
+(0–100%). Otherwise it stays unavailable. Results depend on the imported history,
+effort durations and dates; they are independent of the selected calendar period.
+Each card has a localized definition available by hover, keyboard focus or tap,
+with Escape to dismiss.
+Calendar cells use shallow prop memoization, and year-view activities are grouped
+once per data change rather than scanned for every month on each render. Activity
+chart data and bounds are memoized by recorded points. The shared import controller keeps stable actions and context values
+when its state is unchanged; synchronization behavior and cache policies are unchanged.
+VMA, threshold pace and threshold/VMA are theoretical Daniels estimates from the
+same maximal-effort VDOT: invert the existing oxygen-cost equation at 100% VDOT
+for VMA and 88% for threshold (approximately one-hour race effort); divide
+threshold speed by VMA speed for the percentage. Values are explicitly low
+confidence, not measured VMA or lactate threshold. No valid VDOT means unavailable.
+Activity detail elapsed duration is rounded to the nearest minute and displayed
+as hours and minutes, like the calendar summaries.
+Activity details omit the recorded-stream heading, manual continue-import button
+and back-to-overview link. Pending recordings still import on opening the page,
+with loading, retry timing and errors shown when applicable.
+Activity details use Recharts for a responsive heart-rate/pace chart with separate
+axes, colored Z1–Z5 background bands and independent HR/pace checkboxes. Values are
+available in a crosshair tooltip using pointer, touch or left/right arrow keys.
+The chart uses subtle horizontal gridlines and disables animation.
+Pace is displayed as minutes:seconds per kilometer; zero speed and missing recordings
+break the line rather than producing infinite pace. Near-stationary speeds below
+0.5 m/s (slower than 33:20 min/km) are also excluded from pace charts and pace-zone
+distributions, not clamped to invented paces. The histogram additionally excludes
+the slowest insignificant tail by recorded time. Raw imported samples are retained.
+Distance is no longer charted.
+Displayed HR and speed samples use a three-point median followed by a centered
+15-second rolling mean before downsampling. Pace is converted from smoothed speed;
+curve segments use monotone interpolation without overshooting sample values.
+Smoothing does not cross missing samples or recording gaps above 15 seconds.
+Raw stored data, HR-zone time, threshold totals and pace histogram durations are unchanged.
+Account export includes all imported summaries/streams, confirmations, settings
+and consent metadata, never tokens or athlete keys. Disconnect deletes imports,
+settings, tokens and pending OAuth tickets and prevents stale sync writes.
+Account deletion cascades all of this data. Originals in Strava remain; revoke
+Run Week access in Strava settings too. Consent/disclosures and new analytics UI
+are localized in all ten website languages; the existing general privacy policy
+remains English.
+
+Migration `20261104130000_strava_activities` only creates new tables/indexes and
+foreign keys; previous deployments remain compatible. Use `npm run db:migrate`
+only against a known development database or `npm run db:deploy` in the existing
+deployment process. `scripts/prisma-offline.config.ts` allows schema validation
+and client generation without loading environment files or selecting a database.
+Migration `20261104150000_analytics_max_hr` adds nullable `maxHr` to analytics
+settings; it remains backward-compatible while manual settings are hidden.
+
+Public references: [Strava OAuth](https://developers.strava.com/docs/authentication/),
+[API summaries/streams](https://developers.strava.com/docs/reference/),
+[rate limits](https://developers.strava.com/docs/rate-limits/).
+Patterns adapted from the user's `running-data` pure analytics and `runcoach-ai`
+Strava importer, without its single-athlete storage, auth fallback or AI code.
+
+## Command reference
 
 | Command | Purpose |
 | --- | --- |
@@ -342,8 +633,9 @@ application with the workout import permission. Copy `.env.example` to
 | `GARMIN_CLIENT_ID` | Application consumer key |
 | `GARMIN_CLIENT_SECRET` | Application consumer secret |
 | `GARMIN_SESSION_SECRET` | Random string of at least 32 characters, used to encrypt stored Garmin tokens and the authorization cookie, and to derive quota keys |
-| `UPSTASH_REDIS_REST_URL` | Optional HTTPS REST endpoint; omit both Redis variables for per-process memory limits |
-| `UPSTASH_REDIS_REST_TOKEN` | Server-only read/write REST token when Redis is configured (not the read-only token) |
+| `REDIS_URL` | Local standard Redis connection, shared with the Strava cache; ignored in production |
+| `UPSTASH_REDIS_REST_URL` | Production HTTPS REST endpoint for the shared cache and rate limiter |
+| `UPSTASH_REDIS_REST_TOKEN` | Production server-only Upstash read/write token |
 | `GARMIN_REDIRECT_URI` | Optional; defaults to `<origin>/api/garmin/callback`. Must be an HTTPS URL (HTTP is allowed only on localhost), without credentials or a fragment; register the exact URI with Garmin. |
 | `PRIVACY_HOSTING_PROVIDER` | Required for new Garmin authorization; publicly names hosting, database, CDN/proxy and managed logging processors. |
 
@@ -361,8 +653,10 @@ localized. Consent is required before authorization; its version and time are
 stored with the connection, and connections under an earlier version require
 reconnection. Disconnecting first deletes every workout sent from the account
 from Garmin Connect, then deletes the stored tokens and sent-workout records.
-The menu asks for confirmation only when the account has sent workouts
-(`sentWorkouts` in `GET /api/garmin/status`). If Garmin rejects the
+The menu always asks for confirmation before disconnecting Garmin, explaining
+the deletion of sent workouts and stored access. Strava disconnect also uses a
+confirmation dialog explaining the deletion of imports, HR settings and tokens
+without changing original Strava activities. If Garmin rejects the
 authorization, the account is disconnected anyway and the remaining workouts
 are reported as left in Garmin Connect; other failures keep the connection so
 the user can retry.
@@ -394,15 +688,18 @@ account must disconnect first. Reconnecting the same account with a different
 Garmin account deletes its sent-workout records, which belong to the previous
 Garmin account.
 
-### Distributed upload limits (Upstash Redis)
+### Distributed upload limits (Redis)
 
-Provision an Upstash Redis database, select and review its region/retention
-settings and processor terms, and set its REST URL and **read/write** REST token
-in the server environment (Vercel integration variables or manual configuration).
-The implementation uses Upstash's REST command API directly; no SDK is required.
+Locally, run `docker compose up -d redis` and use
+`REDIS_URL=redis://127.0.0.1:6379`; development uses the standard `redis` Node.js client.
+Production uses Upstash's REST command API, with the original rate limiter's HTTPS
+endpoint validation, read/write bearer token, bounded timeout, no redirects and no
+automatic retries. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`;
+review its region/retention settings and processor terms. Disclose Upstash in
+`PRIVACY_HOSTING_PROVIDER`.
 Use the same database and stable `GARMIN_SESSION_SECRET` across all production
 instances/deployments, and a separate database for local development. Do not
-expose either Redis variable through `NEXT_PUBLIC_*`.
+expose any Redis configuration through `NEXT_PUBLIC_*`.
 
 An authenticated, valid `POST` or `DELETE /api/garmin/workouts` reserves **one upload request**,
 whether it sends one run or a batch of up to seven. Requests must start at least
@@ -419,11 +716,12 @@ One atomic Redis Lua operation uses Redis server time to check and reserve both
 limits before token refresh, deletion, creation or scheduling. Parallel requests
 across Vercel instances cannot bypass the reservation. Rejections return typed
 `rateLimited`, HTTP 429, `Retry-After` seconds and `retryAfterSeconds` JSON; the UI
-shows the returned wait. Partially configured/invalid Redis configuration, provider failures
+shows the returned wait. Invalid Redis configuration, provider failures
 or unexpected responses fail closed as generic HTTP 503 `unavailable`, with
 sanitized `rateLimit` diagnostics and no fallback during provider failures.
 
-When both Redis settings are absent or blank, a synchronous in-memory reservation
+When the selected backend is unconfigured (no local `REDIS_URL`, or neither
+production Upstash setting), a synchronous in-memory reservation
 enforces the same cooldown, UTC daily quota and development exemption. Expired
 entries are removed on subsequent reservations. A structured warning identifies
 this mode without exposing identities. State is shared only within one running
@@ -437,13 +735,14 @@ IDs, credentials and Garmin user IDs never go to Redis or diagnostics. Rotating
 the session secret disconnects every account and resets quota identities; do
 not rotate it routinely.
 
-Upstash receives only the derived pseudonymous key, timestamp, UTC-day counter
-and TTL (plus service network metadata), not tokens, workouts or Garmin activity
-data. Quota records expire by UTC midnight or after the 10-second cooldown,
+Redis quota records contain only the derived pseudonymous key, timestamp,
+UTC-day counter and TTL, not tokens, workouts or Garmin activity data.
+The same Redis instance can separately hold the encrypted Strava cache described above.
+Quota records expire by UTC midnight or after the 10-second cooldown,
 whichever is later (at most 24 hours); development records last 10 seconds.
 Disconnect does not delete these records early. Review provider backups/logs
-separately. Privacy and consent pages disclose Upstash explicitly; the consent
-version is bumped so pre-Upstash sessions must reconnect before this processing.
+separately. Privacy and consent pages disclose Redis processing; include its
+actual host in the infrastructure-provider disclosure.
 
 Route handlers in `src/app/api/garmin`: `connect`, `callback`, `status`,
 `disconnect` and `workouts`. Garmin's API documentation is available only to
@@ -497,21 +796,9 @@ succeeded despite a lost response, and failed cleanup can leave an orphan workou
 
 Run the focused mocked verification without calling Garmin:
 `node scripts\verify-garmin.mjs`. It uses Node and the installed TypeScript compiler;
-no test framework or real credentials are required. Redis REST and failure paths
-are mocked as well. To additionally execute the production Lua script against
-a real **local** Redis 5+ instance (no Upstash calls), start an isolated Redis
-server bound to `127.0.0.1`, then run in PowerShell:
-
-```powershell
-$env:GARMIN_VERIFY_REDIS_PORT = "16379" # Port of your isolated local Redis
-node scripts\verify-garmin.mjs
-```
-
-Those checks use uniquely prefixed keys and delete only their own keys. They
-verify concurrent reservations across separate route instances, exact cooldown
-boundaries, UTC-day exhaustion/reset, midnight cooldown carry-over, development
-exemption and TTL expiry. Boundary tests replace only Redis's time source with a
-deterministic clock; a separate check runs the unmodified script with Redis TIME.
+no test framework or real credentials are required. Redis commands, configuration
+validation and failure paths are mocked as well. `npm run test:e2e -- garmin-accounts.spec.ts`
+also exercises Garmin uploads and cooldowns against the disposable local Redis instance.
 
 Edit setup to update the current plan. Confirmation dialogs protect plan
 replacement and deletion.
@@ -532,15 +819,20 @@ npm run test:e2e
 ```
 
 - The tests start their own dev server on port 3100 (build directory
-  `.next-e2e`, so `npm run dev` can keep running) and a Garmin mock on port 3101.
+  `.next-e2e`, so `npm run dev` can keep running), a Garmin mock on port 3101,
+  and a Strava mock on port 3102.
 - Each run creates a new PostgreSQL container (`run-week-e2e-db`,
   `postgres:17-alpine`, `127.0.0.1:55432`, data in memory), applies the
   migrations, and removes the container at the end, with all test accounts.
-  The development database is not used. Do not run two e2e runs at once.
+  A disposable Redis container (`run-week-e2e-cache`, `redis:7-alpine`,
+  `127.0.0.1:56379`, persistence disabled) verifies five-minute cache hits,
+  expiry and invalidation and is also removed. Development databases/caches are
+  not used. Do not run two e2e runs at once.
 - Email delivery is disabled; the tests replace the stored sign-in code
   directly in the database.
 - Garmin is never called. `GARMIN_E2E_MOCK_ORIGIN` redirects the Garmin URLs to
   the mock and is ignored outside development.
+- Strava is never called. `STRAVA_E2E_MOCK_ORIGIN` likewise uses synthetic data.
 
 ## CI and deployment
 
