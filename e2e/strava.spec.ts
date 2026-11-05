@@ -6,7 +6,7 @@ import { createClient } from "redis";
 import { accountMenuButton, createWeek, signIn, uniqueEmail } from "./helpers";
 import { syncStatusSchema } from "../src/features/strava/background-sync";
 import { STRAVA_CONSENT_VERSION } from "../src/features/strava/types";
-import { calculateVdot } from "../src/features/running-programs/domain";
+import { calculateVdot, formatPace } from "../src/features/running-programs/domain";
 
 const MOCK = "http://127.0.0.1:3102";
 const DELIVERY = "http://127.0.0.1:3103";
@@ -703,6 +703,21 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByRole("tooltip")).toContainText("Does not change HR zones or the planner");
     await expect(chart.getByRole("application", { name: "Heart rate / Pace · Elapsed time", exact: true })).toBeVisible();
     await expect(chart.locator(".recharts-reference-area")).toHaveCount(5);
+    await expect(page.locator("[data-activity-summary] dt")).toHaveText([
+      "Distance", "Elapsed time", "Average heart rate", "Average moving pace",
+    ]);
+    const hrAverage = chart.locator('.recharts-reference-line-line[stroke="#be123c"]');
+    const paceAverage = chart.locator('.recharts-reference-line-line[stroke="#1d4ed8"]');
+    await expect(hrAverage).toHaveCount(1);
+    await expect(paceAverage).toHaveCount(1);
+    await expect(hrAverage).toHaveAttribute("stroke-dasharray", "6 4");
+    await expect(paceAverage).toHaveAttribute("stroke-dasharray", "6 4");
+    const averages = (await query(`SELECT "averageHr", "movingSeconds", "distanceMeters" FROM "StravaActivity"
+      WHERE id=$1`, [new URL(page.url()).pathname.split("/").at(-1)])).rows[0];
+    await expect(hrAverage).toHaveAttribute("y1", await hrAverage.getAttribute("y2") ?? "");
+    await expect(paceAverage).toHaveAttribute("y1", await paceAverage.getAttribute("y2") ?? "");
+    await expect(chart).toContainText(`${averages.averageHr} bpm`);
+    await expect(chart).toContainText(`${formatPace(averages.movingSeconds * 1000 / averages.distanceMeters)} min/km`);
     const hrLine = chart.locator('.recharts-line-curve[stroke="#be123c"]');
     const paceLine = chart.locator('.recharts-line-curve[stroke="#1d4ed8"]');
     await expect(hrLine).toHaveCount(1);
@@ -719,10 +734,13 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const hrCheckbox = page.getByRole("checkbox", { name: "Heart rate", exact: true });
     const paceCheckbox = page.getByRole("checkbox", { name: "Pace", exact: true });
     await hrCheckbox.uncheck();
+    await expect(hrAverage).toHaveCount(0);
+    await expect(paceAverage).toHaveCount(1);
     await expect(hrLine).toHaveCount(0);
     await expect(paceLine).toHaveCount(1);
     await expect(chart.locator(".recharts-reference-area")).toHaveCount(0);
     await paceCheckbox.uncheck();
+    await expect(chart.locator(".recharts-reference-line-line")).toHaveCount(0);
     await expect(chart.locator(".recharts-line-curve")).toHaveCount(0);
     await hrCheckbox.focus();
     await page.keyboard.press("Space");
