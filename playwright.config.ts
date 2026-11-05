@@ -25,6 +25,20 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
+      command: "node e2e/inngest-mock.mjs",
+      url: "http://127.0.0.1:3103/health",
+      reuseExistingServer: false,
+      env: {
+        NODE_ENV: "development",
+        DATABASE_URL: databaseUrl, REDIS_URL,
+        INNGEST_DEV: "http://127.0.0.1:3103",
+        STRAVA_CLIENT_ID: "1234", STRAVA_CLIENT_SECRET: "e2e-strava-client-secret",
+        STRAVA_TOKEN_ENCRYPTION_KEY: "e2e-strava-encryption-secret-0123456789",
+        STRAVA_REDIRECT_URI: `${APP_URL}/api/strava/callback`,
+        STRAVA_E2E_MOCK_ORIGIN: "http://127.0.0.1:3102",
+      },
+    },
+    {
       command: "node e2e/strava-mock.mjs",
       url: "http://127.0.0.1:3102/health",
       reuseExistingServer: false,
@@ -69,6 +83,7 @@ export default defineConfig({
         STRAVA_TOKEN_ENCRYPTION_KEY: "e2e-strava-encryption-secret-0123456789",
         STRAVA_REDIRECT_URI: `${APP_URL}/api/strava/callback`,
         STRAVA_E2E_MOCK_ORIGIN: "http://127.0.0.1:3102",
+        INNGEST_DEV: "http://127.0.0.1:3103",
       },
     },
   ],

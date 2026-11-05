@@ -8,8 +8,6 @@ const en = {
   consent: "I consent to importing my running summaries (including private activities), dates, distances, durations and available time, heart-rate, speed and distance streams into my Run Week account. GPS is not requested or stored. Encrypted Strava tokens enable imports; no AI processes this data. Garmin only sends planned workouts and Android is unchanged. Disconnect deletes imports, settings and tokens here, not activities in Strava. Revoke access in Strava settings too.",
   storage: "Website-only analytics, stored in your account. Strava activities are separate from the planner and Garmin workout sending. No GPS or AI ingestion.",
   accept: "Authorize import", loading: "Loading running data…", empty: "No imported runs in this month. Connect Strava or continue importing.",
-  sync: "Import recent activities", continueSync: "Continue import", backfill: "Restart full history import",
-  progress: "Import page", pending: "Streams pending", lastSync: "Last summary sync", retry: "Retry after",
   disconnect: "Disconnect and delete imported data", confirmDelete: "Delete all Strava imports, HR settings and tokens from this account? Strava activities remain unchanged.",
   error: "Unable to complete this request. Retry, or reconnect if access was revoked.",
   connected: "Strava connected.", invalid: "Authorization was rejected or expired. Connect again.",
@@ -33,6 +31,27 @@ const en = {
 };
 type Text = Record<keyof typeof en, string>;
 
+const LINKED_ACCOUNT_MESSAGES: Record<Locale, (email: string) => string> = {
+  en: (email) => `This Strava account is already linked to the Run Week account ${email}. Disconnect it from that account first.`,
+  fr: (email) => `Ce compte Strava est déjà lié au compte Run Week ${email}. Déconnectez-le d’abord de ce compte.`,
+  de: (email) => `Dieses Strava-Konto ist bereits mit dem Run-Week-Konto ${email} verbunden. Trenne es zuerst von diesem Konto.`,
+  es: (email) => `Esta cuenta de Strava ya está vinculada a la cuenta Run Week ${email}. Desconéctala primero de esa cuenta.`,
+  pt: (email) => `Esta conta Strava já está ligada à conta Run Week ${email}. Desligue-a primeiro dessa conta.`,
+  it: (email) => `Questo account Strava è già collegato all’account Run Week ${email}. Scollegalo prima da quell’account.`,
+  pl: (email) => `To konto Strava jest już połączone z kontem Run Week ${email}. Najpierw odłącz je od tego konta.`,
+  ru: (email) => `Этот аккаунт Strava уже связан с аккаунтом Run Week ${email}. Сначала отключите его от этого аккаунта.`,
+  uk: (email) => `Цей обліковий запис Strava вже пов’язаний з обліковим записом Run Week ${email}. Спочатку відключіть його від цього облікового запису.`,
+  be: (email) => `Гэты акаўнт Strava ўжо звязаны з акаўнтам Run Week ${email}. Спачатку адключыце яго ад гэтага акаўнта.`,
+};
+
+export function stravaNoticeMessage(locale: Locale, notice?: string, linkedEmail?: string): string {
+  const text = STRAVA_MESSAGES[locale];
+  if (notice === "alreadyLinked") return linkedEmail ? LINKED_ACCOUNT_MESSAGES[locale](linkedEmail) : text.alreadyLinked;
+  if (notice === "connected") return text.connected;
+  if (notice === "unavailable") return text.error;
+  return notice ? text.invalid : "";
+}
+
 export const STRAVA_MESSAGES: Record<Locale, Text> = {
   en,
   fr: {
@@ -43,8 +62,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "J’accepte l’import dans mon compte Run Week des résumés de course (y compris privés), dates, distances, durées et séries disponibles de temps, fréquence cardiaque, vitesse et distance. Aucun GPS n’est demandé ni stocké. Les jetons Strava sont chiffrés ; aucune IA ne traite ces données. Garmin sert uniquement à envoyer les séances prévues ; Android ne change pas. Déconnecter supprime ici imports, réglages et jetons, pas les activités Strava. Révoquez aussi l’accès dans Strava.",
     storage: "Analyses réservées au site, stockées dans votre compte. Les activités Strava sont séparées du planificateur et des envois Garmin. Aucun GPS ni traitement IA.",
     accept: "Autoriser l’import", loading: "Chargement des courses…", empty: "Aucune course importée ce mois-ci. Connectez Strava ou poursuivez l’import.",
-    sync: "Importer les activités récentes", continueSync: "Poursuivre l’import", backfill: "Recommencer l’import complet",
-    progress: "Page d’import", pending: "Séries en attente", lastSync: "Dernière synchronisation de l’intervalle de temps sélectionné", retry: "Réessayer après",
     disconnect: "Déconnecter et supprimer les imports", confirmDelete: "Supprimer tous les imports Strava, réglages FC et jetons de ce compte ? Les activités Strava restent intactes.",
     error: "Requête impossible. Réessayez ou reconnectez-vous si l’accès a été révoqué.", connected: "Strava connecté.",
     invalid: "Autorisation refusée ou expirée. Reconnectez-vous.", alreadyLinked: "Cet athlète Strava est déjà lié à un autre compte Run Week.",
@@ -74,8 +91,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Ich stimme dem Import meiner Laufzusammenfassungen (auch privater), Daten, Distanzen, Zeiten und verfügbaren Zeit-, Herzfrequenz-, Geschwindigkeits- und Distanzreihen in mein Run-Week-Konto zu. GPS wird weder angefordert noch gespeichert. Strava-Token werden verschlüsselt; keine KI verarbeitet diese Daten. Garmin sendet nur geplante Trainings; Android bleibt unverändert. Trennen löscht hier Importe, Einstellungen und Token, nicht Strava-Aktivitäten. Zugriff auch in Strava widerrufen.",
     storage: "Nur Website-Analysen, im Konto gespeichert. Strava-Aktivitäten sind vom Planer und Garmin-Trainingsversand getrennt. Kein GPS und keine KI-Verarbeitung.",
     accept: "Import erlauben", loading: "Laufdaten werden geladen…", empty: "Keine importierten Läufe in diesem Monat. Strava verbinden oder Import fortsetzen.",
-    sync: "Neueste Aktivitäten importieren", continueSync: "Import fortsetzen", backfill: "Gesamten Verlauf erneut importieren",
-    progress: "Importseite", pending: "Ausstehende Datenreihen", lastSync: "Letzter Zusammenfassungsabgleich", retry: "Erneut versuchen nach",
     disconnect: "Trennen und importierte Daten löschen", confirmDelete: "Alle Strava-Importe, HF-Einstellungen und Token dieses Kontos löschen? Strava-Aktivitäten bleiben unverändert.",
     error: "Anfrage fehlgeschlagen. Erneut versuchen oder bei widerrufenem Zugriff neu verbinden.", connected: "Strava verbunden.",
     invalid: "Autorisierung abgelehnt oder abgelaufen. Neu verbinden.", alreadyLinked: "Dieser Strava-Athlet ist bereits mit einem anderen Run-Week-Konto verbunden.",
@@ -105,8 +120,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Acepto importar a mi cuenta Run Week los resúmenes de carreras (también privadas), fechas, distancias, duraciones y series disponibles de tiempo, pulso, velocidad y distancia. No se solicita ni guarda GPS. Los tokens Strava se cifran; ninguna IA procesa estos datos. Garmin solo envía entrenamientos previstos y Android no cambia. Desconectar elimina aquí importaciones, ajustes y tokens, no actividades de Strava. Revoca también el acceso en Strava.",
     storage: "Análisis solo en el sitio web, guardados en tu cuenta. Strava está separado del planificador y del envío Garmin. Sin GPS ni procesamiento IA.",
     accept: "Autorizar importación", loading: "Cargando carreras…", empty: "No hay carreras importadas este mes. Conecta Strava o continúa la importación.",
-    sync: "Importar actividades recientes", continueSync: "Continuar importación", backfill: "Reiniciar importación completa",
-    progress: "Página de importación", pending: "Series pendientes", lastSync: "Última sincronización de resúmenes", retry: "Reintentar después de",
     disconnect: "Desconectar y borrar datos importados", confirmDelete: "¿Borrar todas las importaciones Strava, ajustes de pulso y tokens de esta cuenta? Las actividades Strava no cambian.",
     error: "No se pudo completar la solicitud. Reintenta o reconecta si se revocó el acceso.", connected: "Strava conectado.",
     invalid: "Autorización rechazada o caducada. Conecta de nuevo.", alreadyLinked: "Este atleta Strava ya está vinculado a otra cuenta Run Week.",
@@ -136,8 +149,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Consinto importar para a minha conta Run Week resumos de corridas (incluindo privadas), datas, distâncias, durações e séries disponíveis de tempo, frequência cardíaca, velocidade e distância. GPS não é solicitado nem guardado. Os tokens Strava são cifrados; nenhuma IA processa estes dados. Garmin só envia treinos planeados; Android não muda. Desligar apaga aqui importações, definições e tokens, não atividades Strava. Revogue também o acesso no Strava.",
     storage: "Análises apenas no site, guardadas na conta. Strava é separado do planeador e do envio Garmin. Sem GPS nem processamento IA.",
     accept: "Autorizar importação", loading: "A carregar corridas…", empty: "Sem corridas importadas neste mês. Ligue Strava ou continue a importação.",
-    sync: "Importar atividades recentes", continueSync: "Continuar importação", backfill: "Reiniciar importação completa",
-    progress: "Página de importação", pending: "Séries pendentes", lastSync: "Última sincronização de resumos", retry: "Tentar após",
     disconnect: "Desligar e apagar dados importados", confirmDelete: "Apagar todas as importações Strava, definições FC e tokens desta conta? As atividades Strava não mudam.",
     error: "Não foi possível concluir. Tente novamente ou volte a ligar se o acesso foi revogado.", connected: "Strava ligado.",
     invalid: "Autorização recusada ou expirada. Ligue novamente.", alreadyLinked: "Este atleta Strava já está ligado a outra conta Run Week.",
@@ -167,8 +178,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Acconsento a importare nel mio account Run Week riepiloghi delle corse (anche private), date, distanze, durate e serie disponibili di tempo, frequenza cardiaca, velocità e distanza. GPS non viene richiesto né salvato. I token Strava sono cifrati; nessuna IA elabora questi dati. Garmin invia solo allenamenti pianificati; Android non cambia. Disconnettere elimina qui importazioni, impostazioni e token, non attività Strava. Revoca anche l’accesso in Strava.",
     storage: "Analisi solo sul sito, salvate nell’account. Strava è separato dal pianificatore e dall’invio Garmin. Nessun GPS o trattamento IA.",
     accept: "Autorizza importazione", loading: "Caricamento corse…", empty: "Nessuna corsa importata questo mese. Connetti Strava o continua l’importazione.",
-    sync: "Importa attività recenti", continueSync: "Continua importazione", backfill: "Riavvia importazione completa",
-    progress: "Pagina di importazione", pending: "Serie in attesa", lastSync: "Ultima sincronizzazione riepiloghi", retry: "Riprova dopo",
     disconnect: "Disconnetti ed elimina i dati importati", confirmDelete: "Eliminare tutte le importazioni Strava, impostazioni FC e token di questo account? Le attività Strava restano invariate.",
     error: "Richiesta non completata. Riprova o riconnetti se l’accesso è stato revocato.", connected: "Strava connesso.",
     invalid: "Autorizzazione rifiutata o scaduta. Riconnetti.", alreadyLinked: "Questo atleta Strava è già collegato a un altro account Run Week.",
@@ -198,8 +207,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Zgadzam się na import do konta Run Week podsumowań biegów (także prywatnych), dat, dystansów, czasów oraz dostępnych serii czasu, tętna, prędkości i dystansu. GPS nie jest pobierany ani zapisywany. Tokeny Strava są szyfrowane; żadna AI nie przetwarza danych. Garmin tylko wysyła zaplanowane treningi; Android pozostaje bez zmian. Odłączenie usuwa tutaj importy, ustawienia i tokeny, nie aktywności Strava. Cofnij też dostęp w Strava.",
     storage: "Analizy tylko w witrynie, przechowywane na koncie. Strava jest oddzielone od planera i wysyłania Garmin. Bez GPS i przetwarzania AI.",
     accept: "Zezwól na import", loading: "Ładowanie biegów…", empty: "Brak importowanych biegów w tym miesiącu. Połącz Strava lub kontynuuj import.",
-    sync: "Importuj ostatnie aktywności", continueSync: "Kontynuuj import", backfill: "Uruchom ponownie pełny import",
-    progress: "Strona importu", pending: "Oczekujące serie", lastSync: "Ostatnia synchronizacja podsumowań", retry: "Spróbuj po",
     disconnect: "Odłącz i usuń importowane dane", confirmDelete: "Usunąć wszystkie importy Strava, ustawienia tętna i tokeny tego konta? Aktywności Strava pozostaną bez zmian.",
     error: "Nie udało się wykonać żądania. Spróbuj ponownie lub połącz ponownie po cofnięciu dostępu.", connected: "Strava połączona.",
     invalid: "Autoryzacja odrzucona lub wygasła. Połącz ponownie.", alreadyLinked: "Ten zawodnik Strava jest już połączony z innym kontem Run Week.",
@@ -229,8 +236,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Я согласен импортировать в аккаунт Run Week сводки пробежек (включая приватные), даты, расстояния, длительности и доступные ряды времени, пульса, скорости и расстояния. GPS не запрашивается и не хранится. Токены Strava шифруются; ИИ не обрабатывает эти данные. Garmin только отправляет запланированные тренировки; Android не меняется. Отключение удаляет здесь импорты, настройки и токены, но не активности Strava. Также отзовите доступ в Strava.",
     storage: "Аналитика только на сайте, данные в аккаунте. Strava отделена от планировщика и отправки Garmin. Без GPS и обработки ИИ.",
     accept: "Разрешить импорт", loading: "Загрузка пробежек…", empty: "Нет импортированных пробежек за этот месяц. Подключите Strava или продолжите импорт.",
-    sync: "Импортировать недавние активности", continueSync: "Продолжить импорт", backfill: "Начать полный импорт заново",
-    progress: "Страница импорта", pending: "Ожидающие ряды", lastSync: "Последняя синхронизация сводок", retry: "Повторить после",
     disconnect: "Отключить и удалить импортированные данные", confirmDelete: "Удалить все импорты Strava, настройки пульса и токены аккаунта? Активности Strava не изменятся.",
     error: "Запрос не выполнен. Повторите или подключитесь заново, если доступ отозван.", connected: "Strava подключена.",
     invalid: "Авторизация отклонена или истекла. Подключитесь заново.", alreadyLinked: "Этот спортсмен Strava уже связан с другим аккаунтом Run Week.",
@@ -260,8 +265,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Я погоджуюся імпортувати до Run Week зведення пробіжок (також приватних), дати, відстані, тривалості й доступні ряди часу, пульсу, швидкості та відстані. GPS не запитується й не зберігається. Токени Strava зашифровані; ШІ не обробляє ці дані. Garmin лише надсилає заплановані тренування; Android не змінюється. Відключення видаляє тут імпорт, налаштування й токени, не активності Strava. Також відкличте доступ у Strava.",
     storage: "Аналітика лише на сайті, дані в обліковому записі. Strava відокремлена від планувальника та надсилання Garmin. Без GPS та обробки ШІ.",
     accept: "Дозволити імпорт", loading: "Завантаження пробіжок…", empty: "Немає імпортованих пробіжок цього місяця. Підключіть Strava або продовжте імпорт.",
-    sync: "Імпортувати недавні активності", continueSync: "Продовжити імпорт", backfill: "Почати повний імпорт знову",
-    progress: "Сторінка імпорту", pending: "Ряди в очікуванні", lastSync: "Остання синхронізація зведень", retry: "Повторити після",
     disconnect: "Відключити й видалити імпортовані дані", confirmDelete: "Видалити весь імпорт Strava, налаштування пульсу й токени цього запису? Активності Strava не зміняться.",
     error: "Запит не виконано. Повторіть або підключіться знову, якщо доступ відкликано.", connected: "Strava підключена.",
     invalid: "Авторизацію відхилено або вона прострочена. Підключіться знову.", alreadyLinked: "Цей спортсмен Strava вже пов’язаний з іншим записом Run Week.",
@@ -291,8 +294,6 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
     consent: "Я пагаджаюся імпартаваць у Run Week зводкі прабежак (таксама прыватных), даты, адлегласці, працягласці і даступныя шэрагі часу, пульсу, хуткасці і адлегласці. GPS не запытваецца і не захоўваецца. Токены Strava зашыфраваныя; ШІ не апрацоўвае гэтыя даныя. Garmin толькі адпраўляе запланаваныя трэніроўкі; Android не змяняецца. Адключэнне выдаляе тут імпарт, налады і токены, не актыўнасці Strava. Таксама адклічце доступ у Strava.",
     storage: "Аналітыка толькі на сайце, даныя ў акаўнце. Strava аддзелена ад планавальніка і адпраўкі Garmin. Без GPS і апрацоўкі ШІ.",
     accept: "Дазволіць імпарт", loading: "Загрузка прабежак…", empty: "Няма імпартаваных прабежак за гэты месяц. Падключыце Strava або працягніце імпарт.",
-    sync: "Імпартаваць нядаўнія актыўнасці", continueSync: "Працягнуць імпарт", backfill: "Пачаць поўны імпарт нанова",
-    progress: "Старонка імпарту", pending: "Шэрагі ў чаканні", lastSync: "Апошняя сінхранізацыя зводак", retry: "Паўтарыць пасля",
     disconnect: "Адключыць і выдаліць імпартаваныя даныя", confirmDelete: "Выдаліць увесь імпарт Strava, налады пульсу і токены акаўнта? Актыўнасці Strava не зменяцца.",
     error: "Запыт не выкананы. Паўтарыце або падключыцеся зноў, калі доступ адкліканы.", connected: "Strava падключана.",
     invalid: "Аўтарызацыя адхілена або пратэрмінавана. Падключыцеся зноў.", alreadyLinked: "Гэты спартсмен Strava ўжо звязаны з іншым акаўнтам Run Week.",

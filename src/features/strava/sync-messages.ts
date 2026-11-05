@@ -1,22 +1,11 @@
 import type { Locale } from "@/features/i18n/locales";
 
-export const SYNC_MESSAGES: Record<Locale, string> = {
-  en: "Synchronize Strava", fr: "Synchroniser Strava", de: "Strava synchronisieren",
-  es: "Sincronizar Strava", pt: "Sincronizar Strava", pl: "Synchronizuj Strava",
-  ru: "Синхронизировать Strava", uk: "Синхронізувати Strava", be: "Сінхранізаваць Strava", it: "Sincronizza Strava",
-};
-
 export const SYNC_PROGRESS_MESSAGES: Record<Locale, string> = {
   en: "Synchronizing Strava data…", fr: "Synchronisation des données Strava…",
   de: "Strava-Daten werden synchronisiert…", es: "Sincronizando datos de Strava…",
   pt: "A sincronizar dados do Strava…", pl: "Synchronizowanie danych Strava…",
   ru: "Синхронизация данных Strava…", uk: "Синхронізація даних Strava…",
   be: "Сінхранізацыя даных Strava…", it: "Sincronizzazione dei dati Strava…",
-};
-
-export const SYNC_STOP_MESSAGES: Record<Locale, string> = {
-  en: "Stop", fr: "Arrêter", de: "Stoppen", es: "Detener", pt: "Parar",
-  pl: "Zatrzymaj", ru: "Остановить", uk: "Зупинити", be: "Спыніць", it: "Interrompi",
 };
 
 export const CACHE_PRIVACY_MESSAGES: Record<Locale, string> = {

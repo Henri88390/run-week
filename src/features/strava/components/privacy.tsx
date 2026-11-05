@@ -6,13 +6,14 @@ import { useI18n } from "@/features/i18n/use-i18n";
 import { STRAVA_MESSAGES } from "../messages";
 import { STRAVA_CONSENT_VERSION } from "../types";
 import type { Locale } from "@/features/i18n/locales";
-import { useActivityImport } from "./use-activity-import";
+import { SYNC_STATUS_KEY } from "./use-activity-import";
 import { useQueryClient } from "@tanstack/react-query";
 import { ACTIVITY_QUERY_KEY } from "./activity-query";
 import { CACHE_PRIVACY_MESSAGES } from "../sync-messages";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { RequestError } from "./request-error";
 import { STRAVA_STATUS_KEY } from "./connection-status";
+import { BACKGROUND_MESSAGES } from "../background-messages";
 
 const retention: Record<Locale, string> = {
   en: "Strava imports, manual HR settings and encrypted tokens stay until disconnect or account deletion. Consent version and acceptance time are recorded; changed consent requires reconnection. OAuth cookies and cancellable single-use tickets expire after 10 minutes. Import progress and short-lived leases are stored for safe retries. Hosting/database providers listed in this policy process this data. Logs contain only operation names and safe error codes, not activity data or tokens. Account export includes imports and settings, never tokens. Strava does not become a sign-in provider. Account deletion cancels pending imports; original Strava activities remain.",
@@ -30,7 +31,6 @@ export function StravaPrivacy() {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   const { status } = useSession();
-  const activityImport = useActivityImport();
   const queries = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,7 +42,8 @@ export function StravaPrivacy() {
     try {
       const response = await fetch("/api/strava/disconnect", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(15_000) });
       if (response.ok) {
-        activityImport.stop();
+        await queries.cancelQueries({ queryKey: SYNC_STATUS_KEY });
+        queries.setQueryData(SYNC_STATUS_KEY, { job: null });
         await queries.cancelQueries({ queryKey: ACTIVITY_QUERY_KEY });
         queries.removeQueries({ queryKey: ACTIVITY_QUERY_KEY });
         await queries.cancelQueries({ queryKey: STRAVA_STATUS_KEY });
@@ -59,6 +60,7 @@ export function StravaPrivacy() {
     <h2 className="text-lg font-semibold">{text.consentTitle} · {STRAVA_CONSENT_VERSION}</h2>
     <p>{text.consent}</p>
     <p>{retention[locale]}</p>
+    <p>{BACKGROUND_MESSAGES[locale].consent}</p>
     <p>{CACHE_PRIVACY_MESSAGES[locale]}</p>
     <Link href="/activities" className="underline">{text.overview}</Link>
     {status === "authenticated" && <button type="button" className="button-secondary block" disabled={busy} onClick={() => { setError(0); setConfirming(true); }}>{text.disconnect}</button>}

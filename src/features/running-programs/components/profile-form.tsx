@@ -13,6 +13,7 @@ import type { PreferredDays, Profile, Schedule } from "../types";
 import { createProfileFormSchema, preferredDaysFromForm, type ProfileFormValues } from "./profile-form.schema";
 import { SelectField } from "./select-field";
 import { profilesMatch, samePerformance } from "../profile-comparison";
+import { MaximalPerformanceOption } from "./maximal-performance-option";
 
 type PreferredDayField = "preferredVo2maxDay" | "preferredThresholdDay" | "preferredLongRunDay";
 type WorkoutChoiceField = "intervalWorkout" | "thresholdWorkout" | "longWorkout";
@@ -293,6 +294,13 @@ export function ProfileForm({ profile, onSave }: {
   ].filter((message): message is string => Boolean(message));
 
   return <form noValidate className="mt-4 space-y-4" onSubmit={handleSubmit(onSubmit)}>
+    <MaximalPerformanceOption onUse={(performance) => {
+      setValue("customDistance", !DISTANCES.some((distance) => distance.meters === performance.distanceMeters), { shouldDirty: true });
+      setValue("distanceMeters", String(performance.distanceMeters), { shouldDirty: true });
+      setRaceTime(performance.distanceMeters, performance.raceSeconds);
+      setPerformanceAnchor(performance);
+      void trigger(["distanceMeters", "hours", "minutes", "seconds"]);
+    }} />
     <div className="grid items-start gap-3 sm:grid-cols-2">
       <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3">
         <h3 className="mb-1 min-h-5 text-sm font-medium">{t.form.performanceDistance}</h3>

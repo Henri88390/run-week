@@ -15,6 +15,12 @@ export class StravaError extends Error {
     }) { super(code); }
 }
 
+export class StravaAlreadyLinkedError extends StravaError {
+  constructor(public readonly accountEmail: string | null) {
+    super("alreadyLinked", 409);
+  }
+}
+
 function schemaFailure(stage: "token" | "summaries" | "streams", error: z.ZodError): StravaError {
   // Schema paths contain field names and array offsets only; never record values.
   const fields = [...new Set(error.issues.map((issue) => issue.path.filter((part) => typeof part === "string").join(".")))].slice(0, 10);

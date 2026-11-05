@@ -9,6 +9,14 @@ CSS and ESLint, with optional accounts (Auth.js, PostgreSQL through Prisma).
 
 ![Workout details](docs/screenshots/workout-details.png)
 
+Activity screenshots use synthetic data.
+
+![Activities calendar](docs/screenshots/activities-calendar.png)
+
+![Activity details with heart-rate and pace graphs](docs/screenshots/activity-details.png)
+
+![Activity graphs: training volume, heart-rate zones, pace distribution and threshold time](docs/screenshots/activities-graphs.png)
+
 ## Getting started
 
 Use Node.js 24 LTS, npm and Docker (or another PostgreSQL 15+ server). From
@@ -166,28 +174,52 @@ website account, and cancellable one-use database tickets with 10-minute expiry.
 Access and refresh tokens are AES-256-GCM encrypted on the server. A keyed athlete
 identity uniquely links an athlete to one Run Week account. Never rotate the
 encryption key without reconnecting/migrating both tokens and athlete keys.
+After successful Strava authorization, a conflicting link identifies the existing
+Run Week account by email. The notice is carried in a short-lived, encrypted,
+HttpOnly cookie bound to the requesting account, not in redirect URLs or logs.
 
-The Synchronize Strava button sends exactly one website API request for the
-selected week, month or year, including summaries and missing HR/pace recordings.
-The server fetches up to 200 summaries per Strava page, then one stream response
-per missing activity, with 8-second outbound timeouts and bounded bodies/sample counts.
-Opening Activities or changing the selected date automatically synchronizes ranges
-not yet covered by successful synchronization history. Month view also synchronizes
-the previous month when its days are visible in the calendar. Requests run sequentially
-and respect the existing cooldown. Already-covered current periods do not automatically
-refresh; use the manual button for newer activities. Running Metrics does not auto-sync.
-The visible Stop button
-aborts the browser request; the server checks cancellation between upstream calls.
-A header spinner/status remains visible while syncing. Calendar navigation does
-not change the period of an in-flight import. A newly selected unsynchronized period
-starts after the current request and cooldown finish. The calendar reads
-imported database rows only and refreshes when the request finishes.
-There is no polling or automatic retry after failure/cancellation during the same
-calendar visit. Navigating away and back can try an unsynchronized range again.
-Rate limits and the server's
-four-minute request budget stop the import explicitly; hosting limits may stop it sooner.
-Errors display briefly in red. Another explicit click retries the selected period,
-reusing summaries and recordings already saved.
+Strava connection queues a full running-history import in PostgreSQL, atomically
+with saving the encrypted connection. Inngest executes it through signed requests
+to `/api/inngest`. Each durable chunk performs at most one Strava request: token
+refresh, a 200-summary page, or one missing recording. Checkpoints are committed
+with imported rows; successful steps never return activity data or tokens to Inngest.
+`await inngest.send(...)` waits for Inngest to accept the event, not for the import
+to finish. Inngest matches `strava/sync.requested` to `strava-background-import`
+and calls the registered `/api/inngest` endpoint with signed HTTP requests.
+The handler and its `syncChunk` steps execute in the deployed Next.js application;
+Inngest manages scheduling, completed-step results, retries and durable sleeps.
+During a sleep no Vercel request needs to remain open. The production Inngest app
+must be configured and synced with the endpoint for these jobs to run.
+The job runs even when the browser closes, signs out, changes pages or selects
+another date. Activity endpoints only read committed database rows and return
+partial results immediately. Calendar navigation does not start synchronization.
+There are no manual synchronization or Stop controls. `/api/strava/sync` only
+supports GET for job status; manual POST/DELETE requests return 405. Account
+connection and the backend scheduler create jobs, reusing any active account job.
+Disconnect/account deletion
+cascades jobs; connection generations and leases prevent stale writes after reconnect.
+
+The app polls a database-only job status endpoint every five seconds while a
+job is queued/running/paused, and every minute otherwise. Progress refreshes stored
+dashboard data; polling never calls Strava. Progress banners and counters are hidden;
+network/status failures are still shown explicitly.
+The PostgreSQL outbox is retried every minute, including after a failed event send.
+The hourly scheduler checks accounts due for a daily incremental import; it overlaps
+the last synchronization by one day to cover timestamp boundaries. Transiently
+failed imports are resumed from their saved page/phase on a later scheduler run.
+Previously cancelled jobs are also resumed when due. Invalid or revoked
+authorization requires reconnecting Strava, rather than repeated automated requests.
+
+Historical coverage is stored as successful date intervals in `syncHistory`, not
+separate week/month/year flags. Imports subtract covered intervals and process the
+remaining gaps, including empty periods. Current-day coverage stays provisional;
+incremental imports discover newer activities. Existing ready/unavailable recordings
+are retained, unique account/source IDs prevent duplicates, and every committed
+chunk invalidates dashboard caches. App-wide database quota reservations and Inngest
+concurrency serialize calls; read-limit headers/429 pause jobs using durable sleeps.
+Transient chunk failures have five Inngest retries, then a visible failed job
+eligible for a later automatic retry.
+Existing accounts must reconnect for consent version `2026-11-05-v2`.
 TanStack Query retains activity dashboards in account-scoped browser memory for
 five minutes. It deduplicates reads and does not refetch on focus/reconnect or retry
 failed requests. This cache is not written to localStorage and is discarded on
@@ -229,18 +261,35 @@ Repeated stream timestamps are collapsed to their last sample, using the same
 indices for HR, speed and distance; zero-duration duplicates cannot add zone time.
 A sanitized warning reports only the removed count. Decreasing timestamps and
 mismatched sample-array lengths still fail explicitly rather than inventing timing.
-Opening an activity with pending streams imports that activity's samples
-automatically, without advancing the history-import cursor. Its detail page also
-provides a manual stream-import retry and displays average HR when available.
-The same per-account lease, token refresh, rate limits and connection checks apply;
-missing heart-rate recordings remain unavailable rather than being estimated.
-Rate-limit/read-limit headers and 429 responses persist a retry time; per-account
-90-second leases serialize token refresh and imports across instances. A durable
-one-second cooldown after requests applies to synchronization and activity
-stream requests, including across tabs/instances. Within a period import, outbound
-calls are spaced by at least one second; longer Strava quota delays stop the request.
-The browser limits manual starts to once per ten seconds. No worker,
-webhook, cron, or automatic full-history import is introduced.
+Activity detail pages read stored samples; pending recordings are filled by the
+background job. Missing heart-rate recordings remain unavailable rather than
+being estimated. New/imported activity edits outside the incremental overlap and
+Strava deletions are not reconciled automatically; Strava webhooks are not yet installed.
+
+### Inngest setup
+
+1. Create an Inngest app/environment and install its Vercel integration.
+2. Set server-only `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` in Vercel Production.
+   Production forces cloud mode; never use development keys or `INNGEST_DEV` there.
+3. Apply `20261105090000_strava_background_jobs` (the production Vercel build runs
+   migrations), deploy, and verify `/api/inngest` is synced in Inngest. Check that
+   `strava-background-import`, `strava-sync-outbox` and `strava-incremental-sync`
+   are registered. Allow signed Inngest requests through deployment protection/WAF.
+4. Reconnect Strava under the updated consent. Verify a queued import becomes running
+   and then completed, including after leaving the site. Do not disable signature verification.
+5. Include Inngest in the deployment's processor disclosure and configure execution
+   history retention/access. Events contain opaque job IDs/version only; control
+   results contain timing/completion metadata, not identity, workouts or OAuth tokens.
+
+For local development run `npx inngest-cli@latest dev -u http://localhost:3000/api/inngest`
+and set `INNGEST_DEV=1` in the app environment. Use separate production/preview/local
+databases and Inngest environments. Preview deployments must not execute production jobs.
+`node scripts/verify-strava-background.mjs` exercises checkpoints, filtering, retries,
+quota pauses and cancellation/reconnect fencing with mocks. The Playwright suite uses
+a local delivery/worker harness on port 3103 and a disposable database; it requires
+Docker and never contacts Inngest Cloud or real Strava.
+Inngest's transitive Zod dependency uses the patched root package via an override;
+the SDK imports the supported `zod/v3` compatibility entry point.
 
 Calendar HR/pace statistics use the full displayed calendar range, including
 adjacent-month boundary days (at most 1,000 displayed runs). Monthly headline
@@ -317,13 +366,10 @@ for the selected period, not the calendar display limit, and makes no Strava cal
 Distance-axis ticks are multiples of 5 km; duration-axis ticks are whole hours.
 Both axes round up to cover the largest bucket without rounding the underlying totals.
 The average-weekly-volume card is no longer displayed.
-The orange Strava synchronization button shows the latest synchronization time
-on hover or keyboard focus. Completed past periods are disabled once fully
-synchronized; persisted coverage also recognizes enclosing years and adjacent
-completed ranges. Current periods remain synchronizable. A sync performed before
-the end of a period does not mark that whole period complete. Only successful
-full imports record coverage; reconnect/disconnect reset it. This requires the
-`20261104200000_strava_sync_history` database migration.
+Synchronization is automatic and independent of the selected calendar period.
+Successful imports persist completed date intervals; unfinished periods remain
+provisional. A same-athlete reconnect preserves history; disconnect deletes it.
+This requires the `20261104200000_strava_sync_history` database migration.
 Weekly summaries use compact labels and show measured above-threshold time as a
 percentage of the week's full moving time, not just its HR-covered duration.
 The pace distribution is a histogram with a linear seconds/km horizontal axis
@@ -349,7 +395,7 @@ user-owned running-data OLS method: ≥3 confirmed maximal efforts, distinct
 durations of 2–120 minutes, R² ≥ .90, nonnegative D′. It uses elapsed time,
 including stops, and is descriptive, not personalized training advice.
 Metrics use maximal efforts across all imported dates. The metrics page has no sync
-button, period picker or period-summary cards; synchronization stays on Activities. Without a reliable
+button, period picker or period-summary cards; synchronization runs in the backend. Without a reliable
 multi-effort fit, even one eligible marked effort supplies a provisional average
 speed and race-equivalent VDOT using the fastest effort's elapsed-time speed and
 the planner's existing Daniels–Gilbert equation. A low-confidence warning is shown;
@@ -379,8 +425,8 @@ confidence, not measured VMA or lactate threshold. No valid VDOT means unavailab
 Activity detail elapsed duration is rounded to the nearest minute and displayed
 as hours and minutes, like the calendar summaries.
 Activity details omit the recorded-stream heading, manual continue-import button
-and back-to-overview link. Pending recordings still import on opening the page,
-with loading, retry timing and errors shown when applicable.
+and back-to-overview link. Background import progress banners and counters are
+not displayed; imports, status polling and data refreshes continue on all pages.
 Activity details use Recharts for a responsive heart-rate/pace chart with separate
 axes, colored Z1–Z5 background bands and independent HR/pace checkboxes. Values are
 available in a crosshair tooltip using pointer, touch or left/right arrow keys.
@@ -461,6 +507,15 @@ localStorage; clearing browser data deletes them. Signed in, they are saved in
 the account and shared across devices. Failed writes show a warning; invalid
 saved data is not silently overwritten. System fonts keep builds independent of
 external font services.
+
+Signed-in users with marked Strava maximal-effort activities can choose
+**Use maximal-effort activities** in the simulator setup. It fills the performance
+fields from the eligible effort with the highest Daniels–Gilbert VDOT across all
+imported dates, using elapsed time (including stops), not moving time. Distance and
+time are rounded to whole metres/seconds to match form inputs. The existing
+supported distance/time/VDOT limits apply; ineligible efforts are not used.
+The option is absent when there are no marked efforts. It never replaces manual
+input or regenerates a saved week without the existing save/confirmation flow.
 
 VDOT uses the Daniels–Gilbert race-performance equations. Changing the
 performance distance prefills the race time with the equivalent time for the

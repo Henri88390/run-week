@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useStravaStatus, STRAVA_STATUS_KEY } from "@/features/strava/components/connection-status";
 import { ACTIVITY_QUERY_KEY } from "@/features/strava/components/activity-query";
-import { useActivityImport } from "@/features/strava/components/use-activity-import";
+import { SYNC_STATUS_KEY } from "@/features/strava/components/use-activity-import";
 import { STRAVA_MESSAGES } from "@/features/strava/messages";
 import { RequestError } from "@/features/strava/components/request-error";
 
@@ -43,7 +43,6 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
   const strava = useStravaStatus(status === "authenticated" && open);
   const stravaText = STRAVA_MESSAGES[locale];
   const queries = useQueryClient();
-  const activityImport = useActivityImport();
   const router = useRouter();
   const [confirmingStrava, setConfirmingStrava] = useState(false);
   const [stravaBusy, setStravaBusy] = useState(false);
@@ -126,7 +125,8 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
       const response = await fetch("/api/strava/disconnect", { method: "POST", cache: "no-store",
         signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("Strava disconnect failed");
-      activityImport.stop();
+      await queries.cancelQueries({ queryKey: SYNC_STATUS_KEY });
+      queries.setQueryData(SYNC_STATUS_KEY, { job: null });
       await queries.cancelQueries({ queryKey: ACTIVITY_QUERY_KEY });
       queries.removeQueries({ queryKey: ACTIVITY_QUERY_KEY });
       await queries.cancelQueries({ queryKey: STRAVA_STATUS_KEY });

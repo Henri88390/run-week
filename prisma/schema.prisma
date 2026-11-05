@@ -114,10 +114,43 @@ model StravaConnection {
   syncBefore     Int
   lastSyncedAt   DateTime?
   syncHistory    Json     @default("[]")
+  generation     String   @default(uuid())
+  jobs           StravaSyncJob[]
   retryAt        DateTime?
   leaseId        String?
   leaseUntil     DateTime?
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StravaSyncJob {
+  id            String   @id @default(uuid())
+  userId        String
+  generation    String
+  kind          String
+  start         String
+  end           String
+  remaining     Json     @default("[]")
+  before        Int
+  page          Int      @default(1)
+  phase         String   @default("summaries")
+  status        String   @default("queued")
+  version       Int      @default(1)
+  publishedAt   DateTime?
+  retryAt       DateTime?
+  errorCode     String?
+  summaries     Int      @default(0)
+  recordings    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  connection    StravaConnection @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([status, publishedAt])
+  @@index([userId, createdAt])
+}
+
+model StravaSyncQuota {
+  id         String   @id
+  nextCallAt DateTime
 }
 
 model StravaActivity {

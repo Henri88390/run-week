@@ -8,6 +8,7 @@ import ts from "typescript";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const externalRequire = createRequire(import.meta.url);
 const cache = new Map();
+const moduleOverrides = new Map();
 function load(file) {
   file = path.resolve(root, file);
   if (cache.has(file)) return cache.get(file).exports;
@@ -15,6 +16,7 @@ function load(file) {
   cache.set(file, compiledModule);
   const code = ts.transpileModule(fs.readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const require = (name) => {
+    if (moduleOverrides.has(name)) return moduleOverrides.get(name);
     if (name === "server-only") return {};
     if (name.startsWith(".") || name.startsWith("@/")) {
       const base = name.startsWith("@/") ? path.join(root, "src", name.slice(2)) : path.resolve(path.dirname(file), name);
@@ -29,26 +31,95 @@ const { heartRateTimes, criticalSpeed, heartRateZone, calendarRange, calendarWee
   paceHistogram, aboveThresholdPercent, dominantZone, roundedDuration, activityAverages, effortPerformance,
   recentEnduranceRange, speedRetention, danielsEstimates } = load("src/features/strava/analytics.ts");
 const { settingsSchema } = load("src/features/strava/types.ts");
+const { bestMaximalPerformance } = load("src/features/running-programs/maximal-performance.ts");
+const { calculateVdot } = load("src/features/running-programs/domain.ts");
+const { MAXIMAL_PERFORMANCE_MESSAGES } = load("src/features/running-programs/maximal-performance-messages.ts");
+const baseEffort = { id: "5k", name: "5 km", localDate: "2020-01-01", maximalEffort: true, distanceMeters: 5000, elapsedSeconds: 1500 };
+const tenKm = { ...baseEffort, id: "10k", distanceMeters: 10000, elapsedSeconds: 2700 };
+assert.equal(bestMaximalPerformance([]), null);
+assert.equal(bestMaximalPerformance([{ ...baseEffort, maximalEffort: false }]), null);
+assert.equal(bestMaximalPerformance([baseEffort]).vdot, calculateVdot(5000, 1500));
+assert.equal(bestMaximalPerformance([{ ...baseEffort, elapsedSeconds: 1320 }, tenKm]).id, "10k", "Select highest VDOT, not highest raw speed");
+assert.equal(bestMaximalPerformance([tenKm, { ...baseEffort, distanceMeters: 600, elapsedSeconds: 120 }]).id, "10k");
+for (const value of [0, -1, NaN, Infinity, 1_000_000]) {
+  assert.equal(bestMaximalPerformance([{ ...baseEffort, distanceMeters: value }]), null);
+  assert.equal(bestMaximalPerformance([{ ...baseEffort, elapsedSeconds: value }]), null);
+}
+assert.equal(bestMaximalPerformance([{ ...baseEffort, distanceMeters: 5000.4, elapsedSeconds: 1500.4 }]).vdot, calculateVdot(5000, 1500));
+assert.equal(Object.keys(MAXIMAL_PERFORMANCE_MESSAGES).length, 10);
+for (const text of Object.values(MAXIMAL_PERFORMANCE_MESSAGES)) for (const value of Object.values(text)) assert.ok(value.length > 0);
+const { stravaNoticeMessage, STRAVA_MESSAGES: linkedNoticeMessages } = load("src/features/strava/messages.ts");
+const { linkedAccountEmail } = load("src/features/strava/server/linked-account-notice.ts");
+const { seal } = load("src/features/garmin/server/session.ts");
+const noticeNow = Date.now();
+const noticeSecret = "mock-linked-account-notice-secret";
+const sealedNotice = seal({ userId: "requesting-account", email: "linked@example.test", expiresAt: noticeNow + 60_000 }, noticeSecret);
+assert.equal(linkedAccountEmail(sealedNotice, noticeSecret, "requesting-account", noticeNow), "linked@example.test");
+assert.equal(linkedAccountEmail(sealedNotice, noticeSecret, "another-account", noticeNow), undefined);
+assert.equal(linkedAccountEmail(sealedNotice, noticeSecret, "requesting-account", noticeNow + 60_000), undefined);
+assert.equal(linkedAccountEmail(sealedNotice, "wrong-key", "requesting-account", noticeNow), undefined);
+assert.equal(linkedAccountEmail("tampered", noticeSecret, "requesting-account", noticeNow), undefined);
+assert.equal(linkedAccountEmail(seal({ userId: "requesting-account", email: "<script>", expiresAt: noticeNow + 60_000 }, noticeSecret),
+  noticeSecret, "requesting-account", noticeNow), undefined);
+for (const locale of Object.keys(linkedNoticeMessages)) {
+  assert.ok(stravaNoticeMessage(locale, "alreadyLinked", "linked@example.test").includes("linked@example.test"));
+  assert.equal(stravaNoticeMessage(locale, "alreadyLinked"), linkedNoticeMessages[locale].alreadyLinked);
+  assert.equal(stravaNoticeMessage(locale, "connected"), linkedNoticeMessages[locale].connected);
+}
+const { StravaAlreadyLinkedError } = load("src/features/strava/server/api.ts");
+class MockPrismaError extends Error {
+  constructor(code) { super(code); this.code = code; }
+}
+let linkingRace = false;
+let linkedOwner = { userId: "existing-account", user: { email: "linked@example.test" } };
+const linkingDatabase = {
+  async $transaction(work) {
+    if (linkingRace) throw new MockPrismaError("P2002");
+    return work({
+      async $executeRaw() {},
+      verificationToken: { async deleteMany() { return { count: 1 }; } },
+      stravaConnection: { async findUnique() { return linkedOwner; } },
+    });
+  },
+  stravaConnection: { async findUnique() { return linkedOwner; } },
+};
+moduleOverrides.set("@/features/account/server/db", { db: () => linkingDatabase });
+moduleOverrides.set("@/generated/prisma/client", { Prisma: { PrismaClientKnownRequestError: MockPrismaError } });
+moduleOverrides.set("./cache", { clearActivityCache: async () => {} });
+moduleOverrides.set("./background-jobs", { createSyncJob: async () => {} });
+moduleOverrides.set("./inngest", { requireBackgroundSync() {} });
+const { saveConnection } = load("src/features/strava/server/store.ts");
+moduleOverrides.clear();
+for (const race of [false, true]) {
+  linkingRace = race;
+  await assert.rejects(saveConnection({ encryptionKey: noticeSecret }, "requesting-account",
+    { athlete: { id: 123 } }, new Date(), "mock-state"),
+  (error) => error instanceof StravaAlreadyLinkedError && error.accountEmail === "linked@example.test"
+    && error.code === "alreadyLinked" && error.status === 409 && !error.message.includes("linked@example.test"));
+}
+linkedOwner = { userId: "existing-account", user: { email: null } };
+linkingRace = false;
+await assert.rejects(saveConnection({ encryptionKey: noticeSecret }, "requesting-account",
+  { athlete: { id: 123 } }, new Date(), "mock-state"),
+(error) => error instanceof StravaAlreadyLinkedError && error.accountEmail === null);
 const { weeklyVolumes, averageWeeklyVolume } = load("src/features/strava/weekly-volume.ts");
 const { WEEKLY_VOLUME_MESSAGES } = load("src/features/strava/weekly-volume-messages.ts");
 const { METRIC_DEFINITIONS } = load("src/features/strava/metric-definitions.ts");
 const { INDICATOR_MESSAGES } = load("src/features/strava/indicator-messages.ts");
 const { DANIELS_MESSAGES } = load("src/features/strava/daniels-messages.ts");
-const { periodSynchronized, missingSyncPeriods, rangePreviouslySynchronized } = load("src/features/strava/sync-history.ts");
-const currentMonthPeriod = { view: "month", month: "2026-11" };
-assert.deepEqual(missingSyncPeriods([], currentMonthPeriod), [currentMonthPeriod, { view: "month", month: "2026-10" }]);
-assert.deepEqual(missingSyncPeriods([], { view: "month", month: "2026-06" }), [{ view: "month", month: "2026-06" }]);
-assert.deepEqual(missingSyncPeriods([], { view: "month", month: "2026-01" }),
-  [{ view: "month", month: "2026-01" }, { view: "month", month: "2025-12" }]);
-const previouslySynced = [{ start: "2026-10-01", end: "2026-12-01", syncedAt: "2026-11-04T10:00:00Z" }];
-assert.deepEqual(missingSyncPeriods(previouslySynced, currentMonthPeriod), [],
-  "Current periods synchronized before completion do not automatically refresh");
+const { rangePreviouslySynchronized, uncoveredRanges } = load("src/features/strava/sync-history.ts");
+assert.deepEqual(uncoveredRanges([
+  { start: "2024-02-01", end: "2024-03-01", syncedAt: "2024-04-01T00:00:00Z" },
+], { start: "2024-01-01", end: "2024-04-01" }, "2026-11-05"), [
+  { start: "2024-03-01", end: "2024-04-01" }, { start: "2024-01-01", end: "2024-02-01" },
+]);
+assert.deepEqual(uncoveredRanges([
+  { start: "2024-01-01", end: "2025-01-01", syncedAt: "2025-01-02T00:00:00Z" },
+], { start: "2024-06-01", end: "2024-07-01" }, "2026-11-05"), []);
 assert.equal(rangePreviouslySynchronized([
   { start: "2026-10-01", end: "2026-10-15", syncedAt: "2026-11-04T10:00:00Z" },
   { start: "2026-10-15", end: "2026-11-01", syncedAt: "2026-11-04T10:00:00Z" },
 ], { start: "2026-10-01", end: "2026-11-01" }), true);
-assert.deepEqual(missingSyncPeriods(previouslySynced, { view: "week", date: "2026-11-04" }), []);
-assert.deepEqual(missingSyncPeriods(previouslySynced, { view: "year", year: "2026" }), [{ view: "year", year: "2026" }]);
 const { volumeBuckets, volumeAxisMaximum } = load("src/features/strava/volume-chart.ts");
 for (const values of [[], [0], [.1], [4.9], [19.9], [20], [20.1], [567.8]]) {
   for (const increment of [1, 5]) {
@@ -84,13 +155,6 @@ assert.equal(dailyVolume[0].start, "2026-09-28");
 assert.equal(dailyVolume[3].distanceMeters, 5000);
 assert.equal(dailyVolume[6].distanceMeters, 10000);
 assert.equal(volumeBuckets({ view: "month", month: "2024-02" }, []).at(-1).end, "2024-02-29");
-const completed = [{ start: "2024-01-01", end: "2025-01-01", syncedAt: "2026-11-04T10:00:00Z" }];
-assert.equal(periodSynchronized(completed, { start: "2024-06-01", end: "2024-07-01" }, "2026-11-04"), true);
-assert.equal(periodSynchronized(completed, { start: "2023-12-25", end: "2024-01-01" }, "2026-11-04"), false);
-assert.equal(periodSynchronized([{ start: "2026-10-01", end: "2026-11-01", syncedAt: "2026-10-20T10:00:00Z" }],
-  { start: "2026-10-01", end: "2026-11-01" }, "2026-11-04"), false, "A sync during an unfinished period does not complete it");
-assert.equal(periodSynchronized([{ start: "2026-11-01", end: "2026-12-01", syncedAt: "2026-12-02T10:00:00Z" }],
-  { start: "2026-11-01", end: "2026-12-01" }, "2026-11-04"), false, "Current periods remain enabled");
 for (const locale of ["en", "fr", "de", "es", "pt", "pl", "ru", "uk", "be", "it"])
   for (const messages of [WEEKLY_VOLUME_MESSAGES[locale], METRIC_DEFINITIONS[locale], INDICATOR_MESSAGES[locale], { daniels: DANIELS_MESSAGES[locale] }])
     for (const value of Object.values(messages)) assert.ok(value.length > 0);
@@ -168,10 +232,9 @@ for (const messages of Object.values(EFFORT_REMOVAL_MESSAGES)) {
   assert.deepEqual(Object.keys(messages).sort(), ["body", "title"]);
   for (const value of Object.values(messages)) assert.ok(value.length > 0);
 }
-const { SYNC_MESSAGES, SYNC_PROGRESS_MESSAGES, CACHE_PRIVACY_MESSAGES } = load("src/features/strava/sync-messages.ts");
-assert.equal(Object.keys(SYNC_MESSAGES).length, 10);
-assert.deepEqual(Object.keys(SYNC_PROGRESS_MESSAGES).sort(), Object.keys(SYNC_MESSAGES).sort());
-assert.deepEqual(Object.keys(CACHE_PRIVACY_MESSAGES).sort(), Object.keys(SYNC_MESSAGES).sort());
+const { SYNC_PROGRESS_MESSAGES, CACHE_PRIVACY_MESSAGES } = load("src/features/strava/sync-messages.ts");
+assert.equal(Object.keys(SYNC_PROGRESS_MESSAGES).length, 10);
+assert.deepEqual(Object.keys(CACHE_PRIVACY_MESSAGES).sort(), Object.keys(SYNC_PROGRESS_MESSAGES).sort());
 for (const value of Object.values(CACHE_PRIVACY_MESSAGES)) assert.ok(value.length > 0);
 const { PERFORMANCE_MESSAGES } = load("src/features/strava/performance-messages.ts");
 assert.equal(Object.keys(PERFORMANCE_MESSAGES).length, 10);

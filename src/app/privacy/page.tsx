@@ -36,9 +36,10 @@ async function PrivacyContent() {
         <li>Strava handles activity-import authorization and supplies the running summaries and non-GPS streams you authorize under its own privacy policy. Run Week does not request activity-write permission or delete original Strava activities.</li>
         <li>Hosting, database, infrastructure, CDN and managed logging providers: {host ?? "not yet configured; Garmin authorization is disabled"}. They process HTTP requests, network metadata and the stored account data required to run the service.</li>
         <li>Resend delivers email sign-in codes. It receives your email address and the code.</li>
+        <li>Inngest schedules background Strava imports. It receives opaque import-job identifiers, execution timing, progress/control metadata and sanitized failures, never Strava tokens, activity contents or account identity. Job identifiers become unusable when the connection/account is deleted. Configure Inngest execution-history retention and access in its dashboard.</li>
         <li>Google, if you choose Google sign-in, authenticates you under its own privacy policy and provides your email address, name and profile image.</li>
         <li>Redis (Upstash in production, Docker Redis locally) enforces shared Garmin upload quotas when configured. The Redis host, included in the infrastructure providers above, receives a pseudonymous HMAC key derived from your account ID, upload-request timestamps, UTC-day counters and expiry metadata. These quota records contain no Garmin tokens, email addresses, workouts or activity data. The separate encrypted Strava cache is described above.</li>
-        <li>No analytics vendors, external AI services or other data-processing services are configured by this application. The operator must update this policy before adding any.</li>
+        <li>No analytics vendors or external AI services are configured by this application. The operator must update this policy before adding other processors.</li>
       </ul>
       <p>Garmin API keys remain under the operator&apos;s control as server configuration. They are not provided to users or transferred to third parties for their use. Infrastructure providers process service traffic; they are not authorized to use the keys for their own applications.</p>
     </section>

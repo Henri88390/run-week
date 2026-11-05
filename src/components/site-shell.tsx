@@ -10,7 +10,6 @@ import { DocumentLanguage, LanguageSelect } from "@/features/i18n/language-selec
 import { useI18n } from "@/features/i18n/use-i18n";
 import { STRAVA_MESSAGES } from "@/features/strava/messages";
 import { ActivityImportProvider, useActivityImport } from "@/features/strava/components/use-activity-import";
-import { SYNC_PROGRESS_MESSAGES, SYNC_STOP_MESSAGES } from "@/features/strava/sync-messages";
 import { RequestError } from "@/features/strava/components/request-error";
 import { ActivityQueryProvider } from "@/features/strava/components/activity-query";
 
@@ -51,28 +50,29 @@ function SiteHeader() {
         <UserMenu garmin={garmin} />
       </div>
       {notice && <p role="alert" className="order-last w-full text-sm text-amber-900">{notice}</p>}
-      {activityImport.importing && <p role="status" className="order-last flex w-full items-center gap-2 text-sm text-emerald-900">
-        <span aria-hidden="true" className="size-4 rounded-full border-2 border-emerald-200 border-t-emerald-800 motion-safe:animate-spin" />
-        {SYNC_PROGRESS_MESSAGES[locale]}
-        <button type="button" className="button-secondary ml-auto" onClick={activityImport.stop}>{SYNC_STOP_MESSAGES[locale]}</button>
-      </p>}
       {activityImport.error && <div className="order-last w-full"><RequestError message={text.error} /></div>}
     </div>
   </header>;
 }
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
-  const { locale } = useI18n();
   const { data: session, status } = useSession();
   const garmin = useGarmin(status === "authenticated" ? session.user?.id ?? null : null);
   return <GarminContext.Provider value={garmin}><ActivityQueryProvider key={status === "authenticated" ? session.user?.id : status}><ActivityImportProvider>
     <DocumentLanguage />
     <Suspense fallback={<header className="h-24 border-b border-stone-200 bg-white" aria-busy="true" />}><SiteHeader /></Suspense>
     {children}
-    <footer className="mx-auto w-full max-w-6xl px-4 py-6 text-xs text-stone-500 sm:px-6">
+    <Suspense fallback={null}><SiteFooter /></Suspense>
+  </ActivityImportProvider></ActivityQueryProvider></GarminContext.Provider>;
+}
+
+function SiteFooter() {
+  const pathname = usePathname();
+  const { locale } = useI18n();
+  if (pathname === "/planner") return null;
+  return <footer className="mx-auto w-full max-w-6xl px-4 py-6 text-xs text-stone-500 sm:px-6">
       <Link href="/privacy" className="underline underline-offset-2 hover:text-stone-700 focus-visible:outline-2 focus-visible:outline-emerald-700">
         {STRAVA_MESSAGES[locale].privacy}
       </Link>
     </footer>
-  </ActivityImportProvider></ActivityQueryProvider></GarminContext.Provider>;
 }

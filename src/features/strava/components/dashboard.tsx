@@ -1,23 +1,21 @@
 "use client";
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { formatDate, formatDecimal, formatInteger, weekdayName } from "@/features/i18n/locales";
-import { STRAVA_MESSAGES } from "../messages";
+import { STRAVA_MESSAGES, stravaNoticeMessage } from "../messages";
 import type { DashboardData } from "../types";
 import { calendarRange, roundedDuration, PRESET_MAX_HR, speedRetention, danielsEstimates } from "../analytics";
 import { HEART_RATE_MESSAGES } from "../heart-rate-messages";
-import { useActivityImport } from "./use-activity-import";
 import { CalendarDay } from "./calendar-day";
 import { CALENDAR_MESSAGES } from "../calendar-messages";
 import { formatPace } from "@/features/running-programs/domain";
 import { CALENDAR_NAVIGATION } from "../calendar-navigation-messages";
 import { RequestError } from "./request-error";
 import { EFFORT_MESSAGES } from "../effort-messages";
-import { SYNC_MESSAGES } from "../sync-messages";
 import { PERFORMANCE_MESSAGES } from "../performance-messages";
-import { useActivityQuery, activityPeriod } from "./activity-query";
+import { useActivityQuery } from "./activity-query";
 import { MaximalEffort } from "./maximal-effort";
 import { PaceHistogram } from "./pace-histogram";
 import { MetricDefinition } from "./metric-definition";
@@ -25,7 +23,6 @@ import { METRIC_DEFINITIONS } from "../metric-definitions";
 import { INDICATOR_MESSAGES } from "../indicator-messages";
 import { DANIELS_MESSAGES } from "../daniels-messages";
 import { VolumeChart } from "./volume-chart";
-import { useAutomaticSync } from "./use-automatic-sync";
 
 const zoneColors: Record<number, string> = {
   1: "border-sky-300 bg-sky-50", 2: "border-emerald-300 bg-emerald-50",
@@ -33,11 +30,9 @@ const zoneColors: Record<number, string> = {
 };
 const zoneLabels = ["Z1 <70%", "Z2 70–80%", "Z3 80–85%", "Z4 85–90%", "Z5 90–100%"];
 
-export function ActivityDashboard({ data: initialData, metrics = false, notice }: { data: DashboardData; metrics?: boolean; notice?: string }) {
-  const syncHelpId = useId();
+export function ActivityDashboard({ data: initialData, metrics = false, notice, linkedEmail }: { data: DashboardData; metrics?: boolean; notice?: string; linkedEmail?: string }) {
   const query = useActivityQuery(initialData);
   const data = query.data;
-  useAutomaticSync(data, !metrics);
   const calendarMonths = useMemo(() => {
     if (!data.months.length) return [];
     const byMonth = new Map<string, DashboardData["activities"]>();
@@ -65,17 +60,13 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice }
   const yearly = data.year !== null;
   const yearLabel = EFFORT_MESSAGES[locale].year;
   const router = useRouter();
-  const activityImport = useActivityImport();
-  const disabled = activityImport.importing || activityImport.coolingDown;
   const distance = data.activities.reduce((s, a) => s + a.distanceMeters, 0);
   const moving = data.activities.reduce((s, a) => s + a.movingSeconds, 0);
   const unit = (seconds: number) => {
     const { hours, minutes } = roundedDuration(seconds);
     return `${formatInteger(locale, hours)} ${t.units.h} ${formatInteger(locale, minutes)} ${t.units.min}`;
   };
-  const dateTime = (iso: string) => new Date(iso).toLocaleString(locale === "be" ? "ru" : locale);
-  const noticeText = notice === "connected" ? text.connected : notice === "alreadyLinked" ? text.alreadyLinked : notice === "unavailable" ? text.error : notice ? text.invalid : "";
-  const currentRetry = activityImport.retryAt;
+  const noticeText = stravaNoticeMessage(locale, notice, linkedEmail);
   const zoneTotal = data.zones.reduce((s, z) => s + z.seconds, 0);
   const thresholdTotal = data.threshold ? data.threshold.below + data.threshold.above : 0;
   const periodUrl = (week: boolean, value: string) => metrics
@@ -100,32 +91,14 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice }
     {query.isError && <RequestError key={query.errorUpdatedAt} message={text.error} />}
     {metrics && <h1 className="text-3xl font-semibold">{text.metrics}</h1>}
     {!metrics && <div className="grid items-center gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-    <div className="space-y-2">
+    {(noticeText || !data.connected || !data.consentCurrent) && <div className="space-y-2">
       {noticeText && (notice === "connected" ? <p role="status">{noticeText}</p>
         : <RequestError key={notice} message={noticeText} />)}
       <div className="flex flex-wrap gap-3">
         {(!data.connected || !data.consentCurrent) && <Link className="button-primary" href="/strava/consent">{text.connect}</Link>}
-        {data.connected && data.consentCurrent && <>
-          <div className="group relative inline-flex" tabIndex={data.periodSynchronized ? 0 : undefined}
-            aria-label={data.periodSynchronized ? SYNC_MESSAGES[locale] : undefined}
-            aria-describedby={data.periodSynchronized ? syncHelpId : undefined}>
-            <button className="inline-flex items-center gap-2 rounded-xl bg-[#fc4c02] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#df4300] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#fc4c02] disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={disabled || data.periodSynchronized} aria-describedby={syncHelpId}
-              aria-busy={activityImport.importing} onClick={() => void activityImport.start(activityPeriod(data))}>
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="size-6 shrink-0">
-                <path d="m15.4 12.5-3.1 6.1-3.1-6.1H6.7l5.6 11 5.6-11h-2.5ZM10 0 3 13.8h4.1L10 8l2.9 5.8H17L10 0Z" />
-              </svg>
-              {SYNC_MESSAGES[locale]}
-            </button>
-            <span id={syncHelpId} role="tooltip" className="absolute left-0 top-full z-30 hidden w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-stone-200 bg-white p-3 text-sm text-stone-600 shadow-lg group-hover:block group-focus-within:block">
-              {text.lastSync}: {data.periodLastSyncedAt ? dateTime(data.periodLastSyncedAt) : text.unavailable}
-            </span>
-          </div>
-        </>}
       </div>
-      {currentRetry && <p role="status" className="text-sm">{text.retry}: {dateTime(currentRetry)}</p>}
-    </div>
-      <div className="w-full space-y-3 lg:w-80">
+    </div>}
+      <div className="w-full space-y-3 lg:col-start-2 lg:w-80">
         {!metrics && <div className="flex rounded-xl bg-stone-100 p-1" aria-label={text.calendar}>
           {[{ week: true, label: navigation.week }, { week: false, label: navigation.month }].map((view) =>
             <Link key={view.label} href={periodUrl(view.week, data.weekDate ?? `${data.month}-01`)}

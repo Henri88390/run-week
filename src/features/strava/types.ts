@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { syncPeriodSchema } from "./sync-period";
 
-export const STRAVA_CONSENT_VERSION = "2026-11-04-v1";
+export const STRAVA_CONSENT_VERSION = "2026-11-05-v2";
 export const streamSchema = z.object({
   time: z.array(z.number().finite().nonnegative()).max(100_000),
   heartrate: z.array(z.number().finite().min(30).max(240).nullable()).max(100_000).nullable(),
@@ -31,9 +30,6 @@ const calendarWeekSchema = z.object({
 export type CalendarWeek = z.infer<typeof calendarWeekSchema>;
 export const dashboardSchema = z.object({
   connected: z.boolean(), consentCurrent: z.boolean(), syncActive: z.boolean(), syncPage: finite,
-  periodSynchronized: z.boolean(),
-  missingSyncPeriods: z.array(syncPeriodSchema),
-  periodLastSyncedAt: z.iso.datetime().nullable(),
   lastSyncedAt: z.iso.datetime().nullable(), retryAt: z.iso.datetime().nullable(), pending: finite,
   activities: z.array(activitySummarySchema), settings: settingsSchema,
   maximalEfforts: z.array(activitySummarySchema),

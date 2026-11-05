@@ -4,10 +4,12 @@ import { createHash } from "node:crypto";
 import { APP_URL, DATABASE_URL, REDIS_URL } from "./env";
 import { createClient } from "redis";
 import { createWeek, signIn, uniqueEmail } from "./helpers";
-import { syncPeriodSchema } from "../src/features/strava/sync-period";
+import { syncStatusSchema } from "../src/features/strava/background-sync";
+import { STRAVA_CONSENT_VERSION } from "../src/features/strava/types";
+import { calculateVdot } from "../src/features/running-programs/domain";
 
 const MOCK = "http://127.0.0.1:3102";
-const CONSENT = "2026-11-04-v1";
+const DELIVERY = "http://127.0.0.1:3103";
 async function query(sql: string, params: unknown[] = []) {
   const client = new pg.Client(DATABASE_URL);
   await client.connect();
@@ -40,78 +42,232 @@ async function connect(page: Page, athlete: number) {
 async function post(page: Page, path: string, data = {}) {
   return page.request.post(path, { data, headers: { Origin: APP_URL } });
 }
-async function syncWithRetry(page: Page, data = {}) {
-  for (let i = 0; i < 5; i++) {
-    const response = await post(page, "/api/strava/sync", data);
-    if (response.status() !== 429) return response;
-    await new Promise((resolve) => setTimeout(resolve, Number(response.headers()["retry-after"]) * 1000 + 50));
-  }
-  throw new Error("Synchronization remained rate limited");
+async function deliveryControl(values: { paused?: boolean; failDelivery?: boolean }) {
+  expect((await fetch(`${DELIVERY}/__control`, { method: "POST", body: JSON.stringify(values) })).ok).toBe(true);
 }
-async function fullImport(page: Page, email: string) {
-  const before = Math.floor(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1).getTime() / 1000);
-  await query('UPDATE "StravaConnection" SET "syncBefore"=$1,"syncPage"=1,"syncActive"=true WHERE "userId"=(SELECT id FROM "User" WHERE email=$2)', [before, email]);
-  for (let step = 0; step < 35; step++) {
-    expect((await syncWithRetry(page)).status()).toBe(200);
-    const state = await query(`SELECT c."syncActive", (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId" AND a."streamState"='pending') pending
-      FROM "StravaConnection" c JOIN "User" u ON c."userId"=u.id WHERE u.email=$1`, [email]);
-    if (!state.rows[0].syncActive && state.rows[0].pending === 0) return;
-  }
-  throw new Error("Bounded import did not finish");
+async function currentJob(page: Page) {
+  const response = await page.request.get("/api/strava/sync");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["cache-control"]).toBe("no-store");
+  return syncStatusSchema.parse(await response.json()).job;
+}
+async function scheduleIncremental(page: Page, email: string) {
+  await query(`UPDATE "StravaConnection" SET "lastSyncedAt"=CURRENT_TIMESTAMP - INTERVAL '2 days'
+    WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+  expect((await fetch(`${DELIVERY}/__schedule`, { method: "POST" })).ok).toBe(true);
+  const job = await currentJob(page);
+  if (!job) throw new Error("Scheduled import job is missing");
+  return job;
+}
+async function fullImport(page: Page, id: string) {
+  // Only the worker advances checkpoints. Browser/API reads must never drive import steps.
+  await expect.poll(async () => {
+    const job = await currentJob(page);
+    expect(job?.id).toBe(id);
+    expect(job?.status).not.toBe("failed");
+    expect(job?.status).not.toBe("cancelled");
+    return job?.status;
+  }, { timeout: 90_000 }).toBe("completed");
+}
+async function extendQueuedFixture(page: Page) {
+  const harness = await fetch(`${DELIVERY}/__control`);
+  expect(harness.ok).toBe(true);
+  expect((await harness.json()).paused).toBe(true);
+  const job = await currentJob(page);
+  expect(job?.status).toBe("queued");
+  if (!job) throw new Error("Missing OAuth history job");
+  // Synthetic runs occur on days 1-21, including future days early in the month.
+  // Change only this queued job in the disposable DB while delivery is paused.
+  const end = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1));
+  const updated = await query(`UPDATE "StravaSyncJob" SET before=$1,"end"=$2 WHERE id=$3 AND status='queued' RETURNING id`,
+    [Math.floor(end.getTime() / 1000), end.toISOString().slice(0, 10), job.id]);
+  expect(updated.rowCount).toBe(1);
+  return job;
 }
 
-test("automatic sync covers unvisited ranges and the visible previous month without retry loops", async ({ page }) => {
-  test.setTimeout(120_000);
+test.beforeEach(async () => {
+  await deliveryControl({ paused: false, failDelivery: false });
+  await control({ history: false, latest: false, rate: false, delay: 0, tokenDelay: 0 });
+});
+test.afterEach(async () => {
+  await control({ history: false, latest: false, rate: false, delay: 0, tokenDelay: 0 });
+  await deliveryControl({ paused: false, failDelivery: false });
+});
+
+test("simulator offers the highest eligible maximal-effort VDOT only when marked efforts exist", async ({ page }) => {
+  test.setTimeout(150_000);
+  const email = uniqueEmail("maximal-planner");
+  await page.goto("/planner");
+  await expect(page.locator("[data-maximal-performance-option]")).toHaveCount(0);
+  await signIn(page, email);
+  await deliveryControl({ paused: true });
+  await connect(page, 8901);
+  const job = await extendQueuedFixture(page);
+  await deliveryControl({ paused: false });
+  await fullImport(page, job.id);
+  await page.goto("/planner");
+  await page.waitForLoadState("networkidle");
+  await expect(page.locator("[data-maximal-performance-option]")).toHaveCount(0);
+  await query(`UPDATE "StravaActivity" SET "maximalEffort"=true, "distanceMeters"=5000, "elapsedSeconds"=1320
+    WHERE "sourceId"=$1 AND "userId"=(SELECT id FROM "User" WHERE email=$2)`, ["890101", email]);
+  await query(`UPDATE "StravaActivity" SET "maximalEffort"=true, "distanceMeters"=10000,
+    "elapsedSeconds"=2700, "movingSeconds"=1200, "localDate"='2020-01-01'
+    WHERE "sourceId"=$1 AND "userId"=(SELECT id FROM "User" WHERE email=$2)`, ["890102", email]);
+  await page.reload();
+  const useEfforts = page.getByRole("button", { name: "Use maximal-effort activities", exact: true });
+  await expect(useEfforts).toBeVisible();
+  await expect(page.getByLabel("Minutes", { exact: true })).toHaveValue("25");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await useEfforts.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Minutes", { exact: true })).toHaveValue("45");
+  await expect(page.getByLabel("Seconds", { exact: true })).toHaveValue("0");
+  await expect(page.getByLabel("Hours", { exact: true })).toHaveValue("0");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const saved = page.waitForResponse((response) => response.url().endsWith("/api/planner") && response.request().method() === "PUT");
+  await page.getByRole("button", { name: "Create training week", exact: true }).click();
+  expect((await saved).status()).toBe(200);
+  const planner = (await (await page.request.get("/api/planner")).json()).planner;
+  expect(planner.profile.distanceMeters).toBe(10000);
+  expect(planner.profile.raceSeconds).toBe(2700);
+  expect(planner.profile.vdot).toBeCloseTo(calculateVdot(10000, 2700), 8);
+  await query(`UPDATE "StravaActivity" SET "maximalEffort"=false WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+  await page.reload();
+  await page.locator("summary").first().click();
+  await page.waitForLoadState("networkidle");
+  await expect(page.locator("[data-maximal-performance-option]")).toHaveCount(0);
+});
+
+test("calendar navigation reads stored coverage and disconnect clears cached data without sync controls", async ({ page }) => {
+  test.setTimeout(180_000);
+  const email = uniqueEmail("strava-history");
+  const previousYear = new Date().getUTCFullYear() - 2;
+  await control({ history: true });
+  await deliveryControl({ paused: true });
+  await page.goto("/planner");
+  await signIn(page, email);
+  await connect(page, 8401);
+  const job = await extendQueuedFixture(page);
+  await deliveryControl({ paused: false });
+  await fullImport(page, job.id);
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/strava/sync" && request.method() !== "GET")
+      mutations.push(request.method());
+  });
+  await page.goto(`/activities?view=year&year=${previousYear}`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(`[data-year-month="${previousYear}-06"]`)).toContainText("1 Runs");
+  await expect(page.getByRole("button", { name: /Synchronize Strava|Stop/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const userId = (await query('SELECT id FROM "User" WHERE email=$1', [email])).rows[0].id;
+  const cache = createClient({ url: REDIS_URL });
+  await cache.connect();
+  try {
+    const index = `run-week:strava:v1:${createHash("sha256").update(userId).digest("hex")}`;
+    const entries = await cache.sMembers(index);
+    const snapshots = entries.filter((entry) => entry.includes(":dashboard:"));
+    expect(snapshots.length).toBeGreaterThan(0);
+    const snapshot = await cache.get(snapshots[0]);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot).not.toContain("Synthetic");
+    expect(snapshot).not.toContain("heartrate");
+    expect(await cache.ttl(snapshots[0])).toBeGreaterThan(0);
+    expect(await cache.ttl(snapshots[0])).toBeLessThanOrEqual(300);
+    await page.locator(`[data-year-month="${previousYear}-06"]`).click();
+    await expect(page.getByLabel("Month", { exact: true })).toHaveValue(`${previousYear}-06`);
+    await page.getByRole("link", { name: "Week", exact: true }).click();
+    await expect(page.getByLabel("Week", { exact: true })).toBeVisible();
+    await cache.flushDb();
+    await page.reload();
+    const coverage = (await query('SELECT "syncHistory" FROM "StravaConnection" WHERE "userId"=$1', [userId])).rows[0].syncHistory;
+    expect(coverage.some((range: { start: string; end: string }) => range.start <= `${previousYear}-01-01`
+      && range.end >= `${previousYear + 1}-01-01`)).toBe(true);
+    expect(mutations).toEqual([]);
+    await page.goto("/privacy");
+    const button = page.getByRole("button", { name: "Disconnect and delete imported data", exact: true });
+    await button.click();
+    const dialog = page.getByRole("dialog", { name: "Disconnect and delete imported data", exact: true });
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect((await query('SELECT count(*)::int n FROM "StravaActivity" WHERE "userId"=$1', [userId])).rows[0].n).toBeGreaterThan(0);
+    await button.click();
+    await page.route("**/api/strava/disconnect", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+    await dialog.getByRole("button", { name: "Disconnect and delete imported data", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await page.unroute("**/api/strava/disconnect");
+    await dialog.getByRole("button", { name: "Disconnect and delete imported data", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(await cache.exists(index)).toBe(0);
+    expect((await query('SELECT count(*)::int n FROM "StravaActivity" WHERE "userId"=$1', [userId])).rows[0].n).toBe(0);
+    expect(mutations).toEqual([]);
+  } finally { await cache.close(); }
+});
+
+test("OAuth queues snapshot history durably; navigation only reads and unpublished delivery recovers", async ({ page }) => {
+  test.setTimeout(180_000);
   const email = uniqueEmail("strava-auto");
-  await control({ history: false, latest: false, rate: false, delay: 0 });
-  const bodies: unknown[] = [];
-  let fail = false;
-  await page.route("**/api/strava/sync", async (route) => {
-    const period = syncPeriodSchema.parse(route.request().postDataJSON());
-    bodies.push(period);
-    if (fail) {
-      await route.fulfill({ status: 503, json: { error: "unavailable" } });
-      return;
-    }
-    await route.continue();
+  const athlete = 8601;
+  const previousYear = new Date().getUTCFullYear() - 2;
+  await control({ history: true });
+  await deliveryControl({ paused: true, failDelivery: true });
+  const mutations: string[] = [];
+  const polls: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname !== "/api/strava/sync") return;
+    if (request.method() === "GET") polls.push(request.url());
+    else mutations.push(request.method());
   });
   await page.goto("/planner");
   await signIn(page, email);
-  await connect(page, 8601);
-  const today = new Date().toISOString().slice(0, 10);
-  const month = today.slice(0, 7);
-  await expect.poll(() => bodies.length).toBeGreaterThan(0);
-  await expect.poll(async () => (await (await page.request.get(`/api/strava/activities?view=month&month=${month}`)).json()).missingSyncPeriods, { timeout: 45_000 }).toEqual([]);
-  const count = bodies.length;
+  const started = Math.floor(Date.now() / 1000);
+  await connect(page, athlete);
+  expect((await (await page.request.get("/api/strava/status")).json()).connected).toBe(true);
+  const job = await currentJob(page);
+  expect(job?.status).toBe("queued");
+  if (!job) throw new Error("OAuth did not persist its history job");
+  const stored = (await query('SELECT kind,start,"end",before,page,"publishedAt" FROM "StravaSyncJob" WHERE id=$1', [job.id])).rows[0];
+  expect(stored.kind).toBe("history");
+  expect(stored.start).toBe("1970-01-01");
+  expect(stored.before).toBeGreaterThanOrEqual(started);
+  expect(stored.before).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+  expect(stored.end).toBe(new Date((stored.before + 86400) * 1000).toISOString().slice(0, 10));
+  expect(stored.page).toBe(1);
+  expect(stored.publishedAt).toBeNull();
+  const empty = await page.request.get(`/api/strava/activities?view=year&year=${previousYear}`);
+  expect(empty.status()).toBe(200);
+  expect((await empty.json()).activities).toEqual([]);
+  for (const url of ["/activities?month=2023-01", "/activities?view=week&date=2023-01-03", "/running-metrics?month=2020-01", "/planner"]) {
+    await page.goto(url);
+    await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
+  }
   await page.reload();
-  await page.waitForTimeout(1500);
-  expect(bodies).toHaveLength(count);
-  await page.goto("/activities?month=2024-01");
-  await expect.poll(() => bodies.slice(count)).toEqual([
-    { view: "month", month: "2024-01" },
-  ]);
-  await expect.poll(async () => (await (await page.request.get("/api/strava/activities?view=month&month=2024-01")).json()).missingSyncPeriods).toEqual([]);
-  await page.goto("/activities?month=2024-02");
-  await expect.poll(() => bodies.at(-1)).toEqual({ view: "month", month: "2024-02" });
-  await expect.poll(async () => (await (await page.request.get("/api/strava/activities?view=month&month=2024-02")).json()).missingSyncPeriods).toEqual([]);
-  await page.goto("/activities?month=2023-01");
-  await expect.poll(() => bodies.slice(-2)).toEqual([
-    { view: "month", month: "2023-01" }, { view: "month", month: "2022-12" },
-  ]);
-  await expect.poll(async () => (await (await page.request.get("/api/strava/activities?view=month&month=2023-01")).json()).missingSyncPeriods).toEqual([]);
-  await page.goto("/activities?view=week&date=2023-01-03");
-  await page.waitForTimeout(1500);
-  expect(bodies.at(-1)).toEqual({ view: "month", month: "2022-12" });
-  fail = true;
-  await page.goto("/activities?month=2021-01");
-  await expect(page.getByRole("alert").filter({ hasText: "Unable to complete this request" })).toBeVisible();
-  const failedCount = bodies.length;
-  await page.waitForTimeout(11_000);
-  expect(bodies).toHaveLength(failedCount);
-  expect(bodies.at(-1)).toEqual({ view: "month", month: "2021-01" });
-  await page.goto("/running-metrics?month=2020-01");
-  await page.waitForTimeout(1500);
-  expect(bodies).toHaveLength(failedCount);
+  await expect.poll(() => polls.length).toBeGreaterThan(0);
+  expect(mutations).toEqual([]);
+  expect((await currentJob(page))?.id).toBe(job.id);
+  expect((await query('SELECT count(*)::int n FROM "StravaSyncJob" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email])).rows[0].n).toBe(1);
+  const ownCalls = async () => (await (await fetch(`${MOCK}/__control`)).json()).calls
+    .filter((call: { athlete: number }) => call.athlete === athlete);
+  expect((await ownCalls()).filter((call: { path: string }) => call.path.startsWith("/api/"))).toEqual([]);
+  await deliveryControl({ failDelivery: false });
+  expect((await fetch(`${DELIVERY}/__dispatch`, { method: "POST" })).ok).toBe(true);
+  expect((await currentJob(page))?.id).toBe(job.id);
+  await page.goto(`/activities?month=${previousYear}-06`);
+  await expect(page.getByRole("banner").getByRole("status")).toHaveCount(0);
+  await expect(page.getByRole("banner")).not.toContainText("Running summaries");
+  await expect(page.getByRole("button", { name: /Synchronize Strava|Stop/ })).toHaveCount(0);
+  await deliveryControl({ paused: false });
+  await fullImport(page, job.id);
+  // No reload/manual sync: status polling invalidates the overview after worker progress.
+  await expect(page.locator(`[data-date="${previousYear}-06-01"] a[href^="/activities/"]`)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+  expect(mutations).toEqual([]);
+  const imported = (await query('SELECT "startedAt" FROM "StravaActivity" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email])).rows;
+  expect(imported.length).toBeGreaterThan(0);
+  expect(imported.every((row) => new Date(row.startedAt).getTime() < stored.before * 1000)).toBe(true);
+  const beforeSkip = (await ownCalls()).length;
+  await page.goto(`/activities?view=year&year=${previousYear}`);
+  await page.reload();
+  expect((await ownCalls()).length).toBe(beforeSkip);
 });
 
 test("account menu connects and disconnects Strava with confirmation", async ({ page }) => {
@@ -154,63 +310,72 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
   const email = uniqueEmail("strava");
   const secondEmail = uniqueEmail("strava-other");
   const athlete = 8301;
-  // Keep the backend concurrency checks independent of the browser import loop.
-  await page.route("**/api/strava/sync", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+  await deliveryControl({ paused: true });
   await page.goto("/planner");
   await expect(page.getByRole("navigation", { name: "Run Week", exact: true }).getByRole("link", { name: "Activity overview", exact: true })).toBeVisible();
   await page.goto("/activities");
   await expect(page.getByRole("link", { name: "Sign in to view your running data" })).toBeVisible();
-  expect((await post(page, "/api/strava/sync")).status()).toBe(401);
+  expect((await post(page, "/api/strava/sync")).status()).toBe(405);
+  expect((await page.request.get("/api/strava/sync")).status()).toBe(401);
+  expect((await page.request.delete("/api/strava/sync", { headers: { Origin: APP_URL } })).status()).toBe(405);
   await signIn(page, email);
   await page.goto("/activities");
   await expect(page.getByRole("link", { name: "Connect with Strava", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Training calendar" })).toHaveCount(0);
   await page.goto("/running-metrics");
   await expect(page.getByRole("link", { name: "Connect with Strava", exact: true })).toBeVisible();
-  expect((await page.request.post("/api/strava/sync", { data: {}, headers: { Origin: "https://foreign.example" } })).status()).toBe(403);
-  expect((await post(page, "/api/strava/sync", { backfill: "bad" })).status()).toBe(400);
+  expect((await page.request.post("/api/strava/sync", { data: {}, headers: { Origin: "https://foreign.example" } })).status()).toBe(405);
   await connect(page, athlete);
   await expect(page.getByText("Strava connected.", { exact: true }).filter({ visible: true })).toBeVisible();
+  const initialJob = await extendQueuedFixture(page);
   const connection = await query('SELECT c.tokens, c."athleteKey" FROM "StravaConnection" c JOIN "User" u ON u.id=c."userId" WHERE u.email=$1', [email]);
   expect(connection.rows[0].tokens).not.toContain("synthetic");
   expect(connection.rows[0].athleteKey).toMatch(/^[a-f0-9]{64}$/);
 
-  await test.step("opening a pending activity imports its own heart-rate stream", async () => {
-    expect((await post(page, "/api/strava/sync")).status()).toBe(200);
-    const callsBeforeThrottle = (await (await fetch(`${MOCK}/__control`)).json()).calls.length;
-    const throttled = await post(page, "/api/strava/sync");
-    expect(throttled.status()).toBe(429);
-    expect(Number(throttled.headers()["retry-after"])).toBeGreaterThan(0);
-    expect((await (await fetch(`${MOCK}/__control`)).json()).calls.length).toBe(callsBeforeThrottle);
+  await test.step("pending activity details observe heart-rate streams imported by the durable job", async () => {
+    expect((await currentJob(page))?.id).toBe(initialJob.id);
+    await deliveryControl({ paused: false });
+    await expect.poll(async () => (await currentJob(page))?.phase).toBe("streams");
+    await deliveryControl({ paused: true });
     const pending = await query(`SELECT a.id FROM "StravaActivity" a JOIN "User" u ON u.id=a."userId"
       WHERE u.email=$1 AND a."sourceId"=$2`, [email, String(athlete * 100 + 1)]);
     const id = pending.rows[0].id;
+    expect((await query('SELECT "streamState" FROM "StravaActivity" WHERE id=$1', [id])).rows[0].streamState).toBe("pending");
+    const streamRequest = await post(page, `/api/strava/activities/${id}`);
+    expect(streamRequest.status()).toBe(405);
     await page.goto(`/activities/${id}`);
+    await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("status")).toHaveCount(0);
+    await expect(page.getByRole("banner")).not.toContainText("Running summaries");
+    await deliveryControl({ paused: false });
     await expect(page.getByText(/Elapsed time: 0 h 2 min/)).toBeVisible();
-    await expect(page.getByRole("application", { name: "Heart rate / Pace · Elapsed time", exact: true })).toBeVisible();
+    await expect(page.getByRole("application", { name: "Heart rate / Pace · Elapsed time", exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Average heart rate: 155.0 bpm", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue import", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Recorded streams", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Back to overview", exact: true })).toHaveCount(0);
-    await expect.poll(async () => (await query('SELECT "streamState" FROM "StravaActivity" WHERE id=$1', [id])).rows[0].streamState).toBe("ready");
+    await expect.poll(async () => (await query('SELECT "streamState" FROM "StravaActivity" WHERE id=$1', [id])).rows[0].streamState,
+      { timeout: 60_000 }).toBe("ready");
     const stored = await query('SELECT streams, "streamState" FROM "StravaActivity" WHERE id=$1', [id]);
     expect(stored.rows[0].streamState).toBe("ready");
     expect(stored.rows[0].streams.heartrate).toEqual([140, 160, null, 170, 170]);
     expect((await page.request.post(`/api/strava/activities/${id}`, {
       headers: { Origin: "https://foreign.example" },
-    })).status()).toBe(403);
-    expect((await post(page, "/api/strava/activities/missing")).status()).toBe(404);
+    })).status()).toBe(405);
+    expect((await post(page, "/api/strava/activities/missing")).status()).toBe(405);
   });
 
-  await test.step("refresh is serialized and imports are paginated/idempotent", async () => {
-    await control({ tokenDelay: 300 });
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    const simultaneous = await Promise.all([post(page, "/api/strava/sync"), post(page, "/api/strava/sync")]);
-    expect(simultaneous.map((r) => r.status()).sort()).toEqual([200, 429]);
-    await control({ tokenDelay: 0 });
-    // Reset the cursor to exercise every synthetic record independent of today's date.
-    await query('UPDATE "StravaConnection" SET "syncPage"=1,"syncActive"=true WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email]);
-    await fullImport(page, email);
+  await test.step("scheduled imports share one durable job and remain idempotent", async () => {
+    await fullImport(page, initialJob.id);
+    await deliveryControl({ paused: true });
+    const simultaneous = [await scheduleIncremental(page, email)];
+    expect((await fetch(`${DELIVERY}/__schedule`, { method: "POST" })).ok).toBe(true);
+    simultaneous.push((await currentJob(page)) ?? simultaneous[0]);
+    expect(simultaneous[0].id).toBe(simultaneous[1].id);
+    expect(simultaneous[0].id).not.toBe(initialJob.id);
+    expect((await query(`SELECT count(*)::int n FROM "StravaSyncJob" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1) AND status IN ('queued','running','paused')`, [email])).rows[0].n).toBe(1);
+    await deliveryControl({ paused: false });
+    await fullImport(page, simultaneous[0].id);
     const exportResponse = await page.request.get("/api/account");
     expect(exportResponse.headers()["cache-control"]).toBe("no-store");
     const exported = await exportResponse.json();
@@ -219,67 +384,40 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     expect(exported.stravaActivities.find((a: { sourceId: string }) => a.sourceId.endsWith("03")).streams.heartrate).toBeNull();
     expect(exported.stravaActivities.find((a: { sourceId: string }) => a.sourceId.endsWith("04")).streamState).toBe("unavailable");
     expect(JSON.stringify(exported)).not.toMatch(/synthetic-access|synthetic-refresh|athleteKey|latitude|longitude|latlng/);
-    expect((await syncWithRetry(page, { backfill: true })).status()).toBe(200);
-    await fullImport(page, email);
+    const repeatJob = await scheduleIncremental(page, email);
+    await fullImport(page, repeatJob.id);
     const repeat = await (await page.request.get("/api/account")).json();
     expect(repeat.stravaActivities).toHaveLength(21);
     const calls = await (await fetch(`${MOCK}/__control`)).json();
     const own = calls.calls.filter((c: { athlete: number }) => c.athlete === athlete);
     expect(own.filter((c: { grant?: string }) => c.grant === "refresh_token")).toHaveLength(1);
-    expect(own.some((c: { query?: { page?: string } }) => c.query?.page === "2")).toBeTruthy();
+    expect(own.filter((c: { path: string }) => c.path.endsWith("/athlete/activities"))
+      .every((c: { query: { per_page: string } }) => c.query.per_page === "200")).toBe(true);
+    expect((await query('SELECT page FROM "StravaSyncJob" WHERE id=$1', [initialJob.id])).rows[0].page).toBe(2);
     for (const c of own.filter((c: { path: string }) => c.path.endsWith("/streams"))) expect(c.query.keys).toBe("time,heartrate,velocity_smooth,distance");
   });
 
   await test.step("HR settings, measured charts, maximal confirmation and responsive keyboard UI", async () => {
-    const before = Math.floor(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1).getTime() / 1000);
     await page.goto("/planner");
-    await query('DELETE FROM "StravaActivity" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email]);
-    await query('UPDATE "StravaConnection" SET "syncBefore"=$1,"syncPage"=1,"syncActive"=true WHERE "userId"=(SELECT id FROM "User" WHERE email=$2)', [before, email]);
-    await expect.poll(async () => {
-      const state = await query('SELECT "retryAt" FROM "StravaConnection" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email]);
-      return state.rows[0].retryAt === null || new Date(state.rows[0].retryAt).getTime() <= Date.now();
-    }).toBe(true);
-    await page.unroute("**/api/strava/sync");
     const syncRequests: number[] = [];
     await page.route("**/api/strava/sync", async (route) => {
-      syncRequests.push(Date.now());
+      if (route.request().method() === "POST") syncRequests.push(Date.now());
       await route.continue();
     });
     await page.goto(`/activities?month=${month}`);
     await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Synchronize Strava", exact: true }).click();
-    await expect.poll(async () => {
-      const state = await query(`SELECT c."syncActive", (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId") total,
-        (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId" AND a."streamState"='pending') pending
-        FROM "StravaConnection" c JOIN "User" u ON c."userId"=u.id WHERE u.email=$1`, [email]);
-      return state.rows[0];
-    }, { timeout: 60_000 }).toEqual({ syncActive: false, total: 21, pending: 0 });
-    expect(syncRequests).toHaveLength(1);
-    await expect(page.getByRole("button", { name: "Synchronize Strava", exact: true })).toBeEnabled();
+    const imported = await query(`SELECT c."syncActive", (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId") total,
+      (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId" AND a."streamState"='pending') pending
+      FROM "StravaConnection" c JOIN "User" u ON c."userId"=u.id WHERE u.email=$1`, [email]);
+    expect(imported.rows[0]).toEqual({ syncActive: false, total: 21, pending: 0 });
+    expect(syncRequests).toHaveLength(0);
+    await expect(page.getByRole("button", { name: "Synchronize Strava", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Import recent activities", exact: true })).toHaveCount(0);
-    await page.route("**/api/strava/sync", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
-    await page.getByRole("button", { name: "Synchronize Strava", exact: true }).click();
-    const importError = page.getByRole("alert").filter({ hasText: "Unable to complete this request." });
-    await expect(importError).toBeVisible();
-    await expect(importError).toHaveClass(/text-red-700/);
-    const errorVisibleAt = Date.now();
-    await expect(importError).toHaveCount(0, { timeout: 4500 });
-    expect(Date.now() - errorVisibleAt).toBeGreaterThan(2000);
     await page.unroute("**/api/strava/sync");
-    await expect(page.getByRole("button", { name: "Synchronize Strava", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Synchronize Strava", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Synchronize Strava", exact: true })).toBeEnabled();
-    await expect(importError).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Activity overview", exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 1280, height: 900 });
-    const importBounds = await page.getByRole("button", { name: "Synchronize Strava", exact: true }).boundingBox();
     const monthBounds = await page.getByLabel("Month", { exact: true }).boundingBox();
-    expect(importBounds).not.toBeNull();
     expect(monthBounds).not.toBeNull();
-    if (importBounds && monthBounds) {
-      expect(importBounds.x + importBounds.width).toBeLessThan(monthBounds.x);
-      expect(Math.abs(importBounds.y - monthBounds.y)).toBeLessThan(100);
-    }
     const desktopHeights = await page.locator("[data-date], [data-week] aside > div").evaluateAll((elements) =>
       elements.map((element) => element.getBoundingClientRect().height));
     expect(new Set(desktopHeights).size).toBe(1);
@@ -740,12 +878,16 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await test.step("athlete uniqueness, row isolation, OAuth state/account/replay protection", async () => {
       await signIn(other, secondEmail);
       await connect(other, athlete);
-      await expect(other.getByText("This Strava athlete is already linked to another Run Week account.")).toBeVisible();
+      await expect(other.getByText(`This Strava account is already linked to the Run Week account ${email}. Disconnect it from that account first.`)).toBeVisible();
+      expect(other.url()).not.toContain(email);
+      const noticeCookie = (await second.cookies(`${APP_URL}/activities`)).find((cookie) => cookie.name === "run-week-strava-linked-account");
+      expect(noticeCookie?.httpOnly).toBe(true);
+      expect(noticeCookie?.value).not.toContain(email);
       const id = (await query('SELECT a.id FROM "StravaActivity" a JOIN "User" u ON u.id=a."userId" WHERE u.email=$1 LIMIT 1', [email])).rows[0].id;
       expect((await other.request.patch(`/api/strava/activities/${id}`, { data: { maximalEffort: true }, headers: { Origin: APP_URL } })).status()).toBe(404);
-      expect((await post(other, `/api/strava/activities/${id}`)).status()).toBe(404);
+      expect((await post(other, `/api/strava/activities/${id}`)).status()).toBe(405);
       expect((await (await other.request.get("/api/account")).json()).stravaActivities).toHaveLength(0);
-      const start = await page.request.post("/api/strava/connect", { form: { consent: CONSENT }, headers: { Origin: APP_URL }, maxRedirects: 0 });
+      const start = await page.request.post("/api/strava/connect", { form: { consent: STRAVA_CONSENT_VERSION }, headers: { Origin: APP_URL }, maxRedirects: 0 });
       expect(start.status()).toBe(303);
       const authorization = new URL(start.headers().location);
       const authCookie = (await page.context().cookies(`${APP_URL}/api/strava/callback`)).find((c) => c.name === "run-week-strava-auth");
@@ -760,20 +902,34 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       const replay = await page.request.get(`/api/strava/callback?code=fake&state=${authorization.searchParams.get("state")}&scope=activity:read_all`, { maxRedirects: 0 });
       expect(replay.headers().location).toContain("strava=invalid");
     });
-    await test.step("rate headers persist retries and disconnect cancels pending stream writes", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+    await test.step("provider rate limits pause durable jobs and disconnect prevents pending stream writes", async () => {
       await control({ rate: true });
-      const limited = await post(page, "/api/strava/sync");
-      expect(limited.status()).toBe(429);
-      expect(Number(limited.headers()["retry-after"])).toBeGreaterThan(0);
-      expect((await post(page, "/api/strava/sync")).status()).toBe(429);
+      const limited = await scheduleIncremental(page, email);
+      await expect.poll(async () => (await currentJob(page))?.status).toBe("paused");
+      const paused = await currentJob(page);
+      expect(paused?.retryAt).not.toBeNull();
+      expect(Date.parse(paused?.retryAt ?? "")).toBeGreaterThan(Date.now());
+      await deliveryControl({ paused: true });
+      const callsBefore = (await (await fetch(`${MOCK}/__control`)).json()).calls.length;
+      expect((await currentJob(page))?.id).toBe(limited.id);
+      expect((await (await fetch(`${MOCK}/__control`)).json()).calls.length).toBe(callsBefore);
       await control({ rate: false, delay: 2000 });
-      await query(`UPDATE "StravaConnection" SET "retryAt"=NULL WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
-      await query(`UPDATE "StravaActivity" SET "streamState"='pending' WHERE "userId"=(SELECT id FROM "User" WHERE email=$1) AND "sourceId"=$2`, [email, String(athlete * 100 + 1)]);
-      const inflight = post(page, "/api/strava/sync");
-      await expect.poll(async () => (await query('SELECT "leaseId" FROM "StravaConnection" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email])).rows[0]?.leaseId).toBeTruthy();
+      await query('UPDATE "StravaSyncJob" SET "retryAt"=NULL WHERE id=$1', [limited.id]);
+      await query(`UPDATE "StravaSyncQuota" SET "nextCallAt"=NOW() WHERE id='api'`);
+      const target = (await query(`SELECT a.id, a."sourceId" FROM "StravaActivity" a
+        JOIN "StravaSyncJob" j ON j."userId"=a."userId"
+        WHERE j.id=$1 AND a."localDate">=j.start AND a."localDate"<j."end"
+          AND a."streamState"='ready' ORDER BY a."startedAt" DESC LIMIT 1`, [limited.id])).rows[0];
+      expect(target).toBeDefined();
+      await query(`UPDATE "StravaActivity" SET "streamState"='pending' WHERE id=$1`, [target.id]);
+      const ownStreamCalls = async () => (await (await fetch(`${MOCK}/__control`)).json()).calls
+        .filter((call: { athlete: number; path: string }) => call.athlete === athlete && call.path.endsWith(`/activities/${target.sourceId}/streams`)).length;
+      const beforeStream = await ownStreamCalls();
+      await deliveryControl({ paused: false });
+      await expect.poll(ownStreamCalls).toBeGreaterThan(beforeStream);
       expect((await post(page, "/api/strava/disconnect")).status()).toBe(200);
-      expect((await inflight).status()).toBe(409);
+      await expect.poll(async () => (await (await fetch(`${DELIVERY}/__control`)).json()).working).toBe(false);
+      expect((await query('SELECT count(*)::int n FROM "StravaSyncJob" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)', [email])).rows[0].n).toBe(0);
       const deleted = await (await page.request.get("/api/account")).json();
       expect(deleted.stravaActivities).toEqual([]);
       expect(deleted.stravaConnection).toBeNull();
@@ -781,7 +937,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       await control({ delay: 0 });
       // A callback already exchanging its code cannot recreate a disconnected connection.
       await control({ tokenDelay: 2000 });
-      const start = await page.request.post("/api/strava/connect", { form: { consent: CONSENT }, headers: { Origin: APP_URL }, maxRedirects: 0 });
+      const start = await page.request.post("/api/strava/connect", { form: { consent: STRAVA_CONSENT_VERSION }, headers: { Origin: APP_URL }, maxRedirects: 0 });
       const authorize = await page.request.get(start.headers().location, { maxRedirects: 0 });
       const state = new URL(start.headers().location).searchParams.get("state");
       const callback = page.request.get(authorize.headers().location, { maxRedirects: 0 });
@@ -792,213 +948,14 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       expect((await (await page.request.get("/api/account")).json()).stravaConnection).toBeNull();
       await control({ tokenDelay: 0 });
       // Freed athlete can connect to another account; account delete cascades new tables.
-      await other.route("**/api/strava/sync", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+      await deliveryControl({ paused: true });
       await connect(other, athlete);
-      expect((await post(other, "/api/strava/sync")).status()).toBe(200);
+      const otherJob = await currentJob(other);
+      expect(otherJob?.status).toBe("queued");
+      expect((await currentJob(other))?.id).toBe(otherJob?.id);
       expect((await other.request.delete("/api/account", { headers: { Origin: APP_URL } })).status()).toBe(204);
       expect((await query('SELECT count(*)::int n FROM "StravaActivity" a JOIN "User" u ON u.id=a."userId" WHERE u.email=$1', [secondEmail])).rows[0].n).toBe(0);
+      expect((await query('SELECT count(*)::int n FROM "StravaSyncJob" WHERE id=$1', [otherJob?.id])).rows[0].n).toBe(0);
     });
   } finally { await control({ rate: false, delay: 0, tokenDelay: 0 }); await second.close(); }
-});
-
-test("manual refresh of previously visited ranges imports only the selected period", async ({ page }) => {
-  test.setTimeout(180_000);
-  const email = uniqueEmail("strava-history");
-  const athlete = 8401;
-  const previousYear = new Date().getUTCFullYear() - 2;
-  const month = new Date().toISOString().slice(0, 7);
-  await control({ history: true, latest: false, delay: 0 });
-  try {
-    const syncBodies: unknown[] = [];
-    let initializing = true;
-    const activityReads: string[] = [];
-    page.on("request", (request) => {
-      if (request.method() === "GET" && new URL(request.url()).pathname === "/api/strava/activities")
-        activityReads.push(request.url());
-    });
-    await page.route("**/api/strava/sync", async (route) => {
-      if (initializing) {
-        await route.fulfill({ status: 503, json: { error: "unavailable" } });
-        return;
-      }
-      syncBodies.push(route.request().postDataJSON());
-      await route.continue();
-    });
-    await page.goto("/planner");
-    await signIn(page, email);
-    await connect(page, athlete);
-    // Previously visited, unfinished ranges suppress auto-sync but allow manual refresh.
-    const visited = JSON.stringify([{ start: `${previousYear}-01-01`,
-      end: `${new Date().getUTCFullYear() + 1}-01-01`, syncedAt: `${previousYear}-01-01T00:00:00Z` }]);
-    await query(`UPDATE "StravaConnection" SET "syncHistory"=$1::jsonb WHERE "userId"=(SELECT id FROM "User" WHERE email=$2)`, [visited, email]);
-    initializing = false;
-    await page.reload();
-    await page.waitForTimeout(1500);
-    expect(syncBodies).toHaveLength(0);
-    const stored = async () => (await query(`SELECT a."sourceId", a."localDate", a."streamState"
-      FROM "StravaActivity" a JOIN "User" u ON u.id=a."userId" WHERE u.email=$1`, [email])).rows;
-    const ownCalls = async () => {
-      const state = await (await fetch(`${MOCK}/__control`)).json();
-      return state.calls.filter((call: { athlete: number }) => call.athlete === athlete);
-    };
-    const synchronize = page.getByRole("button", { name: "Synchronize Strava", exact: true });
-    const syncing = page.getByRole("status").filter({ hasText: "Synchronizing Strava data" });
-    await control({ rate: true });
-    await synchronize.click();
-    const syncError = page.getByRole("alert").filter({ hasText: "Unable to complete this request" });
-    await expect(syncError).toBeVisible();
-    await expect(syncing).toHaveCount(0);
-    await expect(syncError).toHaveCount(0);
-    expect(syncBodies).toEqual([{ view: "month", month }]);
-    await control({ rate: false });
-    await query(`UPDATE "StravaConnection" SET "retryAt"=NULL WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
-    await page.reload();
-    await page.waitForTimeout(1500);
-    expect(syncBodies).toHaveLength(1);
-    await synchronize.focus();
-    await page.keyboard.press("Enter");
-    await expect(syncing).toBeVisible();
-    await page.getByRole("link", { name: "Year", exact: true }).click();
-    await expect(page.getByLabel("Year", { exact: true })).toBeVisible();
-    await page.getByLabel("Year", { exact: true }).selectOption(String(previousYear));
-    await expect(syncing).toBeVisible();
-    await expect(syncing).toHaveCount(0, { timeout: 60_000 });
-    expect(syncBodies).toEqual([{ view: "month", month }, { view: "month", month }]);
-    expect(await stored()).toHaveLength(21);
-    expect((await stored()).every((row) => row.localDate.startsWith(month) && row.streamState !== "pending")).toBeTruthy();
-    const summaryCalls = (await ownCalls()).filter((call: { path: string }) => call.path.endsWith("/athlete/activities"));
-    expect(summaryCalls.at(-1).query.per_page).toBe("200");
-    const start = Date.parse(`${month}-01T00:00:00Z`) / 1000 - 86400;
-    expect(Number(summaryCalls.at(-1).query.after)).toBe(start);
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(synchronize).toBeEnabled();
-    await synchronize.click();
-    await expect(syncing).toBeVisible();
-    await expect(syncing).toHaveCount(0);
-    expect(syncBodies.at(-1)).toEqual({ view: "year", year: String(previousYear) });
-    expect(await stored()).toHaveLength(22);
-    await expect(synchronize).toBeDisabled();
-    await synchronize.locator("..").hover();
-    await expect(page.getByRole("tooltip")).toContainText("Last summary sync");
-    await page.mouse.move(0, 0);
-    await expect(page.locator(`[data-year-month="${previousYear}-06"]`)).toContainText("1 Runs");
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
-    const cache = createClient({ url: REDIS_URL });
-    await cache.connect();
-    try {
-      const userId = (await query('SELECT id FROM "User" WHERE email=$1', [email])).rows[0].id;
-      const index = `run-week:strava:v1:${createHash("sha256").update(userId).digest("hex")}`;
-      const entries = await cache.sMembers(index);
-      const snapshots = entries.filter((entry) => entry.includes(":dashboard:"));
-      expect(snapshots.length).toBeGreaterThan(0);
-      const snapshot = await cache.get(snapshots[0]);
-      expect(snapshot).not.toContain("Synthetic");
-      expect(snapshot).not.toContain("heartrate");
-      expect(await cache.ttl(snapshots[0])).toBeGreaterThan(0);
-      expect(await cache.ttl(snapshots[0])).toBeLessThanOrEqual(300);
-      const callsBeforeCachedSync = (await ownCalls()).length;
-      expect((await syncWithRetry(page, { view: "year", year: String(previousYear) })).status()).toBe(200);
-      expect((await ownCalls()).length).toBe(callsBeforeCachedSync);
-      const url = `/api/strava/activities?view=year&year=${previousYear}`;
-      const overview = await page.request.get(url);
-      expect(overview.status()).toBe(200);
-      expect(overview.headers()["cache-control"]).toBe("no-store");
-      const activity = (await overview.json()).activities[0];
-      expect((await page.request.patch(`/api/strava/activities/${activity.id}`, {
-        data: { maximalEffort: true }, headers: { Origin: APP_URL },
-      })).status()).toBe(200);
-      expect((await cache.sMembers(index)).filter((entry) => entry.includes(":dashboard:"))).toHaveLength(0);
-      const updated = await (await page.request.get(url)).json();
-      expect(updated.maximalEfforts.map((effort: { id: string }) => effort.id)).toContain(activity.id);
-      const field = `sync:${previousYear}-01-01:${previousYear + 1}-01-01`;
-      const marker = `${index}:sync:${createHash("sha256").update(field).digest("hex")}`;
-      expect(await cache.exists(marker)).toBe(1);
-      await cache.pExpire(marker, 1);
-      await page.waitForTimeout(1100);
-      expect((await syncWithRetry(page, { view: "year", year: String(previousYear) })).status()).toBe(200);
-      expect((await ownCalls()).length).toBe(callsBeforeCachedSync);
-    } finally { await cache.close(); }
-    await page.waitForLoadState("networkidle");
-    const readsBeforeNavigation = activityReads.length;
-    await page.locator(`[data-year-month="${previousYear}-06"]`).click();
-    await expect(page.getByLabel("Month", { exact: true })).toHaveValue(`${previousYear}-06`);
-    await page.getByRole("link", { name: "Year", exact: true }).click();
-    await expect(page.getByLabel("Year", { exact: true })).toHaveValue(String(previousYear));
-    await page.waitForLoadState("networkidle");
-    expect(activityReads).toHaveLength(readsBeforeNavigation);
-    await page.locator(`[data-year-month="${previousYear}-06"]`).click();
-    await expect(page.getByLabel("Month", { exact: true })).toHaveValue(`${previousYear}-06`);
-    const beforeMonth = (await ownCalls()).length;
-    await expect(synchronize).toBeDisabled();
-    await query(`UPDATE "StravaConnection" SET "syncHistory"=$1::jsonb WHERE "userId"=(SELECT id FROM "User" WHERE email=$2)`, [visited, email]);
-    await page.reload();
-    await expect(synchronize).toBeEnabled();
-    await synchronize.click();
-    await expect(syncing).toHaveCount(0);
-    await expect.poll(() => syncBodies.length).toBe(4);
-    expect(syncBodies.at(-1)).toEqual({ view: "month", month: `${previousYear}-06` });
-    await expect(synchronize).toBeDisabled();
-    expect((await ownCalls()).slice(beforeMonth)).toHaveLength(1);
-    await page.getByRole("link", { name: "Week", exact: true }).click();
-    const weekStart = new Date(`${previousYear}-06-01T00:00:00Z`);
-    weekStart.setUTCDate(weekStart.getUTCDate() - (weekStart.getUTCDay() + 6) % 7);
-    await expect(page.getByLabel("Week", { exact: true })).toHaveValue(weekStart.toISOString().slice(0, 10));
-    await expect(synchronize).toBeEnabled();
-    await synchronize.click();
-    await expect.poll(() => syncBodies.length).toBe(5);
-    await expect.poll(async () => (await (await page.request.get(
-      `/api/strava/activities?view=week&date=${weekStart.toISOString().slice(0, 10)}`)).json()).periodSynchronized).toBe(true);
-    await expect(synchronize).toBeDisabled();
-    expect(syncBodies.at(-1)).toEqual({ view: "week", date: weekStart.toISOString().slice(0, 10) });
-    const weekCalls = await ownCalls();
-    const weekSummary = weekCalls.at(-1);
-    expect(Number(weekSummary.query.after)).toBe(weekStart.getTime() / 1000 - 86400);
-    expect(Number(weekSummary.query.before) - Number(weekSummary.query.after)).toBe(9 * 86400);
-    expect(await stored()).toHaveLength(22);
-    await query(`UPDATE "StravaActivity" SET "streamState"='pending' WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)
-      AND "sourceId"=$2`, [email, String(athlete * 100 + 90)]);
-    await query(`UPDATE "StravaConnection" SET "syncHistory"='[]' WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
-    await page.reload();
-    await control({ delay: 3000 });
-    await expect(synchronize).toBeEnabled();
-    await synchronize.click();
-    await expect.poll(async () => (await ownCalls()).length).toBeGreaterThan(weekCalls.length + 1);
-    await syncing.getByRole("button", { name: "Stop", exact: true }).click();
-    await expect(syncing).toHaveCount(0);
-    await page.waitForTimeout(3500);
-    expect(syncBodies).toHaveLength(6);
-    const afterStop = (await ownCalls()).length;
-    await page.getByRole("button", { name: "Previous period" }).click();
-    await page.reload();
-    await page.waitForTimeout(1500);
-    expect(syncBodies).toHaveLength(6);
-    expect((await ownCalls()).length).toBe(afterStop);
-    const finalCache = createClient({ url: REDIS_URL });
-    await finalCache.connect();
-    const userId = (await query('SELECT id FROM "User" WHERE email=$1', [email])).rows[0].id;
-    const index = `run-week:strava:v1:${createHash("sha256").update(userId).digest("hex")}`;
-    const entries = await finalCache.sMembers(index);
-    await page.goto("/privacy");
-    const disconnectButton = page.getByRole("button", { name: "Disconnect and delete imported data", exact: true });
-    await disconnectButton.click();
-    const disconnectDialog = page.getByRole("dialog", { name: "Disconnect and delete imported data", exact: true });
-    await expect(disconnectDialog).toContainText("Strava activities remain unchanged.");
-    await disconnectDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(disconnectDialog).toHaveCount(0);
-    expect((await query('SELECT count(*)::int n FROM "StravaActivity" WHERE "userId"=$1', [userId])).rows[0].n).toBeGreaterThan(0);
-    await disconnectButton.click();
-    await page.route("**/api/strava/disconnect", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
-    await disconnectDialog.getByRole("button", { name: "Disconnect and delete imported data", exact: true }).click();
-    await expect(disconnectDialog.getByRole("alert")).toBeVisible();
-    await expect(disconnectDialog.getByRole("alert")).toHaveClass(/text-red-700/);
-    await page.unroute("**/api/strava/disconnect");
-    await disconnectDialog.getByRole("button", { name: "Disconnect and delete imported data", exact: true }).click();
-    await expect(disconnectDialog).toHaveCount(0);
-    await expect(page.getByRole("status").filter({ hasText: "Strava imports, settings and tokens deleted." })).toBeVisible();
-    try {
-      expect(await finalCache.exists(index)).toBe(0);
-      for (const entry of entries) expect(await finalCache.exists(entry)).toBe(0);
-    } finally { await finalCache.close(); }
-    expect((await query(`SELECT count(*)::int n FROM "StravaActivity" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email])).rows[0].n).toBe(0);
-  } finally { await control({ history: false, latest: false, delay: 0 }); }
 });

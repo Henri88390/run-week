@@ -14,6 +14,7 @@ import { connection } from "next/server";
 import { calendarRange, recordedPace } from "../analytics";
 import { z } from "zod";
 import { smoothSeries } from "../chart-smoothing";
+import { readLinkedAccountEmail } from "./linked-account-notice";
 
 export async function DashboardContent({ searchParams, metrics = false }: {
   searchParams: Promise<{ month?: string; strava?: string; view?: string; date?: string; year?: string }>; metrics?: boolean;
@@ -23,6 +24,7 @@ export async function DashboardContent({ searchParams, metrics = false }: {
   if (!userId) return <AnalyticsPrompt />;
   let data: DashboardData | null = null;
   let notice: string | undefined;
+  let linkedEmail: string | undefined;
   let futureUrl: string | undefined;
   try {
     const search = await searchParams;
@@ -43,13 +45,14 @@ export async function DashboardContent({ searchParams, metrics = false }: {
       if (linked?.consentVersion === STRAVA_CONSENT_VERSION) data = await cachedDashboard(userId, month, weekDate, year, today);
     }
     notice = search.strava;
+    if (notice === "alreadyLinked") linkedEmail = await readLinkedAccountEmail(userId);
   } catch (error) {
     logStravaFailure(error, "dashboard");
     return <AnalyticsPrompt failed />;
   }
   if (futureUrl) redirect(futureUrl);
-  if (!data) return <StravaConnectionPrompt notice={notice} />;
-  return <ActivityDashboard data={data} metrics={metrics} notice={notice} />;
+  if (!data) return <StravaConnectionPrompt notice={notice} linkedEmail={linkedEmail} />;
+  return <ActivityDashboard data={data} metrics={metrics} notice={notice} linkedEmail={linkedEmail} />;
 }
 export async function DetailContent({ params }: { params: Promise<{ id: string }> }) {
   await connection();
