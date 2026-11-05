@@ -13,7 +13,7 @@ import { CACHE_PRIVACY_MESSAGES } from "../sync-messages";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { RequestError } from "./request-error";
 import { STRAVA_STATUS_KEY } from "./connection-status";
-import { BACKGROUND_MESSAGES } from "../background-messages";
+import { BACKGROUND_MESSAGES, ELEVATION_DISCLOSURE } from "../background-messages";
 
 const retention: Record<Locale, string> = {
   en: "Strava imports, manual HR settings and encrypted tokens stay until disconnect or account deletion. Consent version and acceptance time are recorded; changed consent requires reconnection. OAuth cookies and cancellable single-use tickets expire after 10 minutes. Import progress and short-lived leases are stored for safe retries. Hosting/database providers listed in this policy process this data. Logs contain only operation names and safe error codes, not activity data or tokens. Account export includes imports and settings, never tokens. Strava does not become a sign-in provider. Account deletion cancels pending imports; original Strava activities remain.",
@@ -57,6 +57,7 @@ export function StravaPrivacy() {
     finally { setBusy(false); }
   }
   return <section lang={locale} className="space-y-3">
+    <p>{ELEVATION_DISCLOSURE[locale]}</p>
     <h2 className="text-lg font-semibold">{text.consentTitle} · {STRAVA_CONSENT_VERSION}</h2>
     <p>{text.consent}</p>
     <p>{retention[locale]}</p>

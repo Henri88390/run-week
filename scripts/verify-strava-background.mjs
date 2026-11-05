@@ -30,7 +30,7 @@ const database = {
   stravaConnection: {
     async findMany({ where }) {
       if (!connection || connection.consentVersion !== where.consentVersion
-        || (connection.lastSyncedAt && connection.lastSyncedAt >= where.OR[1].lastSyncedAt.lt)) return [];
+        || (connection.elevationVersion >= 1 && connection.lastSyncedAt && connection.lastSyncedAt >= where.OR[1].lastSyncedAt.lt)) return [];
       const blocked = job && where.jobs.none.OR.some((condition) =>
         (typeof condition.status === "string" ? job.status === condition.status : condition.status.in.includes(job.status))
         && (!condition.errorCode || condition.errorCode.in.includes(job.errorCode)));
@@ -54,6 +54,7 @@ const database = {
     async findFirst({ where }) {
       if (!job || job.userId !== where.userId || (where.generation && job.generation !== where.generation)
         || (where.status && !where.status.in.includes(job.status))
+        || (where.kind && job.kind !== where.kind)
         || (where.OR && !where.OR.some((condition) => job.status === condition.status
           && (!condition.errorCode || job.errorCode === condition.errorCode)))) return null;
       return { ...job };
@@ -76,9 +77,13 @@ const database = {
     async upsert({ create, update: data }) { quota = quota ? update(quota, data) : create; },
   },
   stravaActivity: {
-    async findFirst({ where }) { return activities.find((activity) => activity.streamState === where.streamState) ?? null; },
+    async findFirst({ where }) { return activities.find((activity) => where.OR
+      ? where.OR.some((condition) => Object.entries(condition).every(([key, value]) => activity[key] === value))
+      : activity.streamState === where.streamState) ?? null; },
     async updateMany({ where, data }) {
-      const activity = activities.find((activity) => activity.id === where.id && activity.streamState === where.streamState);
+      const activity = activities.find((activity) => activity.id === where.id && (!where.OR
+        ? activity.streamState === where.streamState
+        : where.OR.some((condition) => Object.entries(condition).every(([key, value]) => activity[key] === value))));
       if (!activity) return { count: 0 };
       update(activity, data);
       return { count: 1 };
@@ -138,7 +143,7 @@ const { StravaError } = load("src/features/strava/server/api.ts");
 function reset() {
   connection = { userId: "local-test", generation: "generation-1", consentVersion: STRAVA_CONSENT_VERSION,
     tokens: JSON.stringify({ access_token: "synthetic", refresh_token: "synthetic", expires_at: 4102444800 }),
-    leaseId: null, leaseUntil: null, syncHistory: [], syncActive: true };
+    leaseId: null, leaseUntil: null, syncHistory: [], syncActive: true, elevationVersion: 1 };
   job = { id: "job", userId: connection.userId, generation: connection.generation, version: 1,
     status: "queued", phase: "summaries", page: 1, start: "2024-01-01", end: "2025-01-01",
     remaining: [], before: Date.parse("2025-01-01T00:00:00Z") / 1000, summaries: 0, recordings: 0, retryAt: null };
@@ -296,4 +301,54 @@ assert.deepEqual(await stravaDispatcher.handler({ step }), { dispatched: 1 });
 assert.equal(deliveries.length, sentBeforeIdle + 1, "The slower outbox still recovers unpublished jobs");
 assert.deepEqual(await stravaDispatcher.handler({ step }), { dispatched: 0 });
 assert.equal(deliveries.length, sentBeforeIdle + 1, "Published jobs are not dispatched again");
+reset();
+connection.elevationVersion = 0;
+connection.lastSyncedAt = new Date();
+job.kind = "incremental";
+job.status = "failed";
+job.errorCode = "unavailable";
+job.page = 4;
+const legacyJobId = job.id;
+await scheduleDueSyncAccounts();
+assert.equal(job.id, legacyJobId, "A failed legacy import is upgraded, not abandoned for later resumption");
+assert.equal(job.kind, "elevation");
+assert.equal(job.start, "1970-01-01");
+assert.equal(job.page, 1, "Upgrading to full history resets the incremental checkpoint");
+job.status = "failed";
+job.errorCode = "unavailable";
+job.page = 3;
+await scheduleDueSyncAccounts();
+assert.equal(job.page, 3, "Retrying elevation backfill preserves its checkpoint");
+reset();
+connection.elevationVersion = 0;
+connection.lastSyncedAt = new Date();
+connection.syncHistory = [{ start: "1970-01-01", end: new Date().toISOString().slice(0, 10), syncedAt: new Date().toISOString() }];
+job.status = "completed";
+assert.equal(await scheduleDueSyncAccounts(), 1, "Elevation backfill is due even for a recently synchronized account");
+assert.equal(job.kind, "elevation");
+assert.equal(job.start, "1970-01-01", "Backfill includes previously covered history");
+assert.equal(await scheduleDueSyncAccounts(), 0, "Active elevation backfill is not scheduled again");
+job.phase = "streams";
+activities = [{ id: "legacy", sourceId: "1", userId: connection.userId,
+  streamState: "ready", streams: { time: [0, 5], heartrate: [140, 150] }, elevationStreamState: "pending" }];
+api.streams = async () => ({ data: { time: [0, 5], heartrate: [140, 150],
+  distance: [0, 20], velocity_smooth: [4, 4], altitude: [-5, 2] } });
+await chunk();
+assert.equal(activities[0].elevationStreamState, "ready");
+assert.deepEqual(activities[0].streams.altitude, [-5, 2]);
+await chunk();
+assert.equal(connection.elevationVersion, 1, "Backfill completion is persisted only after every chunk");
+assert.equal(await scheduleDueSyncAccounts(), 0, "Completed backfills do not restart");
+reset();
+job.phase = "streams";
+activities = [{ id: "missing-altitude", sourceId: "2", userId: connection.userId,
+  streamState: "ready", elevationStreamState: "pending", streams: { time: [0, 5], heartrate: [140, 150] } }];
+api.streams = async () => ({ data: null });
+await chunk();
+assert.equal(activities[0].streamState, "ready", "Missing backfill recordings do not destroy stored HR data");
+assert.deepEqual(activities[0].streams.heartrate, [140, 150]);
+assert.equal(activities[0].elevationStreamState, "unavailable");
+api.streams = async () => { assert.fail("Unavailable elevation must not be fetched repeatedly"); };
+await chunk();
+assert.equal(job.status, "completed");
 console.log("Background checks passed: checkpoints, pagination, run filtering, streams, quota pauses, resumability and stale-write fencing.");

@@ -17,10 +17,11 @@ export async function createSyncJob(tx: Prisma.TransactionClient, userId: string
   const existing = await tx.stravaSyncJob.findFirst({ where: { userId, status: { in: activeStatuses } } });
   if (existing) return existing;
   const history = syncHistorySchema.parse(connection.syncHistory);
+  const elevationBackfill = connection.elevationVersion < 1;
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const range = {
-    start: connection.lastSyncedAt && rangePreviouslySynchronized(history, {
+    start: !elevationBackfill && connection.lastSyncedAt && rangePreviouslySynchronized(history, {
       start: "1970-01-01", end: connection.lastSyncedAt.toISOString().slice(0, 10),
     })
       ? new Date(Math.max(0, connection.lastSyncedAt.getTime() - 86400_000)).toISOString().slice(0, 10)
@@ -29,7 +30,7 @@ export async function createSyncJob(tx: Prisma.TransactionClient, userId: string
   };
   if (range.start > today) throw new StravaError("invalid", 400);
   const incremental = range.start !== "1970-01-01";
-  const gaps = incremental ? [range] : uncoveredRanges(history, range, today);
+  const gaps = incremental || elevationBackfill ? [range] : uncoveredRanges(history, range, today);
   const first = gaps[0];
   if (!first) return null;
   // Scheduled retries resume the saved page rather than refetching the same range.
@@ -38,9 +39,13 @@ export async function createSyncJob(tx: Prisma.TransactionClient, userId: string
   await tx.stravaConnection.update({ where: { userId }, data: { syncActive: true } });
   if (unfinished) return tx.stravaSyncJob.update({ where: { id: unfinished.id }, data: {
     status: "queued", errorCode: null, publishedAt: null, retryAt: null, version: { increment: 1 },
+    ...(elevationBackfill && unfinished.kind !== "elevation" ? {
+      kind: "elevation", start: first.start, end: first.end, remaining: gaps.slice(1),
+      phase: "summaries", page: 1, summaries: 0, recordings: 0, before: Math.floor(now.getTime() / 1000),
+    } : {}),
   } });
   return tx.stravaSyncJob.create({ data: {
-    id: randomUUID(), userId, generation: connection.generation, kind: incremental ? "incremental" : "history",
+    id: randomUUID(), userId, generation: connection.generation, kind: elevationBackfill ? "elevation" : incremental ? "incremental" : "history",
     start: first.start, end: first.end, remaining: gaps.slice(1),
     before: Math.min(Math.floor(now.getTime() / 1000), Math.floor(Date.parse(`${range.end}T00:00:00Z`) / 1000) + 86400),
   } });
@@ -64,7 +69,7 @@ export async function publishJob(jobId: string) {
 export async function scheduleDueSyncAccounts() {
   const accounts = await db().stravaConnection.findMany({
     where: { consentVersion: STRAVA_CONSENT_VERSION,
-      OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - 86400_000) } }],
+      OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - 86400_000) } }, { elevationVersion: { lt: 1 } }],
       jobs: { none: { OR: [{ status: { in: activeStatuses } },
         { status: "failed", errorCode: { in: ["invalid", "unauthorized", "notConnected"] } }] } } },
     orderBy: { lastSyncedAt: { sort: "asc", nulls: "first" } }, take: 100, select: { userId: true },

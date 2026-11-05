@@ -31,6 +31,7 @@ export async function GET() {
           sourceId: true, name: true, sport: true, startedAt: true, localDate: true,
           distanceMeters: true, movingSeconds: true, elapsedSeconds: true, averageHr: true, maxHr: true,
           streams: true, streamState: true, maximalEffort: true, updatedAt: true,
+          elevationGainMeters: true, elevationStreamState: true,
         }, orderBy: { startedAt: "asc" } },
         runningAnalyticsSettings: { select: { zoneBounds: true, thresholdBpm: true, maxHr: true } },
       },

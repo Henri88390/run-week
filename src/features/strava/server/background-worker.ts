@@ -87,13 +87,18 @@ export async function syncChunk(jobId: string, version: number) {
       });
       return result.delay ? await pause(result.delay) : { done: false };
     }
-    const activity = await db().stravaActivity.findFirst({ where: { userId: job.userId, streamState: "pending",
+    const pendingStreams = { OR: [{ streamState: "pending" }, { elevationStreamState: "pending" }] };
+    const activity = await db().stravaActivity.findFirst({ where: { userId: job.userId, ...pendingStreams,
       localDate: { gte: job.start, lt: job.end } }, orderBy: [{ startedAt: "desc" }, { id: "asc" }] });
     if (activity) {
       const result = await streams(tokens.access_token, activity.sourceId);
       await commit(async (tx) => {
-        await tx.stravaActivity.updateMany({ where: { id: activity.id, userId: job.userId, streamState: "pending" },
-          data: { streams: result.data ?? Prisma.DbNull, streamState: result.data ? "ready" : "unavailable" } });
+        await tx.stravaActivity.updateMany({ where: { id: activity.id, userId: job.userId, ...pendingStreams },
+          data: {
+            ...(result.data || activity.streamState === "pending"
+              ? { streams: result.data ?? Prisma.DbNull, streamState: result.data ? "ready" : "unavailable" } : {}),
+            elevationStreamState: result.data?.altitude ? "ready" : "unavailable",
+          } });
         await tx.stravaSyncJob.update({ where: { id: jobId }, data: { recordings: { increment: 1 } } });
       });
       return result.delay ? await pause(result.delay) : { done: false };
@@ -108,6 +113,7 @@ export async function syncChunk(jobId: string, version: number) {
       await tx.stravaConnection.update({ where: { userId: job.userId }, data: {
         syncActive: !!next,
         ...(!next ? { lastSyncedAt: new Date(job.before * 1000) } : {}),
+        ...(!next && job.kind === "elevation" ? { elevationVersion: 1 } : {}),
         syncHistory: job.start < end ? [...history.filter((entry) => entry.start !== job.start || entry.end !== end),
           { start: job.start, end, syncedAt: new Date().toISOString() }] : history,
       } });

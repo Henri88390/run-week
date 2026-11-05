@@ -68,7 +68,7 @@ http.createServer(async (request, response) => {
         id: athlete * 100 + i + 1, name: `Synthetic run ${i + 1}`, sport_type: i === 21 ? "Ride" : "Run", type: i === 21 ? "Ride" : "Run",
         start_date: `${month}-${String(Math.min(i + 1, 28)).padStart(2, "0")}T10:00:00Z`,
         start_date_local: `${month}-${String(Math.min(i + 1, 28)).padStart(2, "0")}T11:00:00Z`,
-        elapsed_time: elapsed, moving_time: elapsed - 1, distance: 4 * elapsed + 200,
+        elapsed_time: elapsed, moving_time: elapsed - 1, distance: 4 * elapsed + 200, total_elevation_gain: 42.5,
         ...(i !== 2 ? { average_heartrate: 155, max_heartrate: 180 } : {}),
       };
     });
@@ -77,7 +77,7 @@ http.createServer(async (request, response) => {
       [controls.latest, 91, "Newly synchronized run", new Date(Date.now() - 60_000).toISOString()],
     ]) {
       if (enabled) records.push({ id: athlete * 100 + offset, name, sport_type: "Run", type: "Run",
-        start_date: started, start_date_local: started, elapsed_time: 1800, moving_time: 1790, distance: 5000,
+        start_date: started, start_date_local: started, elapsed_time: 1800, moving_time: 1790, distance: 5000, total_elevation_gain: 80,
         average_heartrate: 150, max_heartrate: 180 });
     }
     const filtered = records.filter((a) => Date.parse(a.start_date) / 1000 > Number(url.searchParams.get("after"))
@@ -96,6 +96,7 @@ http.createServer(async (request, response) => {
       time: { data: [0, 5, 10, 40, 45] },
       ...(Number(stream[1]) % 100 !== 3 ? { heartrate: { data: [140, 160, null, 170, 170] } } : {}),
       velocity_smooth: { data: [3, 4, 4, 3, 0.003] }, distance: { data: [0, 15, 35, 100, 115] },
+      altitude: { data: [-5, 0, 4, null, 2] },
     }, { "X-RateLimit-Limit": "200,2000", "X-RateLimit-Usage": "1,1" });
   }
   return send(response, 404, {});

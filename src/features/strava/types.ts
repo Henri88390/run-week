@@ -6,6 +6,7 @@ export const streamSchema = z.object({
   heartrate: z.array(z.number().finite().min(30).max(240).nullable()).max(100_000).nullable(),
   velocity_smooth: z.array(z.number().finite().nonnegative().nullable()).max(100_000).nullable(),
   distance: z.array(z.number().finite().nonnegative().nullable()).max(100_000).nullable(),
+  altitude: z.array(z.number().finite().nullable()).max(100_000).nullable().default(null),
 });
 export type ActivityStreams = z.infer<typeof streamSchema>;
 export const settingsSchema = z.object({
@@ -20,6 +21,7 @@ const activitySummarySchema = z.object({
   id: z.string(), sourceId: z.string(), name: z.string(), sport: z.string(), localDate: z.iso.date(),
   distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative(), elapsedSeconds: finite.nonnegative(),
   averageHr: finite.nullable(), maxHr: finite.nullable(), maximalEffort: z.boolean(), streamState: z.string(),
+  elevationGainMeters: finite.nonnegative().nullable().default(null),
 });
 export type ActivitySummary = z.infer<typeof activitySummarySchema>;
 const calendarWeekSchema = z.object({

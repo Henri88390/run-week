@@ -83,15 +83,18 @@ export async function DetailContent({ params }: { params: Promise<{ id: string }
     let gap = false;
     let hrMissing = false;
     let speedMissing = false;
+    let altitudeMissing = false;
     for (let i = 0; i < stream.time.length; i++) {
       gap ||= i > 0 && stream.time[i] - stream.time[i - 1] > 15;
       hrMissing ||= stream.heartrate?.[i] == null;
       speedMissing ||= recordedPace(stream.velocity_smooth?.[i]) === null;
+      altitudeMissing ||= stream.altitude?.[i] == null;
       if (i % stride === 0 || i === stream.time.length - 1) {
         const velocity = speeds[i];
         points.push({ time: stream.time[i], hr: hrMissing ? null : hrs[i],
-          pace: speedMissing ? null : recordedPace(velocity), gap });
-        gap = false; hrMissing = false; speedMissing = false;
+          pace: speedMissing ? null : recordedPace(velocity),
+          altitude: altitudeMissing ? null : stream.altitude?.[i] ?? null, gap });
+        gap = false; hrMissing = false; speedMissing = false; altitudeMissing = false;
       }
     }
   }
@@ -99,5 +102,6 @@ export async function DetailContent({ params }: { params: Promise<{ id: string }
     id: row.id, sourceId: row.sourceId, name: row.name, sport: row.sport, localDate: row.localDate,
     distanceMeters: row.distanceMeters, movingSeconds: row.movingSeconds, elapsedSeconds: row.elapsedSeconds,
     averageHr: row.averageHr, maxHr: row.maxHr, maximalEffort: row.maximalEffort, streamState: row.streamState,
+    elevationGainMeters: row.elevationGainMeters,
   }} points={points} />;
 }

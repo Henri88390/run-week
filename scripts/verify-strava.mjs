@@ -391,11 +391,19 @@ const originalFetch = global.fetch;
 try {
   global.fetch = async (url, init) => {
     assert.equal(init.cache, "no-store"); assert.equal(init.redirect, "error"); assert.ok(init.signal instanceof AbortSignal);
-    assert.ok(String(url).includes("keys=time,heartrate,velocity_smooth,distance"));
+    assert.ok(String(url).includes("keys=time,heartrate,velocity_smooth,distance,altitude"));
     assert.ok(!String(url).includes("latlng"));
     return Response.json({ time: { data: [0, 5] }, velocity_smooth: { data: [2, 3] } });
   };
-  assert.deepEqual((await streams("synthetic-token", "1")).data, { time: [0, 5], heartrate: null, velocity_smooth: [2, 3], distance: null });
+  assert.deepEqual((await streams("synthetic-token", "1")).data, { time: [0, 5], heartrate: null, velocity_smooth: [2, 3], distance: null, altitude: null });
+  global.fetch = async () => Response.json({
+    time: { data: [0, 5] }, altitude: { data: [-12.5, 5] }, latlng: { data: [[1, 2], [3, 4]] },
+  });
+  const elevationStreams = (await streams("synthetic", "1")).data;
+  assert.deepEqual(elevationStreams.altitude, [-12.5, 5], "Below-sea-level altitude is valid");
+  assert.ok(!("latlng" in elevationStreams), "GPS coordinates are never persisted");
+  global.fetch = async () => Response.json({ time: { data: [0, 5] }, altitude: { data: [10] } });
+  await assert.rejects(streams("synthetic", "1"), (e) => e.diagnostic.reason === "sampleAlignment");
   global.fetch = async () => Response.json({ time: { data: [0, 5] }, heartrate: { data: [150] } });
   await assert.rejects(streams("synthetic", "1"), (e) => e.code === "unavailable" && e.diagnostic.reason === "sampleAlignment");
   global.fetch = async () => Response.json({ time: { data: [5, 0] } });
@@ -410,16 +418,18 @@ try {
       heartrate: { data: [100, 140, 150, 160, 170, 180, null] },
       velocity_smooth: { data: [1, 2, 3, 4, 5, 6, 7] },
       distance: { data: [0, 0, 10, 11, 12, 30, 31] },
+      altitude: { data: [-10, -5, 0, 2, 3, 5, null] },
     });
     const normalized = (await streams("synthetic", "1")).data;
     assert.deepEqual(normalized, {
       time: [0, 5, 10], heartrate: [140, 170, null], velocity_smooth: [2, 5, 7], distance: [0, 12, 31],
+      altitude: [-5, 3, null],
     });
     assert.equal(heartRateTimes([normalized], settings).zones.reduce((sum, zone) => sum + zone.seconds, 0), 10);
     assert.deepEqual(streamWarnings[0], ["strava_stream_timestamps_normalized", { reason: "duplicates", removedSamples: 4 }]);
     global.fetch = async () => Response.json({ time: { data: [0, 0, 0] } });
     assert.deepEqual((await streams("synthetic", "1")).data, {
-      time: [0], heartrate: null, velocity_smooth: null, distance: null,
+      time: [0], heartrate: null, velocity_smooth: null, distance: null, altitude: null,
     });
     global.fetch = async () => Response.json({ time: { data: [] } });
     assert.deepEqual((await streams("synthetic", "1")).data.time, []);
@@ -436,6 +446,12 @@ try {
   assert.ok((await summaries("synthetic", 1, 0, 100)).delay > 0);
   const summary = { id: 1, name: "Synthetic run", type: "Run", start_date: "2026-01-01T10:00:00Z",
     start_date_local: "2026-01-01T11:00:00Z", distance: 5000, moving_time: 1500, elapsed_time: 1510 };
+  global.fetch = async () => Response.json([{ ...summary, total_elevation_gain: 42.5 }]);
+  assert.equal((await summaries("synthetic", 1, 0, 100)).activities[0].total_elevation_gain, 42.5);
+  for (const invalid of [-1, "10"]) {
+    global.fetch = async () => Response.json([{ ...summary, total_elevation_gain: invalid }]);
+    await assert.rejects(summaries("synthetic", 1, 0, 100), (e) => e.diagnostic.stage === "summaries");
+  }
   global.fetch = async (url) => {
     assert.equal(new URL(url).searchParams.get("per_page"), "200");
     return Response.json(Array.from({ length: 200 }, (_, i) => ({ ...summary, id: i + 1 })));

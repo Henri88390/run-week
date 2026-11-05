@@ -42,6 +42,7 @@ const summarySchema = z.object({
   distance: z.number().finite().nonnegative(), moving_time: z.number().int().nonnegative(),
   elapsed_time: z.number().int().nonnegative(), average_heartrate: summaryHeartRate,
   max_heartrate: summaryHeartRate,
+  total_elevation_gain: z.number().finite().nonnegative().nullable().optional(),
 });
 export type Summary = z.infer<typeof summarySchema>;
 const TIMEOUT = 8000;
@@ -133,7 +134,7 @@ export async function summaries(accessToken: string, page: number, after: number
 }
 export async function streams(accessToken: string, id: string, signal?: AbortSignal): Promise<{ data: ActivityStreams | null; delay?: number }> {
   if (!/^\d+$/.test(id)) throw new StravaError("invalid", 400);
-  const result = await request(`/api/v3/activities/${id}/streams?keys=time,heartrate,velocity_smooth,distance&key_by_type=true`, {
+  const result = await request(`/api/v3/activities/${id}/streams?keys=time,heartrate,velocity_smooth,distance,altitude&key_by_type=true`, {
     signal,
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -143,6 +144,7 @@ export async function streams(accessToken: string, id: string, signal?: AbortSig
     heartrate: z.object({ data: z.array(z.number().finite().nullable()).max(100_000) }).optional(),
     velocity_smooth: z.object({ data: z.array(z.number().finite().nonnegative().nullable()).max(100_000) }).optional(),
     distance: z.object({ data: z.array(z.number().finite().nonnegative().nullable()).max(100_000) }).optional(),
+    altitude: z.object({ data: z.array(z.number().finite().nullable()).max(100_000) }).optional(),
   }).safeParse(result.value);
   if (!raw.success) throw schemaFailure("streams", raw.error);
   if (!raw.data.time) return { data: null, delay: result.delay };
@@ -159,6 +161,7 @@ export async function streams(accessToken: string, id: string, signal?: AbortSig
   const parsed = streamSchema.safeParse({
     time, heartrate: align(raw.data.heartrate?.data)?.map(validHeartRate) ?? null,
     velocity_smooth: align(raw.data.velocity_smooth?.data), distance: align(raw.data.distance?.data),
+    altitude: align(raw.data.altitude?.data),
   });
   if (!parsed.success) throw schemaFailure("streams", parsed.error);
   // Keep the last sample at each timestamp: earlier duplicates have no duration.
@@ -171,5 +174,6 @@ export async function streams(accessToken: string, id: string, signal?: AbortSig
     time: indices.map((i) => time[i]),
     heartrate: select(parsed.data.heartrate), velocity_smooth: select(parsed.data.velocity_smooth),
     distance: select(parsed.data.distance),
+    altitude: select(parsed.data.altitude),
   }, delay: result.delay };
 }

@@ -31,6 +31,19 @@ const en = {
 };
 type Text = Record<keyof typeof en, string>;
 
+export const ELEVATION_MESSAGES: Record<Locale, { altitude: string; gain: string }> = {
+  en: { altitude: "Elevation", gain: "Elevation gain (D+)" },
+  fr: { altitude: "Altitude", gain: "Dénivelé positif (D+)" },
+  de: { altitude: "Höhe", gain: "Höhengewinn (D+)" },
+  es: { altitude: "Altitud", gain: "Desnivel positivo (D+)" },
+  pt: { altitude: "Altitude", gain: "Desnível positivo (D+)" },
+  it: { altitude: "Altitudine", gain: "Dislivello positivo (D+)" },
+  pl: { altitude: "Wysokość", gain: "Suma podejść (D+)" },
+  ru: { altitude: "Высота", gain: "Набор высоты (D+)" },
+  uk: { altitude: "Висота", gain: "Набір висоти (D+)" },
+  be: { altitude: "Вышыня", gain: "Набор вышыні (D+)" },
+};
+
 const LINKED_ACCOUNT_MESSAGES: Record<Locale, (email: string) => string> = {
   en: (email) => `This Strava account is already linked to the Run Week account ${email}. Disconnect it from that account first.`,
   fr: (email) => `Ce compte Strava est déjà lié au compte Run Week ${email}. Déconnectez-le d’abord de ce compte.`,

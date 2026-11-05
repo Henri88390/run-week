@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { STRAVA_MESSAGES } from "../messages";
 import { STRAVA_CONSENT_VERSION } from "../types";
-import { BACKGROUND_MESSAGES } from "../background-messages";
+import { BACKGROUND_MESSAGES, ELEVATION_DISCLOSURE } from "../background-messages";
 import { useHydrated } from "@/components/use-hydrated";
 
 export function StravaConsent({ signedIn }: { signedIn: boolean }) {
@@ -21,6 +21,7 @@ export function StravaConsent({ signedIn }: { signedIn: boolean }) {
           <span>{text.consent}</span>
         </label>
         <p className="text-sm">{BACKGROUND_MESSAGES[locale].consent}</p>
+        <p className="text-sm">{ELEVATION_DISCLOSURE[locale]}</p>
         <p className="text-sm"><Link href="/privacy" className="underline">{text.privacy}</Link> · {STRAVA_CONSENT_VERSION}</p>
         <button className="button-primary" type="submit" disabled={!hydrated}>{text.accept}</button>
       </form>}

@@ -218,7 +218,24 @@ Previously cancelled jobs are also resumed when due. Invalid or revoked
 authorization requires reconnecting Strava, rather than repeated automated requests.
 
 Historical coverage is stored as successful date intervals in `syncHistory`, not
-separate week/month/year flags. Imports subtract covered intervals and process the
+separate week/month/year flags. Total elevation gain is stored as
+`StravaActivity.elevationGainMeters` (metres, nullable when Strava does not supply it).
+Raw `streams.altitude` samples are also in metres, aligned with time/distance samples;
+negative altitude is valid. These fields are included in account exports and
+activity summaries expose elevation gain. Activity details overlay the elevation
+profile on the heart-rate/pace chart and show total elevation gain (D+).
+
+Existing connections automatically receive a one-time `elevation` background job,
+even if recently synced. It pages through history again to retrieve elevation totals,
+then fetches recordings lacking an elevation import result. This uses additional
+Strava requests, the existing quotas, checkpoints, retries and disconnect fencing.
+The persisted `elevationVersion` marks completion; `elevationStreamState` distinguishes
+pending from ready/unavailable samples so missing altitude is not fetched repeatedly.
+Old recordings remain readable while the migration/backfill rolls out. A previously
+active import finishes first; the hourly scheduler then queues its elevation backfill.
+Apply the additive Prisma migration before deploying the new code.
+
+Historical imports subtract covered intervals and process the
 remaining gaps, including empty periods. Current-day coverage stays provisional;
 incremental imports discover newer activities. Existing ready/unavailable recordings
 are retained, unique account/source IDs prevent duplicates, and every committed
@@ -256,7 +273,7 @@ one-day boundary margin to cover timezone offsets. Imports do not delete data
 outside the selected period. Disconnect is
 available in privacy controls and deletes all local imports and tokens; original
 Strava activities remain unchanged. Only Run, TrailRun and VirtualRun are retained.
-Streams request only `time,heartrate,velocity_smooth,distance`; no GPS, profile
+Streams request only `time,heartrate,velocity_smooth,distance,altitude`; no GPS coordinates, profile
 details, AI or Garmin activity API is involved. Missing HR remains null. Available
 streams are retained on reimport; Strava deletions are not automatically
 reconciled (disconnect removes everything locally).
@@ -434,11 +451,11 @@ as hours and minutes, like the calendar summaries.
 Activity details omit the recorded-stream heading, manual continue-import button
 and back-to-overview link. Background import progress banners and counters are
 not displayed; imports, status polling and data refreshes continue on all pages.
-Activity details use Recharts for a responsive heart-rate/pace chart with separate
-axes, colored Z1–Z5 background bands and independent HR/pace checkboxes. Values are
+Activity details use Recharts for a responsive heart-rate/pace/elevation chart with separate
+axes, colored Z1–Z5 background bands and independent series checkboxes. Values are
 available in a crosshair tooltip using pointer, touch or left/right arrow keys.
 The chart uses subtle horizontal gridlines and disables animation.
-Compact colored summary cards show distance, elapsed time, average HR and moving pace;
+Compact colored summary cards show distance, elapsed time, average HR, moving pace and total D+;
 elapsed durations below one hour omit the zero-hour prefix. Average moving pace
 uses moving time divided by distance. Averages are not drawn as lines on the chart.
 Pace is displayed as minutes:seconds per kilometer; zero speed and missing recordings
@@ -452,6 +469,10 @@ Displayed HR and speed samples use a three-point median followed by a centered
 curve segments use monotone interpolation without overshooting sample values.
 Smoothing does not cross missing samples or recording gaps above 15 seconds.
 Raw stored data, HR-zone time, threshold totals and pace histogram durations are unchanged.
+Elevation uses recorded altitude in metres with linear segments, its own scale and
+no HR/pace smoothing. Missing altitude and recording gaps break the profile.
+Total D+ comes from Strava's summary, not from summing the displayed samples;
+missing gain is shown as unavailable rather than zero.
 Account export includes all imported summaries/streams, confirmations, settings
 and consent metadata, never tokens or athlete keys. Disconnect deletes imports,
 settings, tokens and pending OAuth tickets and prevents stale sync writes.

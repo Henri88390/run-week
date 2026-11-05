@@ -40,6 +40,7 @@ export async function saveConnection(config: StravaConfig, userId: string, token
         leaseId: null, leaseUntil: null, retryAt: null, generation: randomUUID(),
         lastSyncedAt: old?.athleteKey === athleteKey ? old.lastSyncedAt : null,
         syncHistory: old?.athleteKey === athleteKey ? syncHistorySchema.parse(old.syncHistory) : [],
+        elevationVersion: old?.athleteKey === athleteKey ? old.elevationVersion : 0,
       };
       await tx.stravaConnection.upsert({ where: { userId }, create: { userId, ...data }, update: data });
       await createSyncJob(tx, userId);
@@ -79,7 +80,7 @@ export async function dashboard(userId: string, month: string, weekDate?: string
     db().stravaActivity.findMany({ where: { userId, maximalEffort: true },
       orderBy: [{ startedAt: "desc" }, { id: "asc" }],
       select: { id: true, sourceId: true, name: true, sport: true, localDate: true, distanceMeters: true,
-        movingSeconds: true, elapsedSeconds: true, averageHr: true, maxHr: true, maximalEffort: true, streamState: true } }),
+        movingSeconds: true, elapsedSeconds: true, averageHr: true, maxHr: true, elevationGainMeters: true, maximalEffort: true, streamState: true } }),
     db().stravaActivity.groupBy({ by: ["localDate"], where: { userId,
       localDate: { lt: calendarRange(today.slice(0, 7), today).start } },
       _sum: { distanceMeters: true, movingSeconds: true } }),
@@ -108,6 +109,7 @@ export async function dashboard(userId: string, month: string, weekDate?: string
     id: row.id, sourceId: row.sourceId, name: row.name, sport: row.sport, localDate: row.localDate,
     distanceMeters: row.distanceMeters, movingSeconds: row.movingSeconds, elapsedSeconds: row.elapsedSeconds,
     averageHr: row.averageHr, maxHr: row.maxHr, maximalEffort: row.maximalEffort, streamState: row.streamState,
+    elevationGainMeters: row.elevationGainMeters,
   }));
   const monthActivities = weekDate || year ? activities : activities.filter((activity) => activity.localDate.startsWith(month));
   return {

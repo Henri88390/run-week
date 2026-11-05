@@ -46,6 +46,28 @@ test("automatic history import survives navigation and scheduled updates reuse s
     expect((await imported.json()).activities).toHaveLength(1);
     const coverage = (await sql(`SELECT "syncHistory" FROM "StravaConnection" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email])).rows[0].syncHistory;
     expect(coverage.some((range: { start: string; end: string }) => range.start <= "2024-01-01" && range.end >= "2025-01-01")).toBe(true);
+    const elevation = (await sql(`SELECT "elevationGainMeters", streams, "elevationStreamState"
+      FROM "StravaActivity" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1) AND "localDate"<'2025-01-01'`, [email])).rows[0];
+    expect(elevation.elevationGainMeters).toBe(80);
+    expect(elevation.streams.altitude).toEqual([-5, 0, 4, null, 2]);
+    expect(elevation.elevationStreamState).toBe("ready");
+    // Simulate a pre-elevation installation, without aging lastSyncedAt or losing existing HR samples.
+    await sql(`UPDATE "StravaActivity" SET "elevationGainMeters"=NULL,
+      streams=streams - 'altitude', "elevationStreamState"='pending'
+      WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+    await sql(`UPDATE "StravaConnection" SET "elevationVersion"=0 WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+    const beforeBackfill = (await status()).id;
+    expect((await fetch(`${delivery}/__schedule`, { method: "POST" })).ok).toBe(true);
+    await expect.poll(async () => (await status()).id).not.toBe(beforeBackfill);
+    await expect.poll(async () => (await status()).status, { timeout: 90_000 }).toBe("completed");
+    const exported = await (await page.request.get("/api/account")).json();
+    const restored = exported.stravaActivities.find((activity: { localDate: string }) => activity.localDate < "2025-01-01");
+    expect(restored.elevationGainMeters).toBe(80);
+    expect(restored.streams.altitude).toEqual([-5, 0, 4, null, 2]);
+    expect(restored.streams.heartrate).toEqual(elevation.streams.heartrate);
+    const backfilledId = (await status()).id;
+    expect((await fetch(`${delivery}/__schedule`, { method: "POST" })).ok).toBe(true);
+    expect((await status()).id).toBe(backfilledId);
     const calls = (await (await fetch("http://127.0.0.1:3102/__control")).json()).calls;
     const streamCount = calls.filter((call: { athlete: number; path: string }) => call.athlete === 8801 && call.path.endsWith("/streams")).length;
     await sql(`UPDATE "StravaConnection" SET "lastSyncedAt"=CURRENT_TIMESTAMP - INTERVAL '2 days' WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);

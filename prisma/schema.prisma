@@ -114,6 +114,7 @@ model StravaConnection {
   syncBefore     Int
   lastSyncedAt   DateTime?
   syncHistory    Json     @default("[]")
+  elevationVersion Int    @default(0)
   generation     String   @default(uuid())
   jobs           StravaSyncJob[]
   retryAt        DateTime?
@@ -166,7 +167,9 @@ model StravaActivity {
   elapsedSeconds Int
   averageHr      Float?
   maxHr          Float?
-  /// Only time, heartrate, velocity_smooth and distance; never GPS.
+  elevationGainMeters Float?
+  elevationStreamState String @default("pending")
+  /// Only time, heartrate, velocity_smooth, distance and altitude; never GPS coordinates.
   streams        Json?
   streamState    String   @default("pending")
   maximalEffort  Boolean  @default(false)
@@ -176,6 +179,7 @@ model StravaActivity {
   @@unique([userId, sourceId])
   @@index([userId, localDate])
   @@index([userId, streamState])
+  @@index([userId, elevationStreamState])
 }
 
 /// Explicitly supplied settings, not inferred physiological thresholds.

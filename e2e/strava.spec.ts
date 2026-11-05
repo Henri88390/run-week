@@ -349,7 +349,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByRole("banner")).not.toContainText("Running summaries");
     await deliveryControl({ paused: false });
     await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elapsed time" }).locator("dd")).toHaveText("2 min");
-    await expect(page.getByRole("application", { name: "Heart rate / Pace · Elapsed time", exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("application", { name: "Heart rate / Pace / Elevation · Elapsed time", exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Average heart rate" }).locator("dd")).toHaveText("155 bpm");
     await expect(page.getByRole("button", { name: "Continue import", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Recorded streams", exact: true })).toHaveCount(0);
@@ -394,7 +394,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     expect(own.filter((c: { path: string }) => c.path.endsWith("/athlete/activities"))
       .every((c: { query: { per_page: string } }) => c.query.per_page === "200")).toBe(true);
     expect((await query('SELECT page FROM "StravaSyncJob" WHERE id=$1', [initialJob.id])).rows[0].page).toBe(2);
-    for (const c of own.filter((c: { path: string }) => c.path.endsWith("/streams"))) expect(c.query.keys).toBe("time,heartrate,velocity_smooth,distance");
+    for (const c of own.filter((c: { path: string }) => c.path.endsWith("/streams"))) expect(c.query.keys).toBe("time,heartrate,velocity_smooth,distance,altitude");
   });
 
   await test.step("HR settings, measured charts, maximal confirmation and responsive keyboard UI", async () => {
@@ -707,14 +707,18 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByRole("tooltip")).toContainText("critical-speed and D′");
     await effortHelp.focus();
     await expect(page.getByRole("tooltip")).toContainText("Does not change HR zones or the planner");
-    await expect(chart.getByRole("application", { name: "Heart rate / Pace · Elapsed time", exact: true })).toBeVisible();
+    await expect(chart.getByRole("application", { name: "Heart rate / Pace / Elevation · Elapsed time", exact: true })).toBeVisible();
     await expect(chart.locator(".recharts-reference-area")).toHaveCount(5);
     await expect(page.locator("[data-activity-summary] dt")).toHaveText([
-      "Distance", "Elapsed time", "Average heart rate", "Average moving pace",
+      "Distance", "Elapsed time", "Average heart rate", "Average moving pace", "Elevation gain (D+)",
     ]);
+    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elevation gain (D+)" }).locator("dd")).toHaveText("43 m");
     await expect(chart.locator(".recharts-reference-line-line")).toHaveCount(0);
     const hrLine = chart.locator('.recharts-line-curve[stroke="#be123c"]');
     const paceLine = chart.locator('.recharts-line-curve[stroke="#1d4ed8"]');
+    const altitudeLine = chart.locator('.recharts-line-curve[stroke="#57534e"]');
+    await expect(altitudeLine).toHaveCount(1);
+    await expect(page.getByText("Elevation: -5.0–4.0 m", { exact: true })).toBeVisible();
     await expect(hrLine).toHaveCount(1);
     await expect(paceLine).toHaveCount(1);
     await expect(paceLine).toHaveAttribute("d", /C/);
@@ -727,11 +731,16 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByText("Requires HR samples and manual settings.", { exact: false })).toHaveCount(0);
     const hrCheckbox = page.getByRole("checkbox", { name: "Heart rate", exact: true });
     const paceCheckbox = page.getByRole("checkbox", { name: "Pace", exact: true });
+    const altitudeCheckbox = page.getByRole("checkbox", { name: "Elevation", exact: true });
     await hrCheckbox.uncheck();
     await expect(hrLine).toHaveCount(0);
     await expect(paceLine).toHaveCount(1);
     await expect(chart.locator(".recharts-reference-area")).toHaveCount(0);
     await paceCheckbox.uncheck();
+    await expect(altitudeLine).toHaveCount(1);
+    await altitudeCheckbox.focus();
+    await page.keyboard.press("Space");
+    await expect(altitudeCheckbox).not.toBeChecked();
     await expect(chart.locator(".recharts-reference-line-line")).toHaveCount(0);
     await expect(chart.locator(".recharts-line-curve")).toHaveCount(0);
     await hrCheckbox.focus();
@@ -739,6 +748,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(hrCheckbox).toBeChecked();
     await expect(hrLine).toHaveCount(1);
     await paceCheckbox.check();
+    await altitudeCheckbox.check();
     await expect(paceLine).toHaveCount(1);
     const interactiveChart = chart.getByRole("application");
     await interactiveChart.focus();
@@ -749,12 +759,28 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.keyboard.press("Home");
     await page.keyboard.press("ArrowLeft");
     await expect(chart.locator(".recharts-tooltip-wrapper")).toContainText("bpm");
+    await expect(chart.locator(".recharts-tooltip-wrapper")).toContainText("Elevation");
+    await expect(chart.locator(".recharts-tooltip-wrapper")).toContainText("-5.0 m");
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect.poll(async () => (await chart.boundingBox())?.width ?? 0).toBeGreaterThan(700);
     await chart.screenshot({ path: test.info().outputPath("activity-chart-desktop.png") });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await chart.screenshot({ path: test.info().outputPath("activity-chart-mobile.png") });
+    const detailUrl = page.url();
+    const detailId = detailUrl.split("/").at(-1);
+    const original = (await query('SELECT streams, "elevationGainMeters" FROM "StravaActivity" WHERE id=$1', [detailId])).rows[0];
+    await query(`UPDATE "StravaActivity" SET streams=streams - 'altitude', "elevationGainMeters"=NULL WHERE id=$1`, [detailId]);
+    await page.reload();
+    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elevation gain (D+)" }).locator("dd")).toHaveText("Unavailable");
+    await expect(altitudeLine).toHaveCount(0);
+    await expect(page.getByText("Elevation: Unavailable", { exact: true })).toBeVisible();
+    await expect(hrLine).toHaveCount(1);
+    await query('UPDATE "StravaActivity" SET "elevationGainMeters"=0 WHERE id=$1', [detailId]);
+    await page.reload();
+    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elevation gain (D+)" }).locator("dd")).toHaveText("0 m");
+    await query('UPDATE "StravaActivity" SET streams=$2::jsonb, "elevationGainMeters"=$3 WHERE id=$1',
+      [detailId, JSON.stringify(original.streams), original.elevationGainMeters]);
     await page.goto(`/activities?month=${month}`);
     await expect(page.getByRole("heading", { name: "Training calendar" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();

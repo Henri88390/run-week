@@ -1,5 +1,18 @@
 import type { Locale } from "@/features/i18n/locales";
 
+export const ELEVATION_DISCLOSURE: Record<Locale, string> = {
+  en: "Imports include total elevation gain and altitude samples in metres, without GPS coordinates. Previously imported runs are updated once in the background. Elevation data is included in account exports and deleted on disconnect.",
+  fr: "Les imports incluent le dénivelé positif et les altitudes en mètres, sans coordonnées GPS. Les courses déjà importées sont complétées une fois en arrière-plan. Ces données figurent dans l’export du compte et sont supprimées à la déconnexion.",
+  de: "Importiert werden auch Höhengewinn und Höhenmesswerte in Metern, ohne GPS-Koordinaten. Frühere Läufe werden einmal im Hintergrund ergänzt. Höhendaten sind im Kontoexport enthalten und werden beim Trennen gelöscht.",
+  es: "Se importan el desnivel positivo y las altitudes en metros, sin coordenadas GPS. Las carreras anteriores se actualizan una vez en segundo plano. Estos datos se exportan con la cuenta y se eliminan al desconectar.",
+  pt: "São importados o desnível positivo e as altitudes em metros, sem coordenadas GPS. As corridas anteriores são atualizadas uma vez em segundo plano. Estes dados integram a exportação da conta e são eliminados ao desligar.",
+  it: "Si importano dislivello positivo e campioni di altitudine in metri, senza coordinate GPS. Le corse precedenti vengono aggiornate una volta in background. Questi dati sono inclusi nell’esportazione e rimossi alla disconnessione.",
+  pl: "Import obejmuje przewyższenie i próbki wysokości w metrach, bez współrzędnych GPS. Wcześniejsze biegi są jednorazowo uzupełniane w tle. Dane wysokości są eksportowane z kontem i usuwane po odłączeniu.",
+  ru: "Импортируются набор высоты и значения высоты в метрах без GPS-координат. Ранее импортированные пробежки однократно дополняются в фоне. Данные высоты входят в экспорт и удаляются при отключении.",
+  uk: "Імпортуються набір висоти та значення висоти в метрах без GPS-координат. Раніше імпортовані пробіжки одноразово доповнюються у фоні. Дані висоти входять до експорту та видаляються при відключенні.",
+  be: "Імпартуюцца набор вышыні і значэнні вышыні ў метрах без GPS-каардынат. Раней імпартаваныя прабежкі аднаразова дапаўняюцца ў фоне. Даныя вышыні ўваходзяць у экспарт і выдаляюцца пры адключэнні.",
+};
+
 export const BACKGROUND_MESSAGES: Record<Locale, { queued: string; paused: string; summaries: string; streams: string; consent: string }> = {
   en: { queued: "Strava import queued", paused: "Strava import paused until", summaries: "Running summaries", streams: "Recordings", consent: "Running history is imported in the background, including non-GPS HR/pace recordings. New runs are checked daily. Inngest schedules imports using opaque job IDs and progress metadata, never activity data or tokens." },
   fr: { queued: "Import Strava en attente", paused: "Import Strava en pause jusqu’au", summaries: "Résumés de course", streams: "Enregistrements", consent: "L’historique de course est importé en arrière-plan, avec les séries FC/allure sans GPS. Les nouvelles courses sont vérifiées chaque jour. Inngest planifie les imports avec des identifiants opaques et leur progression, jamais les activités ni les jetons." },
