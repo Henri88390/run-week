@@ -22,10 +22,26 @@ test("automatic history import survives navigation and scheduled updates reuse s
     await page.goto("/planner");
     await signIn(page, email);
     await page.context().addCookies([{ name: "strava_e2e_athlete", value: "8801", url: "http://127.0.0.1:3102" }]);
+    let releaseSession = () => {};
+    let sessionRequested = () => {};
+    const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
+    const sessionStarted = new Promise<void>((resolve) => { sessionRequested = resolve; });
+    await page.route(/\/api\/auth\/session(?:\?|$)/, async (route) => {
+      sessionRequested();
+      await sessionGate;
+      await route.continue();
+    }, { times: 1 });
     await page.goto("/strava/consent");
     const consent = page.getByRole("checkbox");
+    try {
+      await sessionStarted;
+      await expect(consent).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Authorize import", exact: true })).toBeDisabled();
+    } finally { releaseSession(); }
     await expect(consent).toBeEnabled();
     await consent.check();
+    await expect(consent).toBeChecked();
+    await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
     await expect(consent).toBeChecked();
     await page.getByRole("button", { name: "Authorize import", exact: true }).click();
     await page.waitForURL(/\/activities\?strava=connected/);

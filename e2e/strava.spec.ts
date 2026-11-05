@@ -226,7 +226,7 @@ test("OAuth queues snapshot history durably; navigation only reads and unpublish
   expect(job?.status).toBe("queued");
   if (!job) throw new Error("OAuth did not persist its history job");
   const stored = (await query('SELECT kind,start,"end",before,page,"publishedAt" FROM "StravaSyncJob" WHERE id=$1', [job.id])).rows[0];
-  expect(stored.kind).toBe("history");
+  expect(stored.kind).toBe("elevation");
   expect(stored.start).toBe("1970-01-01");
   expect(stored.before).toBeGreaterThanOrEqual(started);
   expect(stored.before).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));

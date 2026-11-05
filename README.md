@@ -195,6 +195,8 @@ another date. Activity endpoints only read committed database rows and return
 partial results immediately. Calendar navigation does not start synchronization.
 Consent controls and metric-help buttons remain disabled until their client
 components hydrate, so early interactions cannot be lost during initialization.
+Strava consent also waits for the authenticated client session: resolving the
+session remounts account-scoped providers and must not reset an already checked form.
 There are no manual synchronization or Stop controls. `/api/strava/sync` only
 supports GET for job status; manual POST/DELETE requests return 405. Account
 connection and the backend scheduler create jobs, reusing any active account job.
