@@ -530,6 +530,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       ["Speed-endurance", "Ability to sustain a high running speed despite accumulating fatigue."],
     ]) {
       const help = page.getByRole("button", { name: `${title} · ?`, exact: true });
+      await expect(help).toBeEnabled();
       await help.hover();
       await expect(page.getByRole("tooltip")).toContainText(definition);
       await page.keyboard.press("Escape");

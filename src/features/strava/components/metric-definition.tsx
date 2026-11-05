@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { useHydrated } from "@/components/use-hydrated";
 
 export function MetricDefinition({ title, definition }: { title: string; definition: string }) {
   const id = useId();
+  const hydrated = useHydrated();
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -14,7 +16,7 @@ export function MetricDefinition({ title, definition }: { title: string; definit
   return <div className="relative flex items-center gap-2"
     onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
     <h2 className="text-xl font-semibold">{title}</h2>
-    <button type="button" aria-label={`${title} · ?`} aria-describedby={open ? id : undefined}
+    <button type="button" disabled={!hydrated} aria-label={`${title} · ?`} aria-describedby={open ? id : undefined}
       onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}
       className="flex size-6 shrink-0 items-center justify-center rounded-full border border-stone-300 text-xs font-semibold text-stone-600 focus-visible:outline-2">
       ?

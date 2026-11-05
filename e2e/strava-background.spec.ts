@@ -23,7 +23,10 @@ test("automatic history import survives navigation and scheduled updates reuse s
     await signIn(page, email);
     await page.context().addCookies([{ name: "strava_e2e_athlete", value: "8801", url: "http://127.0.0.1:3102" }]);
     await page.goto("/strava/consent");
-    await page.getByRole("checkbox").check();
+    const consent = page.getByRole("checkbox");
+    await expect(consent).toBeEnabled();
+    await consent.check();
+    await expect(consent).toBeChecked();
     await page.getByRole("button", { name: "Authorize import", exact: true }).click();
     await page.waitForURL(/\/activities\?strava=connected/);
     const status = async () => (await (await page.request.get("/api/strava/sync")).json()).job;

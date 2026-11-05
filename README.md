@@ -193,6 +193,8 @@ must be configured and synced with the endpoint for these jobs to run.
 The job runs even when the browser closes, signs out, changes pages or selects
 another date. Activity endpoints only read committed database rows and return
 partial results immediately. Calendar navigation does not start synchronization.
+Consent controls and metric-help buttons remain disabled until their client
+components hydrate, so early interactions cannot be lost during initialization.
 There are no manual synchronization or Stop controls. `/api/strava/sync` only
 supports GET for job status; manual POST/DELETE requests return 405. Account
 connection and the backend scheduler create jobs, reusing any active account job.
