@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { formatDecimal } from "@/features/i18n/locales";
 import { formatPace } from "@/features/running-programs/domain";
@@ -15,9 +15,7 @@ const zoneColors = ["#e0f2fe", "#d1fae5", "#fef9c3", "#ffedd5", "#ffe4e6"];
 const hrColor = "#be123c";
 const paceColor = "#1d4ed8";
 
-export const ActivityChart = memo(function ActivityChart({ points, averageHr, averagePace }: {
-  points: ChartPoint[]; averageHr: number | null; averagePace: number | null;
-}) {
+export const ActivityChart = memo(function ActivityChart({ points }: { points: ChartPoint[] }) {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   const hrText = HEART_RATE_MESSAGES[locale];
@@ -55,10 +53,6 @@ export const ActivityChart = memo(function ActivityChart({ points, averageHr, av
     </div>
     <div data-activity-chart className="h-80 min-w-0 rounded-xl bg-stone-50/60 pt-3 sm:h-96"
       role="group" aria-label={title}>
-      <span className="sr-only">
-        {showHr && averageHr !== null && `${text.hr}: ${formatDecimal(locale, averageHr)} bpm. `}
-        {showPace && averagePace !== null && `${text.pace}: ${formatPace(averagePace)} ${t.units.min}/${t.units.km}.`}
-      </span>
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <LineChart data={data} accessibilityLayer aria-label={title} margin={{ top: 24, right: 8, bottom: 8, left: 0 }}>
           <CartesianGrid vertical={false} stroke="#e7e5e4" strokeDasharray="3 5" />
@@ -90,12 +84,6 @@ export const ActivityChart = memo(function ActivityChart({ points, averageHr, av
           {showPace && <Line yAxisId="pace" dataKey="pace" name={hrText.pace} type="monotoneX"
             stroke={paceColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "white", strokeWidth: 2 }}
             connectNulls={false} isAnimationActive={false} />}
-          {showHr && hrs.length > 0 && averageHr !== null && <ReferenceLine yAxisId="hr" y={averageHr}
-            ifOverflow="extendDomain" stroke={hrColor} strokeWidth={2} strokeDasharray="6 4"
-            label={{ value: `${formatDecimal(locale, averageHr)} bpm`, position: "insideTopLeft", fill: hrColor, fontSize: 11 }} />}
-          {showPace && paces.length > 0 && averagePace !== null && <ReferenceLine yAxisId="pace" y={averagePace}
-            ifOverflow="extendDomain" stroke={paceColor} strokeWidth={2} strokeDasharray="6 4"
-            label={{ value: `${formatPace(averagePace)} ${t.units.min}/${t.units.km}`, position: "insideBottomRight", fill: paceColor, fontSize: 11 }} />}
         </LineChart>
       </ResponsiveContainer>
     </div>

@@ -436,11 +436,9 @@ Activity details use Recharts for a responsive heart-rate/pace chart with separa
 axes, colored Z1–Z5 background bands and independent HR/pace checkboxes. Values are
 available in a crosshair tooltip using pointer, touch or left/right arrow keys.
 The chart uses subtle horizontal gridlines and disables animation.
-Dashed horizontal lines show the activity's average HR and average moving pace
-(moving time divided by distance), using the corresponding series colors and
-checkbox visibility. Missing averages or recordings do not draw reference lines.
 Compact colored summary cards show distance, elapsed time, average HR and moving pace;
-elapsed durations below one hour omit the zero-hour prefix.
+elapsed durations below one hour omit the zero-hour prefix. Average moving pace
+uses moving time divided by distance. Averages are not drawn as lines on the chart.
 Pace is displayed as minutes:seconds per kilometer; zero speed and missing recordings
 break the line rather than producing infinite pace. Near-stationary speeds below
 0.5 m/s (slower than 33:20 min/km) are also excluded from pace charts and pace-zone

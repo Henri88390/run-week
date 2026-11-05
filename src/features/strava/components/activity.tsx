@@ -42,6 +42,6 @@ export function ActivityDetail({ activity, points }: { activity: ActivitySummary
     <MaximalEffort activity={activity} />
     <a href={`https://www.strava.com/activities/${activity.sourceId}`} target="_blank" rel="noreferrer" className="underline">{text.source}</a>
     {!points.length && <p>{text.streamMissing}</p>}
-    <ActivityChart points={points} averageHr={activity.averageHr} averagePace={averagePace} />
+    <ActivityChart points={points} />
   </div>;
 }
