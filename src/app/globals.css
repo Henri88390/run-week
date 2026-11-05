@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf9f6;
+  --background: #f3f2ed;
   --foreground: #1c1917;
+  --chart-grid: #e7e5e4;
+  --chart-axis: #78716c;
+  --chart-cursor: #a8a29e;
+  --chart-tooltip-background: #ffffff;
+  --chart-tooltip-border: #e7e5e4;
+  --chart-hr: #be123c;
+  --chart-pace: #1d4ed8;
+  --chart-altitude: #57534e;
+  --chart-blue: #2563eb;
+  --chart-emerald: #059669;
+  --chart-average-pace: #9f1239;
+  --chart-dot-stroke: #ffffff;
+  --calendar-zone-2: #10b981;
 }
 
 @theme inline {
@@ -10,6 +23,196 @@
   --color-foreground: var(--foreground);
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: "Courier New", monospace;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #141210;
+  --foreground: #faf9f6;
+  --color-stone-50: #292524;
+  --color-stone-100: #292524;
+  --color-stone-200: #44403c;
+  --color-stone-300: #57534e;
+  --color-stone-400: #78716c;
+  --color-stone-500: #a8a29e;
+  --color-stone-600: #d6d3d1;
+  --color-stone-700: #e7e5e4;
+  --color-stone-800: #e7e5e4;
+  --color-stone-900: #f5f5f4;
+  --color-stone-950: #faf9f6;
+  --color-emerald-50: #064e3b;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #34d399;
+  --color-emerald-800: #047857;
+  --color-emerald-900: #065f46;
+  --color-emerald-950: #d1fae5;
+  --color-amber-50: #451a03;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-900: #fde68a;
+  --color-amber-950: #fef3c7;
+  --color-blue-50: #172554;
+  --color-blue-200: #1e3a8a;
+  --color-blue-800: #bfdbfe;
+  --color-blue-950: #dbeafe;
+  --color-orange-50: #431407;
+  --color-orange-300: #9a3412;
+  --color-orange-600: #fb923c;
+  --color-red-50: #450a0a;
+  --color-red-100: #7f1d1d;
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
+  --color-red-700: #f87171;
+  --color-red-800: #fca5a5;
+  --color-red-900: #fee2e2;
+  --color-rose-50: #4c0519;
+  --color-rose-200: #881337;
+  --color-rose-300: #9f1239;
+  --color-rose-800: #fda4af;
+  --color-rose-950: #ffe4e6;
+  --color-sky-50: #082f49;
+  --color-sky-300: #0369a1;
+  --color-sky-800: #bae6fd;
+  --color-violet-50: #2e1065;
+  --color-violet-100: #4c1d95;
+  --color-violet-200: #5b21b6;
+  --color-violet-300: #6d28d9;
+  --color-violet-800: #ddd6fe;
+  --color-violet-950: #ede9fe;
+  --color-yellow-50: #422006;
+  --color-yellow-300: #854d0e;
+  --color-green-700: #86efac;
+  --chart-grid: #44403c;
+  --chart-axis: #a8a29e;
+  --chart-cursor: #78716c;
+  --chart-tooltip-background: #292524;
+  --chart-tooltip-border: #57534e;
+  --chart-hr: #fb7185;
+  --chart-pace: #60a5fa;
+  --chart-altitude: #d6d3d1;
+  --chart-blue: #60a5fa;
+  --chart-emerald: #34d399;
+  --chart-average-pace: #fb7185;
+  --chart-dot-stroke: #1c1917;
+  --calendar-zone-2: #66806b;
+}
+
+html[data-theme="dark"] [data-calendar-date-picker] {
+  color-scheme: dark;
+  background-color: #242923;
+  border-color: #4b5a4d;
+  color: #c4d2c5;
+}
+
+[data-simulator-header] {
+  background-color: #ffffff;
+}
+
+html .site-header {
+  background-color: #d4e4d0;
+}
+
+html[data-theme="dark"] .site-header {
+  background-color: #242923;
+}
+
+.site-nav-active {
+  border: 1px solid #a8a29e;
+  background-color: #d6d3d1;
+  color: #292524;
+}
+
+.site-nav-inactive {
+  border: 1px solid #d6d3d1;
+  background-color: #f5f5f4;
+  color: #44403c;
+}
+
+.site-nav-inactive:hover {
+  background-color: #e7e5e4;
+}
+
+html[data-theme="dark"] .site-nav-inactive {
+  border-color: #57534e;
+  background-color: #1c1917;
+  color: #d6d3d1;
+}
+
+html[data-theme="dark"] .site-nav-inactive:hover {
+  background-color: #292524;
+}
+
+.site-nav-active:hover {
+  background-color: #c9c5c2;
+}
+
+html[data-theme="dark"] .site-nav-active {
+  border-color: #78716c;
+  background-color: #57534e;
+  color: #f5f5f4;
+}
+
+html[data-theme="dark"] .site-nav-active:hover {
+  background-color: #66605b;
+}
+
+html[data-theme="dark"] [data-simulator-header] {
+  background-color: #292e29;
+  color: #c4d2c5;
+}
+
+html[data-theme="dark"] [data-zone="2"] {
+  --color-emerald-50: #292e29;
+  --color-emerald-300: #586b5b;
+}
+
+html[data-theme="dark"] [data-training-simulator] .bg-emerald-50 {
+  background-color: #292e29;
+}
+
+html[data-theme="dark"] [data-training-simulator] .border-emerald-200,
+html[data-theme="dark"] [data-training-simulator] .border-emerald-300,
+html[data-theme="dark"] [data-training-simulator] .border-emerald-700 {
+  border-color: #586b5b;
+}
+
+html[data-theme="dark"] [data-training-simulator] .text-emerald-800,
+html[data-theme="dark"] [data-training-simulator] .text-emerald-900 {
+  color: #b7c8b7;
+}
+
+html[data-theme="dark"]
+  [data-training-simulator]
+  [data-garmin-send]:not(:disabled) {
+  background-color: #28513f;
+  border-color: #426551;
+}
+
+html[data-theme="dark"]
+  [data-training-simulator]
+  [data-garmin-send]:not(:disabled):hover {
+  background-color: #326247;
+}
+
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .field {
+  background-color: #1c1917;
+}
+
+html[data-theme="dark"] [class~="bg-white/80"] {
+  background-color: rgb(28 25 23 / 80%);
+}
+
+html[data-theme="dark"] [class~="hover:bg-white/50"]:hover {
+  background-color: rgb(28 25 23 / 50%);
+}
+
+html[data-theme="dark"] [class~="hover:bg-white/60"]:hover {
+  background-color: rgb(28 25 23 / 60%);
 }
 
 body {
@@ -37,9 +240,9 @@ body {
 }
 
 .button-primary:disabled {
-  background-color: #e7e5e4;
-  border-color: #d6d3d1;
-  color: #78716c;
+  background-color: var(--color-stone-200);
+  border-color: var(--color-stone-300);
+  color: var(--color-stone-500);
   cursor: not-allowed;
 }
 

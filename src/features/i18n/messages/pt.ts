@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const pt = {
   privacyLink: "Privacidade e gestão de dados",
   language: "Idioma",
+  theme: {
+    darkMode: "Modo escuro",
+    lightMode: "Modo claro",
+    switchToDark: "Mudar para modo escuro",
+    switchToLight: "Mudar para modo claro",
+  },
   loading: "A carregar o plano…",
   storage: {
     unreadable: "Não foi possível ler os dados guardados. Não foram substituídos. Reponha os dados locais para recomeçar.",

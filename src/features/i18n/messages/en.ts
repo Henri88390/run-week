@@ -2,6 +2,12 @@ import { plural } from "../locales";
 
 export const en = {
   language: "Language",
+  theme: {
+    darkMode: "Dark mode",
+    lightMode: "Light mode",
+    switchToDark: "Switch to dark mode",
+    switchToLight: "Switch to light mode",
+  },
   privacyLink: "Privacy and data controls",
   loading: "Loading planner…",
   storage: {

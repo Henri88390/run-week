@@ -22,7 +22,7 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view }: {
   const maxKm = volumeAxisMaximum(buckets.map((bucket) => bucket.distanceMeters / 1000), 5);
   const maxHours = volumeAxisMaximum(buckets.map((bucket) => bucket.movingSeconds / 3600), 1);
   const maximum = distance ? maxKm : maxHours;
-  const color = distance ? "#2563eb" : "#059669";
+  const color = distance ? "var(--chart-blue)" : "var(--chart-emerald)";
   const value = (index: number) => distance ? buckets[index].distanceMeters / 1000 : buckets[index].movingSeconds / 3600;
   const x = (index: number) => 70 + index * 560 / Math.max(1, buckets.length - 1);
   const y = (index: number) => 240 - value(index) / maximum * 200;
@@ -52,7 +52,7 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view }: {
       <title>{text.title}</title>
       <text x="60" y="18" fill={color} fontSize="16">{distance ? t.units.km : t.units.h}</text>
       {[0, .25, .5, .75, 1].map((fraction) => <g key={fraction}>
-        <line x1="60" x2="620" y1={240 - fraction * 200} y2={240 - fraction * 200} stroke="#e7e5e4" />
+        <line x1="60" x2="620" y1={240 - fraction * 200} y2={240 - fraction * 200} stroke="var(--chart-grid)" />
         <text data-volume-km-tick={distance ? "" : undefined} data-volume-hours-tick={!distance ? "" : undefined}
           x="50" y={245 - fraction * 200} textAnchor="end" fill={color} fontSize="16">{formatInteger(locale, maximum * fraction)}</text>
       </g>)}
@@ -66,15 +66,15 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view }: {
           <title>{details(index)}</title>
           <circle cx={x(index)} cy={y(index)} r="15" fill="transparent" />
           <circle data-volume-distance={distance ? "" : undefined} data-volume-time={!distance ? "" : undefined}
-            cx={x(index)} cy={y(index)} r="5" fill={color} stroke="white" strokeWidth="2" />
+            cx={x(index)} cy={y(index)} r="5" fill={color} stroke="var(--chart-dot-stroke)" strokeWidth="2" />
           <text data-volume-value x={x(index)} y={y(index) - 13} textAnchor="middle" fill={color} fontSize="14">
             {distance ? Math.round(value(index)).toLocaleString(locale)
               : Math.round(value(index) * 10) === 0 ? formatInteger(locale, 0) : formatDecimal(locale, value(index))}
           </text>
         </g>
-        <text x={x(index)} y="267" textAnchor="middle" fontSize={view === "year" ? 14 : 16} fill="#57534e">{label(index)}</text>
+        <text x={x(index)} y="267" textAnchor="middle" fontSize={view === "year" ? 14 : 16} fill="var(--chart-altitude)">{label(index)}</text>
       </g>)}
-      {view === "month" && buckets[0] && <text data-volume-month x="350" y="292" textAnchor="middle" fontSize="16" fill="#57534e">
+      {view === "month" && buckets[0] && <text data-volume-month x="350" y="292" textAnchor="middle" fontSize="16" fill="var(--chart-altitude)">
         {new Date(`${buckets[0].start}T00:00:00Z`).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" })}
       </text>}
     </svg>

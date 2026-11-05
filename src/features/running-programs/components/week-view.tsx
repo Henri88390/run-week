@@ -520,6 +520,7 @@ export function WeekView({ week, garmin }: { week: TrainingWeek; garmin: GarminC
                     <button
                       type="button"
                       className="button-primary"
+                      data-garmin-send
                       disabled={garminBusy}
                       onClick={() => sendToGarmin("week")}
                     >

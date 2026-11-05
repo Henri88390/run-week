@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const ru = {
   privacyLink: "Конфиденциальность и управление данными",
   language: "Язык",
+  theme: {
+    darkMode: "Тёмная тема",
+    lightMode: "Светлая тема",
+    switchToDark: "Включить тёмную тему",
+    switchToLight: "Включить светлую тему",
+  },
   loading: "Загрузка плана…",
   storage: {
     unreadable: "Не удалось прочитать сохранённые данные. Они не были перезаписаны. Сбросьте локальные данные, чтобы начать заново.",

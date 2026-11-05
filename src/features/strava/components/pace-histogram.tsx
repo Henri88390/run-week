@@ -36,7 +36,7 @@ export function PaceHistogram({ distribution }: { distribution: DashboardData["p
       <title>{title}</title>
       <text x="110" y="16" className="fill-stone-600 text-[20px] sm:text-sm">{CALENDAR_MESSAGES[locale].time} ({t.units.h} {t.units.min})</text>
       {[0, .5, 1].map((fraction) => <g key={fraction}>
-        <line x1="110" x2="620" y1={230 - fraction * 200} y2={230 - fraction * 200} stroke="#e7e5e4" />
+        <line x1="110" x2="620" y1={230 - fraction * 200} y2={230 - fraction * 200} stroke="var(--chart-grid)" />
         <text x="102" y={234 - fraction * 200} textAnchor="end" className="fill-stone-600 text-[20px] sm:text-sm">
           {duration(maximum * fraction)}
         </text>
@@ -51,7 +51,7 @@ export function PaceHistogram({ distribution }: { distribution: DashboardData["p
         <title>{label(bin)}</title>
       </rect>)}
       <line data-average-pace={distribution.averagePace} role="img" aria-label={averageLabel}
-        x1={averageX} x2={averageX} y1="30" y2="230" stroke="#9f1239" strokeWidth="3" strokeDasharray="6 4">
+        x1={averageX} x2={averageX} y1="30" y2="230" stroke="var(--chart-average-pace)" strokeWidth="3" strokeDasharray="6 4">
         <title>{averageLabel}</title>
       </line>
       {[0, .25, .5, .75, 1].map((fraction) => <text key={fraction}

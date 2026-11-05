@@ -12,7 +12,7 @@ import type { ActivitySummary, CalendarWeek } from "../types";
 import { activityAverages, aboveThresholdPercent, roundedDuration } from "../analytics";
 import { EFFORT_MESSAGES } from "../effort-messages";
 
-const zoneColors = ["#0ea5e9", "#10b981", "#eab308", "#f97316", "#f43f5e"];
+const zoneColors = ["#0ea5e9", "var(--calendar-zone-2)", "#eab308", "#f97316", "#f43f5e"];
 
 export const CalendarDay = memo(function CalendarDay(props: {
   day: CalendarWeek["days"][number]; color: string; outside: boolean; index: number;

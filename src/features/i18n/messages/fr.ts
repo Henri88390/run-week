@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const fr = {
   privacyLink: "Confidentialité et gestion des données",
   language: "Langue",
+  theme: {
+    darkMode: "Mode sombre",
+    lightMode: "Mode clair",
+    switchToDark: "Passer au mode sombre",
+    switchToLight: "Passer au mode clair",
+  },
   loading: "Chargement du planning…",
   storage: {
     unreadable: "Les données enregistrées n’ont pas pu être lues. Elles n’ont pas été écrasées. Réinitialisez les données locales pour recommencer.",

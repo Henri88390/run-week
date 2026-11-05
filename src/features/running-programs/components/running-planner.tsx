@@ -94,7 +94,7 @@ export function RunningPlanner() {
   };
   const accountLoadFailed = Boolean(userId) && account.loadFailed;
 
-  return <div className="space-y-4">
+  return <div data-training-simulator className="space-y-4">
     {warning && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">{t.storage[warning]}
       {accountLoadFailed && <button type="button" className="ml-2 underline" onClick={account.retry}>{t.storage.retry}</button>}
     </p>}
@@ -108,7 +108,7 @@ export function RunningPlanner() {
     </section> : <>
       <div className="relative">
         <details className="group rounded-2xl border border-stone-200 bg-white" open={!state}>
-          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5">
+          <summary data-simulator-header className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
               className="size-5 shrink-0 text-stone-600">
               <path d="M4 7h3m4 0h9M4 17h9m4 0h3" />

@@ -12,9 +12,9 @@ import { SMOOTHING_MESSAGES } from "../sync-messages";
 
 export type ChartPoint = { time: number; hr: number | null; pace: number | null; altitude: number | null; gap: boolean };
 const zoneColors = ["#e0f2fe", "#d1fae5", "#fef9c3", "#ffedd5", "#ffe4e6"];
-const hrColor = "#be123c";
-const paceColor = "#1d4ed8";
-const altitudeColor = "#57534e";
+const hrColor = "var(--chart-hr)";
+const paceColor = "var(--chart-pace)";
+const altitudeColor = "var(--chart-altitude)";
 
 export const ActivityChart = memo(function ActivityChart({ points }: { points: ChartPoint[] }) {
   const { locale, t } = useI18n();
@@ -66,9 +66,9 @@ export const ActivityChart = memo(function ActivityChart({ points }: { points: C
       role="group" aria-label={title}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <LineChart data={data} accessibilityLayer aria-label={title} margin={{ top: 24, right: 8, bottom: 8, left: 0 }}>
-          <CartesianGrid vertical={false} stroke="#e7e5e4" strokeDasharray="3 5" />
+          <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
           <XAxis dataKey="time" type="number" domain={[0, lastTime]} tickLine={false} axisLine={false}
-            tick={{ fill: "#78716c", fontSize: 11 }} minTickGap={30}
+            tick={{ fill: "var(--chart-axis)", fontSize: 11 }} minTickGap={30}
             tickFormatter={(value: number) => `${formatDecimal(locale, value / 60)} ${t.units.min}`} />
           <YAxis yAxisId="hr" hide={!showHr} domain={[hrMin, hrMax]} width={46}
             tickLine={false} axisLine={false} tick={{ fill: hrColor, fontSize: 11 }}
@@ -86,23 +86,24 @@ export const ActivityChart = memo(function ActivityChart({ points }: { points: C
           {showHr && ZONE_FRACTIONS.slice(0, -1).map((fraction, index) => <ReferenceArea
             key={index} yAxisId="hr" y1={index === 0 ? hrMin : PRESET_MAX_HR * fraction}
             y2={PRESET_MAX_HR * ZONE_FRACTIONS[index + 1]} fill={zoneColors[index]} fillOpacity={.5} stroke="none"
-            label={{ value: `Z${index + 1}`, position: "insideTopLeft", fill: "#78716c", fontSize: 10 }} />)}
+            label={{ value: `Z${index + 1}`, position: "insideTopLeft", fill: "var(--chart-axis)", fontSize: 10 }} />)}
           <Tooltip filterNull isAnimationActive={false}
-            cursor={{ stroke: "#a8a29e", strokeDasharray: "4 4" }}
-            contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", boxShadow: "0 8px 24px #0000000d", fontSize: 12 }}
+            cursor={{ stroke: "var(--chart-cursor)", strokeDasharray: "4 4" }}
+            contentStyle={{ backgroundColor: "var(--chart-tooltip-background)", color: "var(--foreground)",
+              borderRadius: 12, border: "1px solid var(--chart-tooltip-border)", boxShadow: "0 8px 24px #0000000d", fontSize: 12 }}
             labelFormatter={(value) => `${text.time}: ${formatDecimal(locale, Number(value) / 60)} ${t.units.min}`}
             formatter={(value, name) => [typeof value === "number"
               ? name === elevationText.altitude ? `${formatDecimal(locale, value)} m`
                 : name === text.heartRate ? `${formatDecimal(locale, value)} bpm` : `${formatPace(value)} ${t.units.min}/${t.units.km}`
               : text.streamMissing, name]} />
           {showAltitude && <Line yAxisId="altitude" dataKey="altitude" name={elevationText.altitude} type="linear"
-            stroke={altitudeColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "white", strokeWidth: 2 }}
+            stroke={altitudeColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-dot-stroke)", strokeWidth: 2 }}
             connectNulls={false} isAnimationActive={false} />}
           {showHr && <Line yAxisId="hr" dataKey="hr" name={text.heartRate} type="monotoneX"
-            stroke={hrColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "white", strokeWidth: 2 }}
+            stroke={hrColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-dot-stroke)", strokeWidth: 2 }}
             connectNulls={false} isAnimationActive={false} />}
           {showPace && <Line yAxisId="pace" dataKey="pace" name={hrText.pace} type="monotoneX"
-            stroke={paceColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "white", strokeWidth: 2 }}
+            stroke={paceColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-dot-stroke)", strokeWidth: 2 }}
             connectNulls={false} isAnimationActive={false} />}
         </LineChart>
       </ResponsiveContainer>

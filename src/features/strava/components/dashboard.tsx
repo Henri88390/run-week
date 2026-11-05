@@ -117,10 +117,10 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice, 
           </button>
           <label className="block min-w-0 flex-1">
             <span className="sr-only">{yearly ? yearLabel : weekly ? navigation.week : navigation.month}</span>
-            {yearly ? <select aria-label={yearLabel} className="block h-12 w-full rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 text-base font-semibold text-emerald-950 focus-visible:outline-2"
+            {yearly ? <select data-calendar-date-picker aria-label={yearLabel} className="block h-12 w-full rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 text-base font-semibold text-emerald-950 focus-visible:outline-2"
               value={data.year ?? ""} onChange={(event) => router.push(yearUrl(event.target.value))}>
               {Array.from({ length: Number(data.today.slice(0, 4)) - 1900 + 1 }, (_, i) => <option key={i} value={1900 + i}>{1900 + i}</option>)}
-            </select> : <input type={weekly ? "date" : "month"} className="block h-12 w-full min-w-0 cursor-pointer rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 py-2 text-base font-semibold text-emerald-950 shadow-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
+            </select> : <input data-calendar-date-picker type={weekly ? "date" : "month"} className="block h-12 w-full min-w-0 cursor-pointer rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 py-2 text-base font-semibold text-emerald-950 shadow-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
               value={data.weekDate ?? data.month} min={weekly ? "1900-01-01" : "1900-01"} max={weekly ? data.today : data.today.slice(0, 7)}
               onClick={(event) => {
                 if (typeof event.currentTarget.showPicker === "function" && !event.currentTarget.disabled) event.currentTarget.showPicker();

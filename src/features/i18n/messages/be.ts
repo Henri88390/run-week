@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const be = {
   privacyLink: "Прыватнасць і кіраванне данымі",
   language: "Мова",
+  theme: {
+    darkMode: "Цёмная тэма",
+    lightMode: "Светлая тэма",
+    switchToDark: "Уключыць цёмную тэму",
+    switchToLight: "Уключыць светлую тэму",
+  },
   loading: "Загрузка плана…",
   storage: {
     unreadable: "Не ўдалося прачытаць захаваныя даныя. Яны не былі перазапісаны. Скіньце лакальныя даныя, каб пачаць нанова.",

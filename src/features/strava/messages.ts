@@ -69,7 +69,7 @@ export const STRAVA_MESSAGES: Record<Locale, Text> = {
   en,
   fr: {
     heartRate: "Fréquence cardiaque",
-    overview: "Activités", metrics: "Indicateurs de performance", planner: "Simulateur de semaine d’entraînement", privacy: "Confidentialité et export",
+    overview: "Activités", metrics: "Indicateurs de performance", planner: "Simulateur de semaine d’entraînement", privacy: "Confidentialité et gestion des données",
     signin: "Connectez-vous pour voir vos données", signinBody: "Les tableaux d’activités nécessitent un compte. Le planificateur reste utilisable hors connexion dans ce navigateur.",
     connect: "Se connecter à Strava", consentTitle: "Importer les courses depuis Strava",
     consent: "J’accepte l’import dans mon compte Run Week des résumés de course (y compris privés), dates, distances, durées et séries disponibles de temps, fréquence cardiaque, vitesse et distance. Aucun GPS n’est demandé ni stocké. Les jetons Strava sont chiffrés ; aucune IA ne traite ces données. Garmin sert uniquement à envoyer les séances prévues ; Android ne change pas. Déconnecter supprime ici imports, réglages et jetons, pas les activités Strava. Révoquez aussi l’accès dans Strava.",

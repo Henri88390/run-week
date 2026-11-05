@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createContext, Suspense, useContext } from "react";
 import { UserMenu } from "@/features/account/components/user-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useGarmin } from "@/features/garmin/use-garmin";
 import { DocumentLanguage, LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
@@ -34,7 +35,7 @@ function SiteHeader() {
         : garmin.notice === "disconnectFailed" ? t.garmin.disconnectFailed
           : garmin.notice && garmin.notice !== "connected" ? t.garmin[garmin.notice]
             : garmin.leftInGarmin > 0 ? t.garmin.leftInGarmin(garmin.leftInGarmin) : "";
-  return <header className="border-b border-stone-200 bg-white">
+  return <header className="site-header border-b border-stone-200">
     <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
       <Link href="/" className="shrink-0 font-semibold text-emerald-950">Run Week</Link>
       <nav aria-label="Run Week" className="order-last flex w-full flex-wrap gap-1 text-sm lg:order-none lg:w-auto">
@@ -42,11 +43,12 @@ function SiteHeader() {
           { href: "/running-metrics", label: text.metrics }].map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return <Link key={href} href={href} aria-current={active ? "page" : undefined}
-            className={`rounded-lg px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-700 ${active ? "bg-emerald-50 font-semibold text-emerald-950" : "text-stone-600 hover:bg-stone-100"}`}>{label}</Link>;
+            className={`rounded-lg px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-700 ${active ? "site-nav-active font-semibold" : "site-nav-inactive"}`}>{label}</Link>;
         })}
       </nav>
       <div className="ml-auto flex min-w-0 items-center gap-2">
         {status !== "authenticated" && <LanguageSelect />}
+        <ThemeToggle />
         <UserMenu garmin={garmin} />
       </div>
       {notice && <p role="alert" className="order-last w-full text-sm text-amber-900">{notice}</p>}
@@ -60,7 +62,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   const garmin = useGarmin(status === "authenticated" ? session.user?.id ?? null : null);
   return <GarminContext.Provider value={garmin}><ActivityQueryProvider key={status === "authenticated" ? session.user?.id : status}><ActivityImportProvider>
     <DocumentLanguage />
-    <Suspense fallback={<header className="h-24 border-b border-stone-200 bg-white" aria-busy="true" />}><SiteHeader /></Suspense>
+    <Suspense fallback={<header className="site-header h-24 border-b border-stone-200" aria-busy="true" />}><SiteHeader /></Suspense>
     {children}
     <Suspense fallback={null}><SiteFooter /></Suspense>
   </ActivityImportProvider></ActivityQueryProvider></GarminContext.Provider>;

@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const de = {
   privacyLink: "Datenschutz und Datenverwaltung",
   language: "Sprache",
+  theme: {
+    darkMode: "Dunkelmodus",
+    lightMode: "Hellmodus",
+    switchToDark: "Zum Dunkelmodus wechseln",
+    switchToLight: "Zum Hellmodus wechseln",
+  },
   loading: "Plan wird geladen…",
   storage: {
     unreadable: "Die gespeicherten Daten konnten nicht gelesen werden. Sie wurden nicht überschrieben. Setze die lokalen Daten zurück, um neu zu beginnen.",

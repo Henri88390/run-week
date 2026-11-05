@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const pl = {
   privacyLink: "Prywatność i zarządzanie danymi",
   language: "Język",
+  theme: {
+    darkMode: "Tryb ciemny",
+    lightMode: "Tryb jasny",
+    switchToDark: "Przełącz na tryb ciemny",
+    switchToLight: "Przełącz na tryb jasny",
+  },
   loading: "Wczytywanie planu…",
   storage: {
     unreadable: "Nie udało się odczytać zapisanych danych. Nie zostały nadpisane. Zresetuj dane lokalne, aby zacząć od nowa.",

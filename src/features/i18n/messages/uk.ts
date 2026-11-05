@@ -4,6 +4,12 @@ import type { Messages } from "./en";
 export const uk = {
   privacyLink: "Конфіденційність і керування даними",
   language: "Мова",
+  theme: {
+    darkMode: "Темна тема",
+    lightMode: "Світла тема",
+    switchToDark: "Увімкнути темну тему",
+    switchToLight: "Увімкнути світлу тему",
+  },
   loading: "Завантаження плану…",
   storage: {
     unreadable: "Не вдалося прочитати збережені дані. Їх не було перезаписано. Скиньте локальні дані, щоб почати заново.",
