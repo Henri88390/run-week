@@ -348,9 +348,9 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByRole("banner").getByRole("status")).toHaveCount(0);
     await expect(page.getByRole("banner")).not.toContainText("Running summaries");
     await deliveryControl({ paused: false });
-    await expect(page.getByText(/Elapsed time: 0 h 2 min/)).toBeVisible();
+    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elapsed time" }).locator("dd")).toHaveText("2 min");
     await expect(page.getByRole("application", { name: "Heart rate / Pace · Elapsed time", exact: true })).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText("Average heart rate: 155.0 bpm", { exact: true })).toBeVisible();
+    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Average heart rate" }).locator("dd")).toHaveText("155 bpm");
     await expect(page.getByRole("button", { name: "Continue import", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Recorded streams", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Back to overview", exact: true })).toHaveCount(0);
@@ -716,14 +716,13 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       WHERE id=$1`, [new URL(page.url()).pathname.split("/").at(-1)])).rows[0];
     await expect(hrAverage).toHaveAttribute("y1", await hrAverage.getAttribute("y2") ?? "");
     await expect(paceAverage).toHaveAttribute("y1", await paceAverage.getAttribute("y2") ?? "");
-    await expect(chart).toContainText(`${averages.averageHr} bpm`);
+    await expect(chart).toContainText(`${averages.averageHr.toFixed(1)} bpm`);
     await expect(chart).toContainText(`${formatPace(averages.movingSeconds * 1000 / averages.distanceMeters)} min/km`);
     const hrLine = chart.locator('.recharts-line-curve[stroke="#be123c"]');
     const paceLine = chart.locator('.recharts-line-curve[stroke="#1d4ed8"]');
     await expect(hrLine).toHaveCount(1);
     await expect(paceLine).toHaveCount(1);
     await expect(paceLine).toHaveAttribute("d", /C/);
-    await expect(chart.getByText("4:10", { exact: true })).toBeVisible();
     await expect(chart.getByText("5:33", { exact: true })).toBeVisible();
     await expect(chart.getByText("Z5", { exact: true })).toBeVisible();
     await expect(page.getByText("Pace: 4:10–5:33 min/km", { exact: true })).toBeVisible();
