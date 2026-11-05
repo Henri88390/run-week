@@ -36,10 +36,14 @@ test("the account menu holds Garmin, language and sign-out and works with the ke
   // The shared header can be ready before the asynchronous Garmin status.
   await openAccountMenu(page);
   await expect(connectGarminLink(page)).toBeVisible();
+  const connectStrava = menu.getByRole("menuitem", { name: "Strava Connect with Strava", exact: true });
+  await expect(connectStrava).toBeVisible();
   await closeAccountMenu(page);
   await button.focus();
   await page.keyboard.press("ArrowDown");
   await expect(menu).toBeVisible();
+  await expect(connectStrava).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(connectGarminLink(page)).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: /Language/ })).toBeFocused();
@@ -50,6 +54,7 @@ test("the account menu holds Garmin, language and sign-out and works with the ke
   await expect(button).toBeFocused();
 
   await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menuitemradio", { name: "English" })).toHaveAttribute("aria-checked", "true");

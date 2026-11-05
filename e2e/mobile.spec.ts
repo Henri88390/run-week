@@ -134,6 +134,7 @@ test("mobile Garmin uses the native account, preserves the browser account and d
   const garminUser = uniqueGarminUser();
   await page.context().addCookies([{ name: "garmin_e2e_user", value: garminUser, url: GARMIN_MOCK_ORIGIN }]);
   await page.goto(url);
+  await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
   await page.getByRole("checkbox").check();
   const callback = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/garmin/callback");
   await page.getByRole("button", { name: "Agree and continue to Garmin" }).click();

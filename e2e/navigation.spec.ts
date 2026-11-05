@@ -11,7 +11,12 @@ test("shared navigation is consistent across pages and usable on mobile by keybo
     const navigation = page.getByRole("navigation", { name: "Run Week", exact: true });
     await expect(navigation.getByRole("link")).toHaveCount(3);
     await expect(navigation.locator('a[href="/privacy"]')).toHaveCount(0);
-    await expect(page.getByRole("contentinfo").locator('a[href="/privacy"]')).toBeVisible();
+    const planner = new URL(page.url()).pathname === "/planner";
+    await expect(page.getByRole(planner ? "main" : "contentinfo").locator('a[href="/privacy"]')).toBeVisible();
+    if (planner) {
+      await expect(page.getByRole("contentinfo")).toHaveCount(0);
+      await expect(page.locator('a[href="/privacy"]')).toHaveCount(1);
+    }
     const currentLabels = await navigation.getByRole("link").allTextContents();
     if (labels) expect(currentLabels).toEqual(labels);
     else labels = currentLabels;

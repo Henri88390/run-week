@@ -3,7 +3,7 @@ import pg from "pg";
 import { createHash } from "node:crypto";
 import { APP_URL, DATABASE_URL, REDIS_URL } from "./env";
 import { createClient } from "redis";
-import { createWeek, signIn, uniqueEmail } from "./helpers";
+import { accountMenuButton, createWeek, signIn, uniqueEmail } from "./helpers";
 import { syncStatusSchema } from "../src/features/strava/background-sync";
 import { STRAVA_CONSENT_VERSION } from "../src/features/strava/types";
 import { calculateVdot } from "../src/features/running-programs/domain";
@@ -564,6 +564,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.mouse.move(0, 0);
     await page.screenshot({ path: test.info().outputPath("performance-indicators-mobile.png"), fullPage: true });
     await page.goto("/running-metrics?month=2026-01");
+    await expect(accountMenuButton(page)).toBeVisible();
     await expect(page.locator("[data-maximal-efforts]").getByRole("link", { name: /Synthetic run 1/ })).toBeVisible();
     expect(await page.locator("[data-maximal-efforts]").filter({ visible: true }).evaluate((element) => element === element.parentElement?.lastElementChild)).toBe(true);
     const removeEffort = page.getByRole("button", { name: "Remove maximal-effort mark: Synthetic run 1", exact: true });
@@ -742,7 +743,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect.poll(async () => (await chart.boundingBox())?.width ?? 0).toBeGreaterThan(700);
     await chart.screenshot({ path: test.info().outputPath("activity-chart-desktop.png") });
     await page.setViewportSize({ width: 390, height: 844 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await chart.screenshot({ path: test.info().outputPath("activity-chart-mobile.png") });
     await page.goto(`/activities?month=${month}`);
     await expect(page.getByRole("heading", { name: "Training calendar" })).toBeVisible();
