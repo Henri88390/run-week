@@ -9,7 +9,7 @@ export const syncJobSchema = z.object({
   retryAt: z.iso.datetime().nullable(),
   errorCode: z.string().nullable(),
 });
-export const syncStatusSchema = z.object({ job: syncJobSchema.nullable() });
+export const syncStatusSchema = z.object({ job: syncJobSchema.nullable(), revision: z.string().optional() });
 export const syncEventSchema = z.object({ jobId: z.string().uuid(), version: z.number().int().positive() }).strict();
 export type SyncJobStatus = z.infer<typeof syncJobSchema>;
 

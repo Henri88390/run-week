@@ -3,7 +3,7 @@ import { db } from "@/features/account/server/db";
 import { syncEventSchema } from "../background-sync";
 import { inngest } from "./inngest";
 import { syncChunk } from "./background-worker";
-import { publishJob, scheduleDueSyncAccounts } from "./background-jobs";
+import { publishJob, retryWebhookJobs, scheduleDueSyncAccounts } from "./background-jobs";
 import { logStravaFailure } from "./diagnostics";
 
 async function safeBackgroundStep<T>(work: () => Promise<T>): Promise<T> {
@@ -37,7 +37,7 @@ export const stravaImport = inngest.createFunction(
           },
           data: { status: "failed", errorCode: "unavailable" },
         });
-        if (failed.count)
+        if (failed.count && !job.kind.startsWith("webhook-"))
           await tx.stravaConnection.updateMany({
             where: { userId: job.userId, generation: job.generation },
             data: { syncActive: false },
@@ -89,6 +89,7 @@ export const stravaDispatcher = inngest.createFunction(
     concurrency: { limit: 1 },
   },
   async ({ step }) => {
+    await step.run("retry-targeted-work", () => safeBackgroundStep(retryWebhookJobs));
     const ids = await step.run("queued-jobs", () =>
       safeBackgroundStep(async () =>
         (

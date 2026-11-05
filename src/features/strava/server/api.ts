@@ -21,6 +21,11 @@ export class StravaAlreadyLinkedError extends StravaError {
   }
 }
 
+/** Only an authoritative invalid refresh-token response proves access was revoked. */
+export class StravaRevokedError extends StravaError {
+  constructor() { super("unauthorized", 401); }
+}
+
 function schemaFailure(stage: "token" | "summaries" | "streams", error: z.ZodError): StravaError {
   // Schema paths contain field names and array offsets only; never record values.
   const fields = [...new Set(error.issues.map((issue) => issue.path.filter((part) => typeof part === "string").join(".")))].slice(0, 10);
@@ -59,7 +64,7 @@ function quotaDelay(response: Response): number | undefined {
   }
   return undefined;
 }
-export async function request(path: string, init: RequestInit): Promise<{ value: unknown; delay?: number; missing?: boolean }> {
+export async function request(path: string, init: RequestInit, acceptBadRequest = false): Promise<{ value: unknown; delay?: number; missing?: boolean }> {
   let response: Response;
   try {
     response = await fetch(`${stravaOrigin()}${path}`, { ...init, cache: "no-store", redirect: "error",
@@ -73,9 +78,11 @@ export async function request(path: string, init: RequestInit): Promise<{ value:
     const retry = Number(response.headers.get("Retry-After"));
     throw new StravaError("rateLimited", 429, Math.min(86400, Math.max(delay ?? 900, Number.isFinite(retry) ? retry : 900)));
   }
-  if (response.status === 401 || response.status === 403) throw new StravaError("unauthorized", 401);
+  if (response.status === 401 || response.status === 403) throw new StravaError("unauthorized", 401, undefined,
+    { stage: "request", reason: "http", upstreamStatus: response.status });
   if (response.status === 404) return { value: null, missing: true, delay };
-  if (!response.ok) throw new StravaError("unavailable", 503, undefined, { stage: "request", reason: "http", upstreamStatus: response.status });
+  if (!response.ok && !(acceptBadRequest && response.status === 400))
+    throw new StravaError("unavailable", 503, undefined, { stage: "request", reason: "http", upstreamStatus: response.status });
   if (Number(response.headers.get("content-length")) > MAX_BODY)
     throw new StravaError("unavailable", 503, undefined, { stage: "request", reason: "bodyTooLarge" });
   // Bound streamed bodies too, even when Content-Length is absent.
@@ -104,9 +111,14 @@ export async function request(path: string, init: RequestInit): Promise<{ value:
   }
 }
 export async function exchange(config: StravaConfig, fields: Record<string, string>, signal?: AbortSignal) {
+  const refreshing = fields.grant_type === "refresh_token";
   const { value } = await request("/oauth/token", {
     method: "POST", body: new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, ...fields }), signal,
-  });
+  }, refreshing);
+  const invalidRefresh = z.object({ errors: z.array(z.object({
+    resource: z.literal("RefreshToken"), field: z.literal("refresh_token"), code: z.literal("invalid"),
+  })).min(1).max(10) }).safeParse(value);
+  if (refreshing && invalidRefresh.success) throw new StravaRevokedError();
   const parsed = tokenSchema.safeParse(value);
   if (!parsed.success) throw schemaFailure("token", parsed.error);
   return parsed.data;
@@ -131,6 +143,27 @@ export async function summaries(accessToken: string, page: number, after: number
   if (excluded.average_heartrate || excluded.max_heartrate)
     console.warn("strava_summary_hr_excluded", { reason: "outOfRange", counts: excluded });
   return { activities, delay: result.delay };
+}
+
+/** Fetch only the notified activity; ownership is verified before using its contents. */
+export async function activity(accessToken: string, id: string) {
+  if (!/^[1-9]\d{0,15}$/.test(id)) throw new StravaError("invalid", 400);
+  const result = await request(`/api/v3/activities/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (result.missing) return { data: null, delay: result.delay };
+  const parsed = summarySchema.extend({ athlete: z.object({ id: z.number().int().positive().safe() }) }).safeParse(result.value);
+  if (!parsed.success) throw schemaFailure("summaries", parsed.error);
+  if (String(parsed.data.id) !== id) throw new StravaError("unavailable");
+  return { data: { ...parsed.data,
+    average_heartrate: validHeartRate(parsed.data.average_heartrate ?? null),
+    max_heartrate: validHeartRate(parsed.data.max_heartrate ?? null) }, delay: result.delay };
+}
+
+/** An unsigned revocation hint must not disconnect an account with working access. */
+export async function authorizedAthlete(accessToken: string) {
+  const result = await request("/api/v3/athlete", { headers: { Authorization: `Bearer ${accessToken}` } });
+  const parsed = z.object({ id: z.number().int().positive().safe() }).safeParse(result.value);
+  if (!parsed.success) throw new StravaError("unavailable");
+  return { id: parsed.data.id, delay: result.delay };
 }
 export async function streams(accessToken: string, id: string, signal?: AbortSignal): Promise<{ data: ActivityStreams | null; delay?: number }> {
   if (!/^\d+$/.test(id)) throw new StravaError("invalid", 400);

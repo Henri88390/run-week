@@ -141,12 +141,20 @@ model StravaSyncJob {
   errorCode     String?
   summaries     Int      @default(0)
   recordings    Int      @default(0)
+  /// Targeted webhook outbox. Null for existing paginated imports.
+  sourceId      String?
+  webhookKey    String?  @unique
+  webhookEventTime Int?
+  webhookFingerprint String?
+  /// Authoritative absence/non-running result fences later summary imports.
+  webhookDeleted Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   connection    StravaConnection @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@index([status, publishedAt])
   @@index([userId, createdAt])
+  @@index([userId, sourceId])
 }
 
 model StravaSyncQuota {

@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/features/account/server/db";
 import { Prisma } from "@/generated/prisma/client";
 import { seal } from "@/features/garmin/server/session";
@@ -14,11 +14,12 @@ import { syncPeriodRange } from "../sync-period";
 import { volumeBuckets } from "../volume-chart";
 import { createSyncJob } from "./background-jobs";
 import { requireBackgroundSync } from "./inngest";
+import { athleteKey as keyedAthlete } from "./athlete-key";
 
 export async function saveConnection(config: StravaConfig, userId: string, tokens: Tokens, consentAt: Date, state: string) {
   requireBackgroundSync();
   if (!tokens.athlete) throw new StravaError("unavailable");
-  const athleteKey = createHmac("sha256", config.encryptionKey).update(`run-week:strava:athlete:v1\0${tokens.athlete.id}`).digest("hex");
+  const athleteKey = keyedAthlete(config.encryptionKey, tokens.athlete.id);
   try {
     await db().$transaction(async (tx) => {
       // Serializes reconnect with sync commits and local deletion across instances.

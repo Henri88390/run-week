@@ -10,11 +10,12 @@ import { inngest } from "./inngest";
 import { logStravaFailure } from "./diagnostics";
 
 const activeStatuses = ["queued", "running", "paused"];
+const importKinds = ["history", "incremental", "elevation"];
 
 export async function createSyncJob(tx: Prisma.TransactionClient, userId: string) {
   const connection = await tx.stravaConnection.findUnique({ where: { userId } });
   if (!connection || connection.consentVersion !== STRAVA_CONSENT_VERSION) throw new StravaError("notConnected", 409);
-  const existing = await tx.stravaSyncJob.findFirst({ where: { userId, status: { in: activeStatuses } } });
+  const existing = await tx.stravaSyncJob.findFirst({ where: { userId, kind: { in: importKinds }, status: { in: activeStatuses } } });
   if (existing) return existing;
   const history = syncHistorySchema.parse(connection.syncHistory);
   const elevationBackfill = connection.elevationVersion < 1;
@@ -34,7 +35,7 @@ export async function createSyncJob(tx: Prisma.TransactionClient, userId: string
   const first = gaps[0];
   if (!first) return null;
   // Scheduled retries resume the saved page rather than refetching the same range.
-  const unfinished = await tx.stravaSyncJob.findFirst({ where: { userId, generation: connection.generation,
+  const unfinished = await tx.stravaSyncJob.findFirst({ where: { userId, generation: connection.generation, kind: { in: importKinds },
     OR: [{ status: "failed", errorCode: "unavailable" }, { status: "cancelled" }] }, orderBy: { updatedAt: "desc" } });
   await tx.stravaConnection.update({ where: { userId }, data: { syncActive: true } });
   if (unfinished) return tx.stravaSyncJob.update({ where: { id: unfinished.id }, data: {
@@ -70,7 +71,7 @@ export async function scheduleDueSyncAccounts() {
   const accounts = await db().stravaConnection.findMany({
     where: { consentVersion: STRAVA_CONSENT_VERSION,
       OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - 86400_000) } }, { elevationVersion: { lt: 1 } }],
-      jobs: { none: { OR: [{ status: { in: activeStatuses } },
+      jobs: { none: { kind: { in: importKinds }, OR: [{ status: { in: activeStatuses } },
         { status: "failed", errorCode: { in: ["invalid", "unauthorized", "notConnected"] } }] } } },
     orderBy: { lastSyncedAt: { sort: "asc", nulls: "first" } }, take: 100, select: { userId: true },
   });
@@ -89,6 +90,30 @@ export function jobStatus(job: { id: string; status: string; phase: string; summ
 }
 
 export async function currentSyncJob(userId: string) {
-  const job = await db().stravaSyncJob.findFirst({ where: { userId }, orderBy: { updatedAt: "desc" } });
+  const job = await db().stravaSyncJob.findFirst({ where: { userId, status: { in: activeStatuses } }, orderBy: { updatedAt: "desc" } })
+    ?? await db().stravaSyncJob.findFirst({ where: { userId }, orderBy: { updatedAt: "desc" } });
   return job ? jobStatus(job) : null;
+}
+
+export async function currentSyncState(userId: string) {
+  const [job, latest] = await Promise.all([
+    currentSyncJob(userId),
+    db().stravaSyncJob.findFirst({ where: { userId }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      select: { id: true, version: true, updatedAt: true } }),
+  ]);
+  return { job, revision: latest ? `${latest.id}:${latest.version}:${latest.updatedAt.toISOString()}` : "none" };
+}
+
+/** Requeue only transiently failed targeted work; never start a broad resync. */
+export async function retryWebhookJobs() {
+  const jobs = await db().stravaSyncJob.findMany({ where: {
+    kind: { in: ["webhook-activity", "webhook-revocation"] }, status: "failed", errorCode: "unavailable",
+    updatedAt: { lt: new Date(Date.now() - 600_000) },
+  }, orderBy: { updatedAt: "asc" }, take: 100, select: { id: true, userId: true, version: true } });
+  for (const job of jobs) await db().$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${job.userId}`}))`;
+    await tx.stravaSyncJob.updateMany({ where: { id: job.id, version: job.version, status: "failed", errorCode: "unavailable" },
+      data: { status: "queued", version: { increment: 1 }, publishedAt: null, errorCode: null } });
+  });
+  return jobs.length;
 }

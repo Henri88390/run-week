@@ -1,7 +1,8 @@
 // Synthetic activities only. Never reads environment files or real activity datasets.
 import http from "node:http";
 const calls = [];
-const controls = { rate: false, delay: 0, tokenDelay: 0, history: false, latest: false };
+const controls = { rate: false, delay: 0, tokenDelay: 0, history: false, latest: false,
+  details: {}, revoked: [], detailDelay: 0, streamVersion: 0 };
 let nextAthlete = 5000;
 const codes = new Map();
 const tokenAthletes = new Map();
@@ -51,6 +52,9 @@ http.createServer(async (request, response) => {
     if (!athlete) return send(response, 401, {});
     if (grant === "authorization_code") codes.delete(form.get("code"));
     calls.push({ path: url.pathname, athlete, grant });
+    if (controls.revoked.includes(athlete)) return send(response, 400, {
+      message: "Bad Request", errors: [{ resource: "RefreshToken", field: "refresh_token", code: "invalid" }],
+    });
     if (controls.tokenDelay) await new Promise((resolve) => setTimeout(resolve, controls.tokenDelay));
     return send(response, 200, tokens(athlete, grant === "authorization_code"));
   }
@@ -58,7 +62,23 @@ http.createServer(async (request, response) => {
   const athlete = tokenAthletes.get(access);
   if (!athlete) return send(response, 401, {});
   calls.push({ path: url.pathname, athlete, query: Object.fromEntries(url.searchParams) });
+  if (controls.revoked.includes(athlete)) return send(response, 401, {});
   if (controls.rate) return send(response, 429, {}, { "X-ReadRateLimit-Limit": "100,1000", "X-ReadRateLimit-Usage": "100,200", "Retry-After": "5" });
+  if (url.pathname === "/api/v3/athlete") return send(response, 200, { id: athlete });
+  const detail = /^\/api\/v3\/activities\/(\d+)$/.exec(url.pathname);
+  if (detail) {
+    // Snapshot before delay lets the tests exercise superseded in-flight responses.
+    const override = { ...(controls.details[detail[1]] ?? {}) };
+    if (controls.detailDelay) await new Promise((resolve) => setTimeout(resolve, controls.detailDelay));
+    if (override.missing || Number(detail[1]) < athlete * 100 || Number(detail[1]) >= (athlete + 1) * 100)
+      return send(response, 404, {});
+    return send(response, 200, {
+      id: Number(detail[1]), athlete: { id: athlete }, name: "Webhook run", type: "Run", sport_type: "Run",
+      start_date: new Date().toISOString(), start_date_local: new Date().toISOString(),
+      elapsed_time: 1800, moving_time: 1790, distance: 5000, total_elevation_gain: 42,
+      average_heartrate: 150, max_heartrate: 180, ...override,
+    });
+  }
   if (url.pathname === "/api/v3/athlete/activities") {
     const page = Number(url.searchParams.get("page"));
     const month = new Date().toISOString().slice(0, 7);
@@ -95,7 +115,7 @@ http.createServer(async (request, response) => {
     return send(response, 200, {
       time: { data: [0, 5, 10, 40, 45] },
       ...(Number(stream[1]) % 100 !== 3 ? { heartrate: { data: [140, 160, null, 170, 170] } } : {}),
-      velocity_smooth: { data: [3, 4, 4, 3, 0.003] }, distance: { data: [0, 15, 35, 100, 115] },
+      velocity_smooth: { data: [3 + controls.streamVersion, 4, 4, 3, 0.003] }, distance: { data: [0, 15, 35, 100, 115] },
       altitude: { data: [-5, 0, 4, null, 2] },
     }, { "X-RateLimit-Limit": "200,2000", "X-RateLimit-Usage": "1,1" });
   }

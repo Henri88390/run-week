@@ -54,7 +54,7 @@ const database = {
     async findFirst({ where }) {
       if (!job || job.userId !== where.userId || (where.generation && job.generation !== where.generation)
         || (where.status && !where.status.in.includes(job.status))
-        || (where.kind && job.kind !== where.kind)
+        || (where.kind && (typeof where.kind === "string" ? job.kind !== where.kind : !where.kind.in.includes(job.kind)))
         || (where.OR && !where.OR.some((condition) => job.status === condition.status
           && (!condition.errorCode || job.errorCode === condition.errorCode)))) return null;
       return { ...job };
@@ -145,7 +145,7 @@ function reset() {
     tokens: JSON.stringify({ access_token: "synthetic", refresh_token: "synthetic", expires_at: 4102444800 }),
     leaseId: null, leaseUntil: null, syncHistory: [], syncActive: true, elevationVersion: 1 };
   job = { id: "job", userId: connection.userId, generation: connection.generation, version: 1,
-    status: "queued", phase: "summaries", page: 1, start: "2024-01-01", end: "2025-01-01",
+    kind: "history", status: "queued", phase: "summaries", page: 1, start: "2024-01-01", end: "2025-01-01",
     remaining: [], before: Date.parse("2025-01-01T00:00:00Z") / 1000, summaries: 0, recordings: 0, retryAt: null };
   quota = null;
   activities = [];

@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { activeSync, syncStatusSchema } from "../background-sync";
 import { ACTIVITY_QUERY_KEY } from "./activity-query";
+import { STRAVA_STATUS_KEY } from "./connection-status";
 
 export const SYNC_STATUS_KEY = ["strava-sync-status"] as const;
 
@@ -30,15 +31,17 @@ function useImportController() {
     refetchIntervalInBackground: false,
   });
   const job = query.data?.job ?? null;
+  const revision = query.data?.revision;
   useEffect(() => {
-    if (!job) return;
-    const progress = `${job.id}:${job.status}:${job.summaries}:${job.recordings}`;
+    if (!query.data) return;
+    const progress = `${revision ?? ""}:${job ? `${job.id}:${job.status}:${job.summaries}:${job.recordings}` : "none"}`;
     if (previous.current !== null && previous.current !== progress) {
       void queries.invalidateQueries({ queryKey: ACTIVITY_QUERY_KEY });
+      void queries.invalidateQueries({ queryKey: STRAVA_STATUS_KEY });
       router.refresh();
     }
     previous.current = progress;
-  }, [job, queries, router]);
+  }, [job, revision, query.data, queries, router]);
   return useMemo(() => ({
     importing: job !== null && activeSync(job.status),
     error: query.isError || job?.status === "failed",

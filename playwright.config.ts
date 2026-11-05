@@ -83,6 +83,8 @@ export default defineConfig({
         STRAVA_TOKEN_ENCRYPTION_KEY: "e2e-strava-encryption-secret-0123456789",
         STRAVA_REDIRECT_URI: `${APP_URL}/api/strava/callback`,
         STRAVA_E2E_MOCK_ORIGIN: "http://127.0.0.1:3102",
+        STRAVA_WEBHOOK_VERIFY_TOKEN: "e2e-webhook-verify-secret-0123456789",
+        STRAVA_WEBHOOK_SUBSCRIPTION_ID: "12345",
         INNGEST_DEV: "http://127.0.0.1:3103",
       },
     },

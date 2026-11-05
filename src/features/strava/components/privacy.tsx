@@ -14,6 +14,7 @@ import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { RequestError } from "./request-error";
 import { STRAVA_STATUS_KEY } from "./connection-status";
 import { BACKGROUND_MESSAGES, ELEVATION_DISCLOSURE } from "../background-messages";
+import { WEBHOOK_DISCLOSURE } from "../webhook-messages";
 
 const retention: Record<Locale, string> = {
   en: "Strava imports, manual HR settings and encrypted tokens stay until disconnect or account deletion. Consent version and acceptance time are recorded; changed consent requires reconnection. OAuth cookies and cancellable single-use tickets expire after 10 minutes. Import progress and short-lived leases are stored for safe retries. Hosting/database providers listed in this policy process this data. Logs contain only operation names and safe error codes, not activity data or tokens. Account export includes imports and settings, never tokens. Strava does not become a sign-in provider. Account deletion cancels pending imports; original Strava activities remain.",
@@ -62,6 +63,7 @@ export function StravaPrivacy() {
     <p>{text.consent}</p>
     <p>{retention[locale]}</p>
     <p>{BACKGROUND_MESSAGES[locale].consent}</p>
+    <p>{WEBHOOK_DISCLOSURE[locale]}</p>
     <p>{CACHE_PRIVACY_MESSAGES[locale]}</p>
     <Link href="/activities" className="underline">{text.overview}</Link>
     {status === "authenticated" && <button type="button" className="button-secondary block" disabled={busy} onClick={() => { setError(0); setConfirming(true); }}>{text.disconnect}</button>}

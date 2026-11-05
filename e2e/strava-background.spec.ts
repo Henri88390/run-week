@@ -21,6 +21,7 @@ test("automatic history import survives navigation and scheduled updates reuse s
   try {
     await page.goto("/planner");
     await signIn(page, email);
+    await page.waitForLoadState("networkidle");
     await page.context().addCookies([{ name: "strava_e2e_athlete", value: "8801", url: "http://127.0.0.1:3102" }]);
     let releaseSession = () => {};
     let sessionRequested = () => {};
@@ -30,7 +31,7 @@ test("automatic history import survives navigation and scheduled updates reuse s
       sessionRequested();
       await sessionGate;
       await route.continue();
-    }, { times: 1 });
+    });
     await page.goto("/strava/consent");
     const consent = page.getByRole("checkbox");
     try {

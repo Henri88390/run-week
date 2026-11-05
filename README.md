@@ -277,8 +277,9 @@ available in privacy controls and deletes all local imports and tokens; original
 Strava activities remain unchanged. Only Run, TrailRun and VirtualRun are retained.
 Streams request only `time,heartrate,velocity_smooth,distance,altitude`; no GPS coordinates, profile
 details, AI or Garmin activity API is involved. Missing HR remains null. Available
-streams are retained on reimport; Strava deletions are not automatically
-reconciled (disconnect removes everything locally).
+streams are retained on ordinary reimport. Configured webhooks refresh a changed
+activity's recordings and remove authoritatively deleted/inaccessible runs
+(disconnect removes everything locally).
 Numeric summary heart rates outside 30–240 bpm are imported as unavailable, just
 like invalid recorded HR samples, rather than blocking the whole summary page.
 A sanitized warning records excluded-field counts, never activity values or IDs.
@@ -289,8 +290,129 @@ A sanitized warning reports only the removed count. Decreasing timestamps and
 mismatched sample-array lengths still fail explicitly rather than inventing timing.
 Activity detail pages read stored samples; pending recordings are filled by the
 background job. Missing heart-rate recordings remain unavailable rather than
-being estimated. New/imported activity edits outside the incremental overlap and
-Strava deletions are not reconciled automatically; Strava webhooks are not yet installed.
+being estimated. Webhooks cover new activities, edits, deletions and access
+revocation after the subscription is configured; the periodic incremental import
+remains as a discovery/reconciliation safety net.
+
+### Strava webhooks: deployment and manual subscription setup
+
+`/api/strava/webhook` is a public, uncached provider callback, not a cookie-authenticated
+website mutation. GET verifies `hub.mode=subscribe` and the independent server-only
+`STRAVA_WEBHOOK_VERIFY_TOKEN` (32–256 random characters), returning only
+`{"hub.challenge":"..."}`. It works **before** a subscription ID is assigned.
+POST requires `STRAVA_WEBHOOK_SUBSCRIPTION_ID` to match the notification; absent
+configuration fails closed with 503, a mismatched ID with 403.
+
+1. Apply additive migration `20261105180000_strava_webhook_targets` through the
+   existing migration/deployment process and regenerate the Prisma client
+   (`npx prisma generate`). It adds nullable webhook metadata and a false-default
+   tombstone to existing jobs and indexes target lookups. The existing partial
+   one-active-job index is narrowed to ordinary history/incremental/elevation imports,
+   preserving that invariant while targeted jobs can queue alongside an import.
+   Ordinary jobs from the previous deployment still work.
+2. Deploy with `STRAVA_WEBHOOK_VERIFY_TOKEN` set, the existing Strava encryption/OAuth
+   configuration, and the Inngest configuration described below. Keep the public
+   callback reachable through deployment protection/WAF for GET and POST without
+   login, CSRF challenges or redirects. Keep `/api/inngest` signature verification.
+3. **Manually**, from a secure operator terminal after deployment, register the
+   subscription with Strava. The following is an example only; replace placeholders
+   and do not run it against production as part of tests:
+
+   ```sh
+   curl --request POST 'https://www.strava.com/api/v3/push_subscriptions' \
+     --data-urlencode 'client_id=<STRAVA_CLIENT_ID>' \
+     --data-urlencode 'client_secret=<STRAVA_CLIENT_SECRET>' \
+     --data-urlencode 'callback_url=https://run-week.fyi/api/strava/webhook' \
+     --data-urlencode 'verify_token=<STRAVA_WEBHOOK_VERIFY_TOKEN>'
+   ```
+
+4. Record the returned numeric `id` as `STRAVA_WEBHOOK_SUBSCRIPTION_ID` and redeploy
+   promptly. Strava permits **one subscription per API application**, covering all
+   connected athletes; inspect an existing subscription before attempting another.
+   Never point preview/local instances at the production subscription or database.
+   Events delivered before the ID is configured receive 503 and depend on Strava's
+   limited retry window; allow a quiet setup interval and verify delivery afterward.
+5. Verify the handshake and notification delivery with a separate test application/
+   athlete, inspect queued/completed jobs and sanitized error codes, and confirm
+   browser refresh. No provider registration or live OAuth is performed by tests.
+   Monitor callback latency: Strava requires **200 within two seconds** and retries
+   failed notifications only up to three attempts. Acknowledge only after the
+   database transaction commits; storage failures return 503 rather than lose work.
+   Database cold starts/lock contention can exceed the provider deadline; provision
+   accordingly. Initial dispatch runs after the response; the ten-minute outbox
+   dispatcher recovers dispatch interruptions/outages.
+
+Do not expose either secret through `NEXT_PUBLIC_*`, logs, shell tracing or shared
+terminal history. The app never logs webhook bodies, query strings, athlete IDs,
+activity IDs or verification tokens. Configure hosting/proxy/APM access logs to
+redact `hub.verify_token` (the provider sends it in the handshake URL), OAuth
+credentials and request bodies. The subscription ID is **not a secret or signature**.
+Apply edge request/body/abuse limits without blocking legitimate provider callbacks.
+
+#### Processing, authenticity and ordering
+
+Strava does **not cryptographically sign** these POST notifications. Matching a
+subscription ID is routing validation, not proof of authenticity. A notification
+is therefore only a hint to perform a quota-controlled authoritative read:
+
+- The owner is looked up with the existing HMAC `athleteKey`; unknown/disconnected
+  owners and events older than the current consent are acknowledged and ignored.
+  Payloads are limited to 8 KiB, safe positive integer IDs, known object/aspect
+  types, bounded update fields and plausible timestamps. Unsupported athlete events
+  are ignored. No activity/token fetch happens in the webhook request.
+- PostgreSQL coalesces one durable job per connection generation/object ID. It stores
+  the target ID, latest event time and deduplication fingerprint, **not notification
+  contents**. Exact repeats do not restart work; older events cannot overwrite newer
+  work. Different events in the same second trigger a fresh authoritative read.
+  Superseding an in-flight job bumps its version and fences its activity writes;
+  refreshed OAuth tokens are still saved under the account lease/generation fence.
+  New activity targets are refused at 1,000 active targeted jobs per account with
+  503/Retry-After; the single coalesced revocation check is exempt. This limits
+  backlog, not all unsigned-callback abuse; edge
+  protection and quota monitoring are still necessary.
+- The existing Inngest worker fetches **only** `/activities/{id}` and, for retained
+  Run/TrailRun/VirtualRun activities, that activity's allowed streams. It verifies
+  the returned activity ID and hashed athlete ownership, preserves the user's
+  `maximalEffort` choice, and replaces stale recordings (including altitude).
+  GPS/profile fields are never persisted. Updates do not enqueue a broad resync.
+- A delete notification alone cannot delete an existing run. Authoritative 404
+  (deleted or no longer accessible) or a confirmed non-running sport removes the
+  local row. A job tombstone prevents later stale paginated summaries from restoring
+  it; only a subsequent authoritative running-activity read clears that tombstone.
+  This also respects provider semantics where reduced visibility can produce a
+  delete event for applications without `activity:read_all`. Our scopes are unchanged.
+- `athlete/update` with `updates.authorized="false"` queues an access check. Working
+  access makes it a no-op. An access-token 401 goes through shared token refresh;
+  only Strava's structured invalid-refresh-token response confirms revocation and
+  removes the connection, imports, settings, pending OAuth tickets and cascading jobs.
+  A 403, network failure, malformed response or token endpoint/client-credential 401
+  never authorizes destructive cleanup. Uncertain authorization failures remain failed
+  and require investigation/reconnection rather than deleting data from an unsigned hint.
+
+All work shares global quota reservations, account leases and disconnect/reconnect
+generation fences with history imports. Quota headers/429 cause durable sleeps.
+Transient failures use Inngest retries; exhausted targeted jobs are automatically
+requeued by the outbox schedule after a ten-minute cooldown, without a broad resync.
+Jobs/tombstones are retained with the connection until reconnect (which replaces
+jobs), disconnect, confirmed revocation or account deletion. Browser-only data is
+unaffected. Localized consent/privacy disclosures describe this account storage.
+`/api/strava/sync` includes active work and a database revision so existing polling
+refreshes dashboards/details and connection controls even when a short job finishes
+between polls or revocation removes all jobs. Polling still never calls Strava.
+
+Limitations: Strava publishes selected edits (title/type/privacy), not every possible
+recording modification. Missed notifications beyond the provider retry window,
+changes before installation, and edits outside the incremental overlap may not be
+recovered automatically. Daily incremental discovery is retained, but is not a
+full historical deletion audit. Provider consistency/quota delays can postpone
+authoritative confirmation; no unsupported personalized training rules are added.
+
+`node scripts/verify-strava-webhook.mjs` verifies bounded ingress, handshake,
+deduplication/ordering, ownership, authoritative deletion/revocation, recordings,
+quota feedback and stale-write/token-rotation races with in-process mocks.
+`npm run test:e2e -- e2e/strava-webhook.spec.ts` covers the public HTTP route,
+PostgreSQL durability/outbox recovery and browser polling with synthetic Strava.
+Run E2E suites sequentially: they share one disposable Docker database/cache.
 
 ### Inngest setup
 
@@ -493,7 +615,8 @@ settings; it remains backward-compatible while manual settings are hidden.
 
 Public references: [Strava OAuth](https://developers.strava.com/docs/authentication/),
 [API summaries/streams](https://developers.strava.com/docs/reference/),
-[rate limits](https://developers.strava.com/docs/rate-limits/).
+[rate limits](https://developers.strava.com/docs/rate-limits/),
+[webhook events and subscriptions](https://developers.strava.com/docs/webhooks/).
 Patterns adapted from the user's `running-data` pure analytics and `runcoach-ai`
 Strava importer, without its single-athlete storage, auth fallback or AI code.
 
