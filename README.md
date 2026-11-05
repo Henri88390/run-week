@@ -602,8 +602,8 @@ and consent metadata, never tokens or athlete keys. Disconnect deletes imports,
 settings, tokens and pending OAuth tickets and prevents stale sync writes.
 Account deletion cascades all of this data. Originals in Strava remain; revoke
 Run Week access in Strava settings too. Consent/disclosures and new analytics UI
-are localized in all ten website languages; the existing general privacy policy
-remains English.
+are localized in all ten website languages, as are the complete privacy policy
+and its export, deletion and disconnection controls.
 
 Migration `20261104130000_strava_activities` only creates new tables/indexes and
 foreign keys; previous deployments remain compatible. Use `npm run db:migrate`
@@ -868,8 +868,12 @@ For Garmin's branding image, use
 `https://run-week.fyi/run-week-branding.png` after deployment. The public PNG is
 300 x 300 pixels; it is not used as a favicon.
 
-The privacy policy and consent pages are in English; the planner footer link is
-localized. Consent is required before authorization; its version and time are
+The privacy policy (including its loading state and controls) follows the browser
+language store in all ten locales; its static metadata remains English because
+locale selection is browser-only. Messages live in
+`src/features/account/privacy-messages`; only the public hosting-provider disclosure
+is passed from the server. Garmin consent pages remain in English. Consent is
+required before authorization; its version and time are
 stored with the connection, and connections under an earlier version require
 reconnection. Disconnecting first deletes every workout sent from the account
 from Garmin Connect, then deletes the stored tokens and sent-workout records.

@@ -4,9 +4,17 @@ import { signOut, useSession } from "next-auth/react";
 import { useState } from "react";
 import { garminDisconnectResponseSchema } from "@/features/garmin/sync-request";
 import { STORAGE_KEY } from "@/features/running-programs/storage";
+import { useI18n } from "@/features/i18n/use-i18n";
+import { formatInteger } from "@/features/i18n/locales";
+import { PRIVACY_MESSAGES } from "../privacy-messages";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 
 const LOCALE_KEY = "run-week-locale";
 type Confirm = "local" | "account" | null;
+type Message =
+  | { kind: "exported" | "exportError" | "disconnectNetwork" | "browserDeleted" | "browserError" | "accountError" | "accountNetwork" }
+  | { kind: "disconnectError"; reference?: string }
+  | { kind: "disconnected"; deleted: number; remaining: number };
 
 function readLocal() {
   const planner = localStorage.getItem(STORAGE_KEY);
@@ -20,15 +28,17 @@ function readLocal() {
 }
 
 export function PrivacyControls() {
+  const { locale } = useI18n();
+  const text = PRIVACY_MESSAGES[locale].controls;
   const { status } = useSession();
   const signedIn = status === "authenticated";
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
 
   async function exportData() {
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
       let browser: ReturnType<typeof readLocal> | null = null;
       try {
@@ -39,7 +49,10 @@ export function PrivacyControls() {
       let account: unknown = null;
       if (signedIn) {
         const response = await fetch("/api/account", { cache: "no-store" });
-        if (!response.ok) throw new Error("Account export failed.");
+        if (!response.ok) {
+          setMessage({ kind: "exportError" });
+          return;
+        }
         account = await response.json();
       }
       const data = { exportedAt: new Date().toISOString(), browser, account };
@@ -49,9 +62,9 @@ export function PrivacyControls() {
       link.download = "run-week-data.json";
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage("Data export downloaded. Garmin and Strava tokens are excluded; Strava imports and HR settings are included.");
+      setMessage({ kind: "exported" });
     } catch {
-      setMessage("Could not export the data. Try again.");
+      setMessage({ kind: "exportError" });
     } finally {
       setBusy(false);
     }
@@ -59,23 +72,18 @@ export function PrivacyControls() {
 
   async function disconnectGarmin() {
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
       const response = await fetch("/api/garmin/disconnect", { method: "POST" });
       const parsed = garminDisconnectResponseSchema.safeParse(await response.json().catch(() => null));
       if (!response.ok || !parsed.success || parsed.data.error) {
-        const reference = parsed.success && parsed.data.requestId ? ` Reference: ${parsed.data.requestId}.` : "";
-        setMessage(`Could not disconnect Garmin. Try again.${reference}`);
+        setMessage({ kind: "disconnectError", reference: parsed.success ? parsed.data.requestId : undefined });
         return;
       }
       const { deleted, remaining } = parsed.data;
-      setMessage([
-        `Garmin disconnected. ${deleted} sent ${deleted === 1 ? "workout was" : "workouts were"} deleted from Garmin Connect, and the tokens and workout records were deleted from your account.`,
-        remaining > 0 ? `${remaining} ${remaining === 1 ? "workout" : "workouts"} could not be deleted because Garmin no longer accepts Run Week's access; delete ${remaining === 1 ? "it" : "them"} in Garmin Connect.` : "",
-        "Revoke Run Week access in Garmin Connect settings too.",
-      ].filter(Boolean).join(" "));
+      setMessage({ kind: "disconnected", deleted, remaining });
     } catch {
-      setMessage("Could not disconnect Garmin. Check your connection and try again.");
+      setMessage({ kind: "disconnectNetwork" });
     } finally {
       setBusy(false);
     }
@@ -86,56 +94,59 @@ export function PrivacyControls() {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(LOCALE_KEY);
       window.dispatchEvent(new StorageEvent("storage", { key: null }));
-      setMessage("Planner and language choice deleted from this browser.");
+      setMessage({ kind: "browserDeleted" });
     } catch {
-      setMessage("Could not delete browser data. Delete this site's data in browser settings.");
+      setMessage({ kind: "browserError" });
     }
     setConfirm(null);
   }
 
   async function deleteAccount() {
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
       const response = await fetch("/api/account", { method: "DELETE" });
       if (!response.ok) {
-        setMessage("Could not delete the account. Try again.");
+        setMessage({ kind: "accountError" });
         setBusy(false);
         return;
       }
       await signOut({ redirectTo: "/privacy" });
     } catch {
-      setMessage("Could not delete the account. Check your connection and try again.");
+      setMessage({ kind: "accountNetwork" });
       setBusy(false);
     }
   }
 
+  const feedback = !message ? "" : message.kind === "disconnected"
+    ? [
+      text.disconnected.replace("{deleted}", formatInteger(locale, message.deleted)),
+      message.remaining > 0 ? text.remaining.replace("{remaining}", formatInteger(locale, message.remaining)) : "",
+      text.revoke,
+    ].filter(Boolean).join(" ")
+    : message.kind === "disconnectError"
+      ? [text.disconnectError, message.reference ? text.reference.replace("{reference}", message.reference) : ""].filter(Boolean).join(" ")
+      : text[message.kind];
+
   return <section className="space-y-3" aria-labelledby="data-controls">
-    <h2 id="data-controls" className="text-lg font-semibold">Your data controls</h2>
+    <h2 id="data-controls" className="text-lg font-semibold">{text.title}</h2>
     <div className="flex flex-wrap gap-2">
       <button type="button" className="button-secondary" onClick={() => void exportData()} disabled={busy || status === "loading"}>
-        {signedIn ? "Export account and browser data" : "Export browser data"}
+        {signedIn ? text.exportAccount : text.exportBrowser}
       </button>
       {signedIn && <button type="button" className="button-secondary" onClick={() => void disconnectGarmin()} disabled={busy}>
-        Withdraw consent and disconnect Garmin (deletes sent workouts from Garmin Connect)
+        {text.disconnect}
       </button>}
-      <button type="button" className="button-secondary" onClick={() => setConfirm("local")} disabled={busy}>Delete browser data…</button>
-      {signedIn && <button type="button" className="button-secondary" onClick={() => setConfirm("account")} disabled={busy}>Delete account…</button>}
+      <button type="button" className="button-secondary" onClick={() => setConfirm("local")} disabled={busy}>{text.deleteBrowserOpen}</button>
+      {signedIn && <button type="button" className="button-secondary" onClick={() => setConfirm("account")} disabled={busy}>{text.deleteAccountOpen}</button>}
     </div>
-    {confirm === "local" && <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-      <p>This permanently deletes the planner and language choice saved in this browser. Account data is not affected.</p>
-      <div className="flex gap-2">
-        <button type="button" className="button-secondary" onClick={() => setConfirm(null)}>Cancel</button>
-        <button type="button" className="button-primary" onClick={deleteLocal}>Delete browser data</button>
-      </div>
-    </div>}
-    {confirm === "account" && <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-      <p>This permanently deletes your account, its planner, sign-in methods, Garmin tokens and sent-workout records, Strava imports, tokens and HR settings, cancels pending imports, and signs you out. Workouts already in Garmin Connect are not deleted; disconnect Garmin first to delete them. Original Strava activities and data saved in this browser are not affected.</p>
-      <div className="flex gap-2">
-        <button type="button" className="button-secondary" disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>
-        <button type="button" className="button-primary" disabled={busy} onClick={() => void deleteAccount()}>Delete account</button>
-      </div>
-    </div>}
-    <p role="status" className="text-sm empty:hidden">{message}</p>
+    {confirm && <ConfirmationDialog title={confirm === "local" ? text.deleteBrowser : text.deleteAccount}
+      confirmLabel={confirm === "local" ? text.deleteBrowser : text.deleteAccount} cancelLabel={text.cancel}
+      tone="danger" busy={busy} onCancel={() => setConfirm(null)}
+      onConfirm={() => { if (confirm === "local") deleteLocal(); else void deleteAccount(); }}>
+      <p>{confirm === "local" ? text.confirmBrowser : text.confirmAccount}</p>
+      {confirm === "account" && (message?.kind === "accountError" || message?.kind === "accountNetwork") && <p role="status">{feedback}</p>}
+    </ConfirmationDialog>}
+    <p role="status" className="text-sm empty:hidden">{feedback}</p>
   </section>;
 }

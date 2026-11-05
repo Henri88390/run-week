@@ -34,11 +34,11 @@ export function StravaPrivacy() {
   const { status } = useSession();
   const queries = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [deleted, setDeleted] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState(0);
   async function disconnect() {
-    setBusy(true); setMessage("");
+    setBusy(true); setDeleted(false);
     setError(0);
     try {
       const response = await fetch("/api/strava/disconnect", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(15_000) });
@@ -50,7 +50,7 @@ export function StravaPrivacy() {
         await queries.cancelQueries({ queryKey: STRAVA_STATUS_KEY });
         queries.setQueryData(STRAVA_STATUS_KEY, { connected: false, consentCurrent: false });
         setConfirming(false);
-        setMessage(text.deleted);
+        setDeleted(true);
       } else {
         setError(Date.now());
       }
@@ -67,7 +67,7 @@ export function StravaPrivacy() {
     <p>{CACHE_PRIVACY_MESSAGES[locale]}</p>
     <Link href="/activities" className="underline">{text.overview}</Link>
     {status === "authenticated" && <button type="button" className="button-secondary block" disabled={busy} onClick={() => { setError(0); setConfirming(true); }}>{text.disconnect}</button>}
-    {message && <p role="status">{message}</p>}
+    {deleted && <p role="status">{text.deleted}</p>}
     {confirming && <ConfirmationDialog title={text.disconnect} confirmLabel={text.disconnect} cancelLabel={t.confirm.cancel}
       tone="danger" busy={busy} onCancel={() => setConfirming(false)} onConfirm={() => void disconnect()}>
       <p>{text.confirmDelete}</p>
