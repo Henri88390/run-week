@@ -203,7 +203,12 @@ The app polls a database-only job status endpoint every five seconds while a
 job is queued/running/paused, and every minute otherwise. Progress refreshes stored
 dashboard data; polling never calls Strava. Progress banners and counters are hidden;
 network/status failures are still shown explicitly.
-The PostgreSQL outbox is retried every minute, including after a failed event send.
+The PostgreSQL outbox is checked every ten minutes for queued, unpublished jobs,
+including after a failed event send. Connection still publishes an import immediately;
+only recovery of a failed publication can wait up to ten minutes. Empty outbox checks
+and hourly scheduling checks appear as Inngest runs even when all activities are synced;
+they do not call Strava or re-import completed jobs. Together these two schedules
+produce 168 maintenance runs per day, excluding imports and retries.
 The hourly scheduler checks accounts due for a daily incremental import; it overlaps
 the last synchronization by one day to cover timestamp boundaries. Transiently
 failed imports are resumed from their saved page/phase on a later scheduler run.

@@ -50,7 +50,7 @@ export const stravaImport = inngest.createFunction({
 
 export const stravaDispatcher = inngest.createFunction({
   id: "strava-sync-outbox",
-  triggers: [{ cron: "* * * * *" }],
+  triggers: [{ cron: "*/10 * * * *" }],
   concurrency: { limit: 1 },
 }, async ({ step }) => {
   const ids = await step.run("queued-jobs", () => safeBackgroundStep(async () => (await db().stravaSyncJob.findMany({

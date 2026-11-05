@@ -47,6 +47,10 @@ const database = {
     },
   },
   stravaSyncJob: {
+    async findMany({ where, take }) {
+      return job && job.status === where.status && job.publishedAt == null
+        ? [{ id: job.id }].slice(0, take) : [];
+    },
     async findFirst({ where }) {
       if (!job || job.userId !== where.userId || (where.generation && job.generation !== where.generation)
         || (where.status && !where.status.in.includes(job.status))
@@ -107,7 +111,7 @@ function load(file) {
     if (name === "./diagnostics") return { logStravaFailure: (error) => logs.push(error.constructor.name) };
     if (name === "./inngest") return {
       requireBackgroundSync() {},
-      inngest: { async send(event) {
+      inngest: { createFunction: (options, handler) => ({ options, handler }), async send(event) {
         if (deliveryFails) throw new Error("Synthetic delivery outage");
         deliveries.push(event);
       } },
@@ -273,4 +277,23 @@ assert.equal(await scheduleDueSyncAccounts(), 0, "Revoked access requires reconn
 job.status = "completed";
 connection.lastSyncedAt = new Date();
 assert.equal(await scheduleDueSyncAccounts(), 0, "Recently synchronized accounts are not due");
+const { stravaDispatcher, stravaIncremental } = load("src/features/strava/server/background-functions.ts");
+assert.deepEqual(stravaDispatcher.options.triggers, [{ cron: "*/10 * * * *" }]);
+assert.deepEqual(stravaIncremental.options.triggers, [{ cron: "0 * * * *" }]);
+const step = { run: async (_id, work) => work() };
+const sentBeforeIdle = deliveries.length;
+job.publishedAt = null;
+api.summaries = async () => { assert.fail("Completed imports must not request summaries"); };
+api.streams = async () => { assert.fail("Completed imports must not request recordings"); };
+assert.deepEqual(await stravaDispatcher.handler({ step }), { dispatched: 0 });
+assert.deepEqual(await stravaIncremental.handler({ step }), { scheduled: 0 });
+await publishJob(job.id);
+assert.deepEqual(await chunk(), { done: true });
+assert.equal(deliveries.length, sentBeforeIdle, "Idle maintenance and completed jobs publish no import events");
+reset();
+job.publishedAt = null;
+assert.deepEqual(await stravaDispatcher.handler({ step }), { dispatched: 1 });
+assert.equal(deliveries.length, sentBeforeIdle + 1, "The slower outbox still recovers unpublished jobs");
+assert.deepEqual(await stravaDispatcher.handler({ step }), { dispatched: 0 });
+assert.equal(deliveries.length, sentBeforeIdle + 1, "Published jobs are not dispatched again");
 console.log("Background checks passed: checkpoints, pagination, run filtering, streams, quota pauses, resumability and stale-write fencing.");
