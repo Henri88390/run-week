@@ -2,7 +2,7 @@
 
 import { memo, useId, useState } from "react";
 import { useI18n } from "@/features/i18n/use-i18n";
-import { formatDate, formatDecimal, weekdayName } from "@/features/i18n/locales";
+import { formatDate, formatDecimal, formatInteger, weekdayName } from "@/features/i18n/locales";
 import { STRAVA_MESSAGES } from "../messages";
 import { CALENDAR_MESSAGES } from "../calendar-messages";
 import { VOLUME_CHART_MESSAGES } from "../volume-chart-messages";
@@ -54,7 +54,7 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view }: {
       {[0, .25, .5, .75, 1].map((fraction) => <g key={fraction}>
         <line x1="60" x2="620" y1={240 - fraction * 200} y2={240 - fraction * 200} stroke="#e7e5e4" />
         <text data-volume-km-tick={distance ? "" : undefined} data-volume-hours-tick={!distance ? "" : undefined}
-          x="50" y={245 - fraction * 200} textAnchor="end" fill={color} fontSize="16">{formatDecimal(locale, maximum * fraction)}</text>
+          x="50" y={245 - fraction * 200} textAnchor="end" fill={color} fontSize="16">{formatInteger(locale, maximum * fraction)}</text>
       </g>)}
       <polyline data-volume-line points={buckets.map((_, index) => `${x(index)},${y(index)}`).join(" ")}
         fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />
@@ -68,7 +68,8 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view }: {
           <circle data-volume-distance={distance ? "" : undefined} data-volume-time={!distance ? "" : undefined}
             cx={x(index)} cy={y(index)} r="5" fill={color} stroke="white" strokeWidth="2" />
           <text data-volume-value x={x(index)} y={y(index) - 13} textAnchor="middle" fill={color} fontSize="14">
-            {distance ? Math.round(value(index)).toLocaleString(locale) : formatDecimal(locale, value(index))}
+            {distance ? Math.round(value(index)).toLocaleString(locale)
+              : Math.round(value(index) * 10) === 0 ? formatInteger(locale, 0) : formatDecimal(locale, value(index))}
           </text>
         </g>
         <text x={x(index)} y="267" textAnchor="middle" fontSize={view === "year" ? 14 : 16} fill="#57534e">{label(index)}</text>

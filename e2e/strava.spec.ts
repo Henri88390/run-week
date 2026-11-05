@@ -481,6 +481,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(volumeChart.locator("[data-volume-month]")).toHaveText(
       new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en", { month: "long", year: "numeric", timeZone: "UTC" }));
     for (const tick of await volumeChart.locator("[data-volume-km-tick]").allTextContents()) {
+      expect(tick.trim()).toMatch(/^\d+$/);
       expect(Number(tick) % 5).toBe(0);
     }
     const distanceToggle = volumeChart.getByRole("radio", { name: "Distance (km)", exact: true });
@@ -498,7 +499,11 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(distanceToggle).not.toBeChecked();
     await expect(volumeChart.locator("[data-volume-distance]")).toHaveCount(0);
     await expect(volumeChart.locator("[data-volume-time]")).toHaveCount(6);
+    for (const value of await volumeChart.locator("[data-volume-value]").allTextContents()) {
+      expect(value.trim()).not.toBe("0.0");
+    }
     for (const tick of await volumeChart.locator("[data-volume-hours-tick]").allTextContents()) {
+      expect(tick.trim()).toMatch(/^\d+$/);
       expect(Number.isInteger(Number(tick))).toBe(true);
     }
     await volumeChart.locator('[role="img"]').first().focus();
