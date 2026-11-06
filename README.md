@@ -3,6 +3,9 @@
 A running planner built with Next.js App Router, React, TypeScript, Tailwind
 CSS and ESLint, with optional accounts (Auth.js, PostgreSQL through Prisma).
 
+The header's sun/moon switch toggles light and dark mode. The choice is saved
+in this browser, and the sliding animation respects reduced-motion preferences.
+
 ![Setup form](docs/screenshots/setup.png)
 
 ![Weekly plan](docs/screenshots/week.png)

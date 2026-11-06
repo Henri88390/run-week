@@ -119,6 +119,79 @@ html[data-theme="dark"] .site-header {
   background-color: #242923;
 }
 
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 72px;
+  height: 36px;
+  border: 1px solid #a7bba2;
+  border-radius: 999px;
+  background: #e4edde;
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 8%);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.theme-switch-sun,
+.theme-switch-moon,
+.theme-switch-thumb {
+  position: absolute;
+  top: 2px;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-switch-sun {
+  left: 2px;
+  color: #c4d2c5;
+}
+
+.theme-switch-moon {
+  right: 2px;
+  color: #52634f;
+}
+
+.theme-switch-thumb {
+  left: 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #876326;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 18%);
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.theme-switch[aria-checked="true"] .theme-switch-track {
+  border-color: #667566;
+  background: #354437;
+}
+
+.theme-switch[aria-checked="true"] .theme-switch-thumb {
+  transform: translateX(36px);
+  color: #354437;
+}
+
+.theme-switch:hover .theme-switch-track {
+  border-color: #788b74;
+}
+
+.theme-switch:focus-visible {
+  outline: 2px solid #52634f;
+  outline-offset: 3px;
+}
+
+html[data-theme="dark"] .theme-switch:focus-visible {
+  outline-color: #c4d2c5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-track,
+  .theme-switch-thumb {
+    transition: none;
+  }
+}
+
 .site-nav-active {
   border: 1px solid #a8a29e;
   background-color: #d6d3d1;
