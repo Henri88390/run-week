@@ -250,7 +250,9 @@ Transient chunk failures have five Inngest retries, then a visible failed job
 eligible for a later automatic retry.
 Existing accounts must reconnect for consent version `2026-11-05-v2`.
 TanStack Query retains activity dashboards in account-scoped browser memory for
-five minutes. It deduplicates reads and does not refetch on focus/reconnect or retry
+five minutes, keyed by week/month/year period. Calendar navigation updates the URL
+with `history.pushState`, so recently viewed periods render from this cache
+without a server round-trip. It deduplicates reads and does not refetch on focus/reconnect or retry
 failed requests. This cache is not written to localStorage and is discarded on
 sign-out/account changes; disconnect clears activity queries.
 Locally, run `docker compose up -d redis` and set server-only

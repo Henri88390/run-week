@@ -1,7 +1,7 @@
 "use client";
 import { useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { formatDate, formatDecimal, formatInteger, weekdayName } from "@/features/i18n/locales";
 import { STRAVA_MESSAGES, stravaNoticeMessage } from "../messages";
@@ -15,7 +15,7 @@ import { CALENDAR_NAVIGATION } from "../calendar-navigation-messages";
 import { RequestError } from "./request-error";
 import { EFFORT_MESSAGES } from "../effort-messages";
 import { PERFORMANCE_MESSAGES } from "../performance-messages";
-import { useActivityQuery } from "./activity-query";
+import { periodAnchor, periodFromSearch, useActivityQuery } from "./activity-query";
 import { MaximalEffort } from "./maximal-effort";
 import { PaceHistogram } from "./pace-histogram";
 import { MetricDefinition } from "./metric-definition";
@@ -30,9 +30,12 @@ const zoneColors: Record<number, string> = {
 };
 const zoneLabels = ["Z1 <70%", "Z2 70–80%", "Z3 80–85%", "Z4 85–90%", "Z5 90–100%"];
 
-export function ActivityDashboard({ data: initialData, metrics = false, notice, linkedEmail }: { data: DashboardData; metrics?: boolean; notice?: string; linkedEmail?: string }) {
-  const query = useActivityQuery(initialData);
+export function ActivityDashboard({ data: initialData, metrics = false, notice: initialNotice, linkedEmail }: { data: DashboardData; metrics?: boolean; notice?: string; linkedEmail?: string }) {
+  const searchParams = useSearchParams();
+  const period = periodFromSearch(searchParams, metrics, initialData);
+  const query = useActivityQuery(period, initialData);
   const data = query.data;
+  const notice = searchParams.has("strava") ? initialNotice : undefined;
   const calendarMonths = useMemo(() => {
     if (!data.months.length) return [];
     const byMonth = new Map<string, DashboardData["activities"]>();
@@ -59,7 +62,19 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice, 
   const weekly = data.weekDate !== null;
   const yearly = data.year !== null;
   const yearLabel = EFFORT_MESSAGES[locale].year;
-  const router = useRouter();
+  const selectedWeek = period.view === "week" ? period.date : null;
+  const selectedYear = period.view === "year" ? period.year : null;
+  const selectedMonth = period.view === "year" ? `${period.year}-01` : period.view === "week" ? period.date.slice(0, 7) : period.month;
+  const showWeek = selectedWeek !== null;
+  const showYear = selectedYear !== null;
+  const anchor = periodAnchor(searchParams, period);
+  // Shallow navigation keeps the server page untouched so cached periods render instantly.
+  const navigate = (url: string) => window.history.pushState(null, "", url);
+  const linkNavigate = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(event.currentTarget.getAttribute("href") ?? "");
+  };
   const distance = data.activities.reduce((s, a) => s + a.distanceMeters, 0);
   const moving = data.activities.reduce((s, a) => s + a.movingSeconds, 0);
   const unit = (seconds: number) => {
@@ -72,20 +87,23 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice, 
   const periodUrl = (week: boolean, value: string) => metrics
     ? `/running-metrics?month=${value.slice(0, 7)}`
     : week ? `/activities?view=week&date=${value}` : `/activities?month=${value.slice(0, 7)}`;
-  const yearUrl = (value: string) => `/activities?view=year&year=${value.slice(0, 4)}`;
+  const yearUrl = (value: string) => {
+    const month = value.slice(0, 7) < data.today.slice(0, 7) ? value.slice(0, 7) : data.today.slice(0, 7);
+    return `/activities?view=year&year=${value.slice(0, 4)}&month=${month}`;
+  };
   const shiftedPeriod = (direction: number) => {
-    const date = new Date(`${data.weekDate ?? `${data.month}-01`}T00:00:00Z`);
-    if (yearly) date.setUTCFullYear(date.getUTCFullYear() + direction);
-    else if (weekly) date.setUTCDate(date.getUTCDate() + direction * 7);
+    const date = new Date(`${showYear ? anchor : selectedWeek ?? `${selectedMonth}-01`}T00:00:00Z`);
+    if (showYear) date.setUTCFullYear(date.getUTCFullYear() + direction);
+    else if (showWeek) date.setUTCDate(date.getUTCDate() + direction * 7);
     else date.setUTCMonth(date.getUTCMonth() + direction);
     const value = date.toISOString().slice(0, 10);
-    return /^(19|20)\d{2}-/.test(value) ? yearly ? yearUrl(value) : periodUrl(weekly, value) : null;
+    return /^(19|20)\d{2}-/.test(value) ? showYear ? yearUrl(value) : periodUrl(showWeek, value) : null;
   };
   const previous = shiftedPeriod(-1);
   const currentWeek = calendarRange(data.today.slice(0, 7), data.today).start;
-  const periodStart = data.weekDate ?? `${data.month}-01`;
-  const canGoNext = yearly ? Number(data.year) < Number(data.today.slice(0, 4))
-    : weekly ? periodStart < currentWeek : data.month < data.today.slice(0, 7);
+  const periodStart = selectedWeek ?? `${selectedMonth}-01`;
+  const canGoNext = showYear ? Number(selectedYear) < Number(data.today.slice(0, 4))
+    : showWeek ? periodStart < currentWeek : selectedMonth < data.today.slice(0, 7);
   const next = canGoNext ? shiftedPeriod(1) : null;
   return <div className="space-y-6">
     {query.isError && <RequestError key={query.errorUpdatedAt} message={text.error} />}
@@ -101,40 +119,41 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice, 
       <div className="w-full space-y-3 lg:col-start-2 lg:w-80">
         {!metrics && <div className="flex rounded-xl bg-stone-100 p-1" aria-label={text.calendar}>
           {[{ week: true, label: navigation.week }, { week: false, label: navigation.month }].map((view) =>
-            <Link key={view.label} href={periodUrl(view.week, data.weekDate ?? `${data.month}-01`)}
-              aria-current={!yearly && weekly === view.week ? "page" : undefined}
-              className={`flex-1 rounded-lg px-3 py-2 text-center text-sm font-semibold focus-visible:outline-2 ${!yearly && weekly === view.week ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>
+            <Link key={view.label} href={periodUrl(view.week, anchor)} prefetch={false} onClick={linkNavigate}
+              aria-current={!showYear && showWeek === view.week ? "page" : undefined}
+              className={`flex-1 rounded-lg px-3 py-2 text-center text-sm font-semibold focus-visible:outline-2 ${!showYear && showWeek === view.week ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>
               {view.label}
             </Link>)}
-          <Link href={yearUrl(data.month)} aria-current={yearly ? "page" : undefined}
-            className={`flex-1 rounded-lg px-3 py-2 text-center text-sm font-semibold focus-visible:outline-2 ${yearly ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>{yearLabel}</Link>
+          <Link href={yearUrl(anchor)} prefetch={false} onClick={linkNavigate} aria-current={showYear ? "page" : undefined}
+            className={`flex-1 rounded-lg px-3 py-2 text-center text-sm font-semibold focus-visible:outline-2 ${showYear ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>{yearLabel}</Link>
         </div>}
         <div className="flex items-center gap-2">
           <button type="button" aria-label={navigation.previous} disabled={previous === null}
-            onClick={() => { if (previous) router.push(previous); }}
+            onClick={() => { if (previous) navigate(previous); }}
             className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-stone-300 bg-white hover:bg-stone-100 focus-visible:outline-2 disabled:opacity-40">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 6-6 6 6 6" /></svg>
           </button>
           <label className="block min-w-0 flex-1">
-            <span className="sr-only">{yearly ? yearLabel : weekly ? navigation.week : navigation.month}</span>
-            {yearly ? <select data-calendar-date-picker aria-label={yearLabel} className="block h-12 w-full rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 text-base font-semibold text-emerald-950 focus-visible:outline-2"
-              value={data.year ?? ""} onChange={(event) => router.push(yearUrl(event.target.value))}>
+            <span className="sr-only">{showYear ? yearLabel : showWeek ? navigation.week : navigation.month}</span>
+            {showYear ? <select data-calendar-date-picker aria-label={yearLabel} className="block h-12 w-full rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 text-base font-semibold text-emerald-950 focus-visible:outline-2"
+              value={selectedYear ?? ""} onChange={(event) => navigate(yearUrl(`${event.target.value}${anchor.slice(4)}`))}>
               {Array.from({ length: Number(data.today.slice(0, 4)) - 1900 + 1 }, (_, i) => <option key={i} value={1900 + i}>{1900 + i}</option>)}
-            </select> : <input data-calendar-date-picker type={weekly ? "date" : "month"} className="block h-12 w-full min-w-0 cursor-pointer rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 py-2 text-base font-semibold text-emerald-950 shadow-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
-              value={data.weekDate ?? data.month} min={weekly ? "1900-01-01" : "1900-01"} max={weekly ? data.today : data.today.slice(0, 7)}
+            </select> : <input data-calendar-date-picker type={showWeek ? "date" : "month"} className="block h-12 w-full min-w-0 cursor-pointer rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 py-2 text-base font-semibold text-emerald-950 shadow-sm focus-visible:outline-2 focus-visible:outline-emerald-700"
+              value={selectedWeek ?? selectedMonth} min={showWeek ? "1900-01-01" : "1900-01"} max={showWeek ? data.today : data.today.slice(0, 7)}
               onClick={(event) => {
                 if (typeof event.currentTarget.showPicker === "function" && !event.currentTarget.disabled) event.currentTarget.showPicker();
               }}
-              onChange={(event) => { if (event.target.validity.valid && event.target.value) router.push(periodUrl(weekly, event.target.value)); }} />}
+              onChange={(event) => { if (event.target.validity.valid && event.target.value) navigate(periodUrl(showWeek, event.target.value)); }} />}
           </label>
           <button type="button" aria-label={navigation.next} disabled={next === null}
-            onClick={() => { if (next) router.push(next); }}
+            onClick={() => { if (next) navigate(next); }}
             className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-stone-300 bg-white hover:bg-stone-100 focus-visible:outline-2 disabled:opacity-40">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
           </button>
         </div>
       </div>
     </div>}
+    <div aria-busy={query.loading} className={`space-y-6 transition-opacity ${query.loading ? "opacity-60" : ""}`}>
     {data.truncated && <p role="alert">{text.truncated}</p>}
     {!metrics && <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {[[text.runs, formatInteger(locale, data.activities.length)], [text.distance, `${formatDecimal(locale, distance / 1000)} ${t.units.km}`],
@@ -259,5 +278,6 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice, 
         </li>)}
       </ul> : <p className="text-sm text-stone-600">{performanceText.empty}</p>}
     </section>}
+    </div>
   </div>;
 }

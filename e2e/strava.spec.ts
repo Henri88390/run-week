@@ -714,9 +714,9 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     ]);
     await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elevation gain (D+)" }).locator("dd")).toHaveText("43 m");
     await expect(chart.locator(".recharts-reference-line-line")).toHaveCount(0);
-    const hrLine = chart.locator('.recharts-line-curve[stroke="#be123c"]');
-    const paceLine = chart.locator('.recharts-line-curve[stroke="#1d4ed8"]');
-    const altitudeLine = chart.locator('.recharts-line-curve[stroke="#57534e"]');
+    const hrLine = chart.locator('.recharts-line-curve[stroke="var(--chart-hr)"]');
+    const paceLine = chart.locator('.recharts-line-curve[stroke="var(--chart-pace)"]');
+    const altitudeLine = chart.locator('.recharts-line-curve[stroke="var(--chart-altitude)"]');
     await expect(altitudeLine).toHaveCount(1);
     await expect(page.getByText("Elevation: -5.0–4.0 m", { exact: true })).toBeVisible();
     await expect(hrLine).toHaveCount(1);
@@ -838,12 +838,37 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.getByLabel("Week", { exact: true }).fill("2026-01-01");
     await expect(page.locator('[data-week="2025-12-29"]')).toBeVisible();
     await page.getByRole("link", { name: "Month", exact: true }).click();
+    // The month view keeps the date chosen in the week view, not the month of the week's Monday.
+    await expect(page).toHaveURL(/month=2026-01/);
+    await expect(page.locator("[data-week]")).toHaveCount(5);
+    const dataRequests: string[] = [];
+    const countDataRequest = (request: { url(): string }) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/strava/activities" || url.searchParams.has("_rsc")) dataRequests.push(request.url());
+    };
+    page.on("request", countDataRequest);
+    await page.getByRole("button", { name: "Previous period" }).click();
     await expect(page).toHaveURL(/month=2025-12/);
     await expect(page.locator("[data-week]")).toHaveCount(5);
     await page.getByRole("button", { name: "Next period" }).click();
     await expect(page).toHaveURL(/month=2026-01/);
-    await page.getByRole("button", { name: "Previous period" }).click();
-    await expect(page).toHaveURL(/month=2025-12/);
+    await page.getByRole("link", { name: "Week", exact: true }).click();
+    await expect(page).toHaveURL(/view=week&date=2026-01-01/);
+    await expect(page.locator('[data-week="2025-12-29"]')).toBeVisible();
+    await page.getByRole("link", { name: "Year", exact: true }).click();
+    await expect(page).toHaveURL(/view=year&year=2026&month=2026-01/);
+    await expect(page.locator("[data-year-month]")).toHaveCount(12);
+    await page.getByRole("link", { name: "Month", exact: true }).click();
+    await expect(page).toHaveURL(/month=2026-01/);
+    await expect(page.locator("[data-week]")).toHaveCount(5);
+    await page.getByRole("link", { name: "Year", exact: true }).click();
+    await expect(page.locator("[data-year-month]")).toHaveCount(12);
+    await page.getByRole("link", { name: "Week", exact: true }).click();
+    await expect(page.locator('[data-week="2025-12-29"]')).toBeVisible();
+    // Only first visits to December and the year fetch; recently viewed periods come from the client cache.
+    expect(dataRequests).toHaveLength(2);
+    page.off("request", countDataRequest);
+    await page.getByRole("link", { name: "Month", exact: true }).click();
     await page.getByLabel("Month", { exact: true }).fill("2026-11");
     await expect(page.locator("[data-week]")).toHaveCount(6);
     await expect(page.getByRole("button", { name: "Next period" })).toBeDisabled();
