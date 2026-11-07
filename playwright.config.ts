@@ -8,6 +8,8 @@ const databaseUrl = DATABASE_URL;
 
 export default defineConfig({
   testDir: "e2e",
+  // Documentation screenshots run separately with `npm run screenshots`.
+  testIgnore: "**/screenshots.spec.ts",
   globalSetup: "./e2e/global-setup.ts",
   globalTeardown: "./e2e/global-teardown.ts",
   // Tests share one database and dev server.
