@@ -163,16 +163,22 @@ async function shot(page: Page, name: string, fullPage = false) {
   await page.screenshot({ path: `${OUT}/${name}.png` });
   if (fullPage) await page.setViewportSize(DESKTOP);
 }
-/** Captures the page area spanning the given elements, plus a margin; content only unless it starts at the top. */
+/** Captures the page area spanning the given elements, plus a margin. From the top, the window ends with the region, so the sidebar does too. */
 async function region(page: Page, name: string, from: Locator, to: Locator) {
   await settle(page);
   await fitViewport(page);
   const [top, bottom, main] = [await from.boundingBox(), await to.boundingBox(), await page.getByRole("main").boundingBox()];
   if (!top || !bottom || !main) throw new Error(`Missing screenshot region for ${name}`);
   const y = Math.max(0, top.y - 16);
-  const x = y === 0 ? 0 : main.x;
-  await page.screenshot({ path: `${OUT}/${name}.png`,
-    clip: { x, y, width: DESKTOP.width - x, height: bottom.y + bottom.height + 16 - y } });
+  const end = bottom.y + bottom.height + 16;
+  if (y === 0) {
+    await page.setViewportSize({ width: DESKTOP.width, height: Math.ceil(end) });
+    await settle(page);
+    await page.screenshot({ path: `${OUT}/${name}.png` });
+  } else {
+    await page.screenshot({ path: `${OUT}/${name}.png`,
+      clip: { x: main.x, y, width: DESKTOP.width - main.x, height: end - y } });
+  }
   await page.setViewportSize(DESKTOP);
 }
 
@@ -207,6 +213,9 @@ test("documentation screenshots", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("run-week-theme", "light"));
   await page.goto("/privacy");
   await shot(page, "privacy");
+  await page.goto("/about");
+  await expect(page.getByRole("heading", { level: 1, name: "About Run Week" })).toBeVisible();
+  await shot(page, "about", true);
   await page.goto("/signin");
   await shot(page, "signin");
 

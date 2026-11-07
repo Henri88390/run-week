@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { createContext, Suspense, useContext } from "react";
 import { UserMenu } from "@/features/account/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ABOUT_MESSAGES } from "@/features/about/messages";
 import { useGarmin } from "@/features/garmin/use-garmin";
 import { DocumentLanguage, LanguageSelect } from "@/features/i18n/language-select";
 import { useI18n } from "@/features/i18n/use-i18n";
@@ -33,6 +34,9 @@ const NAV_ICONS = {
   "/running-metrics": <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={ICON}>
     <path d="M4.5 17a8 8 0 1 1 15 0" /><path d="m12 13 3.5-4" /><circle cx="12" cy="13.5" r="1.2" fill="currentColor" stroke="none" />
   </svg>,
+  "/about": <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={ICON}>
+    <circle cx="12" cy="12" r="8.5" /><path d="M12 11v5" /><circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none" />
+  </svg>,
 } as const;
 
 function SiteHeader() {
@@ -58,7 +62,7 @@ function SiteHeader() {
     <nav aria-label="Run Week" className="site-nav col-span-2 row-start-2 -mx-4 mt-2 flex overflow-x-auto px-2 text-sm sm:-mx-6 sm:gap-1 sm:px-4
       lg:mx-0 lg:mt-0 lg:flex-col lg:overflow-visible lg:px-0">
       {[{ href: "/planner", label: text.planner }, { href: "/activities", label: text.overview },
-        { href: "/running-metrics", label: text.metrics }].map(({ href, label }) => {
+        { href: "/running-metrics", label: text.metrics }, { href: "/about", label: ABOUT_MESSAGES[locale].nav }].map(({ href, label }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return <Link key={href} href={href} aria-current={active ? "page" : undefined}
           className="site-nav-link inline-flex flex-1 shrink-0 items-center justify-center gap-2 whitespace-nowrap px-2 py-2.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-700 sm:flex-none sm:px-3 lg:justify-start lg:gap-3 lg:rounded-lg">
