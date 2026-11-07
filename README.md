@@ -1,10 +1,47 @@
 # Run Week
 
+## What it does
+
+Run Week helps runners plan a training week and review the runs they have
+done. It works in ten languages, in light or dark mode, on desktop and mobile.
+
+- **Training week simulator.** Enter a recent race result, a weekly distance or
+  time target, and either the days you run or the number of runs per week.
+  Run Week estimates your VDOT with Jack Daniels' formulas and builds a week of
+  easy runs, a long run and optional interval or threshold workouts, with
+  target paces and workout details. You can choose which workouts to include and
+  set preferred days.
+- **Garmin Connect.** With an account, send the whole week or a single run to
+  your Garmin Connect calendar as structured workouts for your watch.
+- **Activity overview.** Connect Strava to see your runs in a week, month or
+  year calendar, with training volume, heart-rate zones, pace distribution and
+  time above threshold. Each activity has heart-rate and pace graphs.
+- **Running metrics.** Estimates of critical speed, VMA and threshold pace from
+  race or test efforts you mark, along with endurance indicators based on your
+  training history.
+
+An account is optional: the planner works signed out and is saved in the
+browser. Signing in, by email code or Google, saves the planner to your account
+and enables Garmin and Strava. Plans and metrics come from published
+formulas and simple rules. They are descriptive, not personalized coaching or
+medical advice.
+
+## Tech stack
+
 A running planner built with Next.js App Router, React, TypeScript, Tailwind
 CSS and ESLint, with optional accounts (Auth.js, PostgreSQL through Prisma).
 
-The header's sun/moon switch toggles light and dark mode. The choice is saved
-in this browser, and the sliding animation respects reduced-motion preferences.
+Pages are listed in a left sidebar on wide screens and in a top bar on narrow
+ones. The sun/moon switch in the sidebar (or top bar) toggles light and dark
+mode. The choice is saved in this browser, and the sliding animation respects
+reduced-motion preferences.
+
+## Screenshots
+
+Activity screenshots use synthetic data. Regenerate them all with
+`npm run screenshots` (needs Docker, like the end-to-end tests).
+
+### Planner
 
 ![Setup form](docs/screenshots/setup.png)
 
@@ -12,13 +49,35 @@ in this browser, and the sliding animation respects reduced-motion preferences.
 
 ![Workout details](docs/screenshots/workout-details.png)
 
-Activity screenshots use synthetic data.
+![Weekly plan in dark mode](docs/screenshots/week-dark.png)
 
-![Activities calendar](docs/screenshots/activities-calendar.png)
+### Activities
+
+![Activities month calendar](docs/screenshots/activities-calendar.png)
+
+![Activity graphs: training volume, heart-rate zones, pace distribution and threshold time](docs/screenshots/activities-graphs.png)
+
+![Activities week view](docs/screenshots/activities-week.png)
+
+![Activities year view](docs/screenshots/activities-year.png)
 
 ![Activity details with heart-rate and pace graphs](docs/screenshots/activity-details.png)
 
-![Activity graphs: training volume, heart-rate zones, pace distribution and threshold time](docs/screenshots/activities-graphs.png)
+![Activities calendar in dark mode](docs/screenshots/activities-dark.png)
+
+### Running metrics
+
+![Running metrics: speed, endurance, critical speed, VMA and threshold estimates](docs/screenshots/running-metrics.png)
+
+### Account, consent and privacy
+
+![Sign-in page](docs/screenshots/signin.png)
+
+![Strava connection consent](docs/screenshots/strava-consent.png)
+
+![Garmin Connect consent](docs/screenshots/garmin-consent.png)
+
+![Privacy and data controls](docs/screenshots/privacy.png)
 
 ## Getting started
 
@@ -638,6 +697,7 @@ Strava importer, without its single-athlete storage, auth fallback or AI code.
 | `npm run db:migrate` | Create and apply a migration in development (`prisma migrate dev`) |
 | `npm run db:deploy` | Apply pending migrations in production (`prisma migrate deploy`) |
 | `npm run test:e2e` | Run the Playwright end-to-end tests (see [End-to-end tests](#end-to-end-tests)) |
+| `npm run screenshots` | Regenerate the README screenshots in `docs/screenshots` with synthetic data (needs Docker) |
 
 ## Structure
 

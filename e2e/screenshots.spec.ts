@@ -151,19 +151,29 @@ async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(400);
 }
+/** Grows the viewport to the page height, so the full-height sidebar spans long pages. */
+async function fitViewport(page: Page) {
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width: DESKTOP.width, height: Math.max(DESKTOP.height, height) });
+  await settle(page);
+}
 async function shot(page: Page, name: string, fullPage = false) {
   await settle(page);
-  await page.screenshot({ path: `${OUT}/${name}.png`, fullPage });
+  if (fullPage) await fitViewport(page);
+  await page.screenshot({ path: `${OUT}/${name}.png` });
+  if (fullPage) await page.setViewportSize(DESKTOP);
 }
-/** Captures the page area spanning the given elements, plus a margin. */
+/** Captures the page area spanning the given elements, plus a margin; content only unless it starts at the top. */
 async function region(page: Page, name: string, from: Locator, to: Locator) {
   await settle(page);
-  const [top, bottom] = [await from.boundingBox(), await to.boundingBox()];
-  if (!top || !bottom) throw new Error(`Missing screenshot region for ${name}`);
-  const scroll = await page.evaluate(() => window.scrollY);
-  const y = Math.max(0, top.y + scroll - 16);
-  await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true,
-    clip: { x: 0, y, width: DESKTOP.width, height: bottom.y + scroll + bottom.height + 16 - y } });
+  await fitViewport(page);
+  const [top, bottom, main] = [await from.boundingBox(), await to.boundingBox(), await page.getByRole("main").boundingBox()];
+  if (!top || !bottom || !main) throw new Error(`Missing screenshot region for ${name}`);
+  const y = Math.max(0, top.y - 16);
+  const x = y === 0 ? 0 : main.x;
+  await page.screenshot({ path: `${OUT}/${name}.png`,
+    clip: { x, y, width: DESKTOP.width - x, height: bottom.y + bottom.height + 16 - y } });
+  await page.setViewportSize(DESKTOP);
 }
 
 test.use({ viewport: DESKTOP, colorScheme: "light" });
@@ -190,6 +200,11 @@ test("documentation screenshots", async ({ page }) => {
   await expect(page.getByRole("dialog")).toBeVisible();
   await shot(page, "workout-details");
   await page.keyboard.press("Escape");
+  await page.evaluate(() => localStorage.setItem("run-week-theme", "dark"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await shot(page, "week-dark");
+  await page.evaluate(() => localStorage.setItem("run-week-theme", "light"));
   await page.goto("/privacy");
   await shot(page, "privacy");
   await page.goto("/signin");
@@ -236,7 +251,4 @@ test("documentation screenshots", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(calendar.locator("[data-week]").first()).toBeVisible();
   await shot(page, "activities-dark");
-  await page.goto("/planner");
-  await createWeek(page);
-  await shot(page, "week-dark");
 });
