@@ -36,7 +36,12 @@ function Separator() {
 }
 
 /** Signed in: connections, language and sign-out. Signed out: a Sign in link. */
-export function UserMenu({ garmin }: { garmin: GarminControls }) {
+export function UserMenu({ garmin, menuClassName = "right-0 mt-1", triggerClassName = "" }: {
+  garmin: GarminControls;
+  /** Positioning classes for the menu. */
+  menuClassName?: string;
+  triggerClassName?: string;
+}) {
   const { data: session, status } = useSession();
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -82,7 +87,7 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
 
   if (status === "loading") return null;
   if (status !== "authenticated") {
-    return <Link href="/signin" className="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700">
+    return <Link href="/signin" className={`inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 ${triggerClassName}`}>
       {t.account.signIn}
     </Link>;
   }
@@ -158,7 +163,7 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
     }}>
     <button ref={trigger} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId}
       aria-label={t.account.menu}
-      className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
+      className={`inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 ${triggerClassName}`}
       onClick={() => open ? setOpen(false) : show("first")}
       onKeyDown={(event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -170,14 +175,14 @@ export function UserMenu({ garmin }: { garmin: GarminControls }) {
         <circle cx="12" cy="8" r="4" />
         <path strokeLinecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" />
       </svg>
-      <span aria-hidden="true" className="hidden max-w-[14rem] truncate sm:inline">{email}</span>
+      <span aria-hidden="true" className="hidden min-w-0 max-w-[14rem] truncate sm:inline">{email}</span>
       <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor"
-        className={`size-4 shrink-0 text-stone-500 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}>
+        className={`ml-auto size-4 shrink-0 text-stone-500 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}>
         <path fillRule="evenodd" d="M5.22 7.47a.75.75 0 0 1 1.06 0L10 11.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.53a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
       </svg>
     </button>
     <ul id={menuId} ref={menu} role="menu" aria-label={t.account.menu} hidden={!open} onKeyDown={onMenuKeyDown}
-      className="absolute right-0 z-40 mt-1 max-h-[70vh] w-64 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-stone-200 bg-white p-1 text-sm shadow-lg">
+      className={`absolute ${menuClassName} z-40 max-h-[70vh] w-64 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-stone-200 bg-white p-1 text-sm shadow-lg`}>
       <li role="none" className="mb-1 border-b border-stone-200 px-2 pt-1.5 pb-2.5 text-stone-600 [overflow-wrap:anywhere] sm:hidden">
         {t.account.signedInAs(email)}
       </li>

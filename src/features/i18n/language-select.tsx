@@ -21,11 +21,11 @@ export function DocumentLanguage() {
   return null;
 }
 
-export function LanguageSelect({ className = "" }: { className?: string }) {
+export function LanguageSelect({ className = "", menuClassName }: { className?: string; menuClassName?: string }) {
   const { locale, t } = useI18n();
   return <div className={className}>
     <div className="inline-block text-sm">
-      <Dropdown value={locale} aria-label={`${t.language}: ${LOCALE_NAMES[locale]}`}
+      <Dropdown value={locale} aria-label={`${t.language}: ${LOCALE_NAMES[locale]}`} menuClassName={menuClassName}
         options={LOCALES.map((code) => ({
           value: code,
           text: LOCALE_NAMES[code],

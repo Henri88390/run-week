@@ -315,6 +315,11 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
   await expect(page.getByRole("navigation", { name: "Run Week", exact: true }).getByRole("link", { name: "Activity overview", exact: true })).toBeVisible();
   await page.goto("/activities");
   await expect(page.getByRole("link", { name: "Sign in to view your running data" })).toBeVisible();
+  await page.goto("/running-metrics");
+  await expect(page.getByRole("heading", { level: 1, name: "Running metrics" })).toBeVisible();
+  await expect(page.getByText("Running metrics require an account.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in to view your running data" }))
+    .toHaveAttribute("href", "/signin?callbackUrl=%2Frunning-metrics");
   expect((await post(page, "/api/strava/sync")).status()).toBe(405);
   expect((await page.request.get("/api/strava/sync")).status()).toBe(401);
   expect((await page.request.delete("/api/strava/sync", { headers: { Origin: APP_URL } })).status()).toBe(405);

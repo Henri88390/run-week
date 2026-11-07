@@ -21,7 +21,7 @@ export async function DashboardContent({ searchParams, metrics = false }: {
 }) {
   await connection();
   const userId = await currentUserId();
-  if (!userId) return <AnalyticsPrompt />;
+  if (!userId) return <AnalyticsPrompt metrics={metrics} />;
   let data: DashboardData | null = null;
   let notice: string | undefined;
   let linkedEmail: string | undefined;
@@ -48,7 +48,7 @@ export async function DashboardContent({ searchParams, metrics = false }: {
     if (notice === "alreadyLinked") linkedEmail = await readLinkedAccountEmail(userId);
   } catch (error) {
     logStravaFailure(error, "dashboard");
-    return <AnalyticsPrompt failed />;
+    return <AnalyticsPrompt failed metrics={metrics} />;
   }
   if (futureUrl) redirect(futureUrl);
   if (!data) return <StravaConnectionPrompt notice={notice} linkedEmail={linkedEmail} />;

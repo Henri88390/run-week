@@ -192,44 +192,105 @@ html[data-theme="dark"] .theme-switch:focus-visible {
   }
 }
 
-.site-nav-active {
-  border: 1px solid #a8a29e;
-  background-color: #d6d3d1;
-  color: #292524;
+.site-brand-mark {
+  background-color: #3f6b47;
+  color: #ffffff;
 }
 
-.site-nav-inactive {
-  border: 1px solid #d6d3d1;
-  background-color: #f5f5f4;
-  color: #44403c;
+html[data-theme="dark"] .site-brand-mark {
+  background-color: #8fb594;
+  color: #1c211c;
 }
 
-.site-nav-inactive:hover {
-  background-color: #e7e5e4;
+/* Narrow screens: tabs with an underline indicator. */
+.site-nav {
+  scrollbar-width: none;
 }
 
-html[data-theme="dark"] .site-nav-inactive {
-  border-color: #57534e;
-  background-color: #1c1917;
-  color: #d6d3d1;
+.site-nav-link {
+  border-bottom: 2px solid transparent;
+  color: #3f4a3e;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
-html[data-theme="dark"] .site-nav-inactive:hover {
-  background-color: #292524;
+.site-nav-link:hover {
+  color: #1f2a1f;
+  border-bottom-color: #a7bba2;
 }
 
-.site-nav-active:hover {
-  background-color: #c9c5c2;
+.site-nav-link[aria-current="page"] {
+  border-bottom-color: #3f6b47;
+  color: #1f2a1f;
+  font-weight: 600;
 }
 
-html[data-theme="dark"] .site-nav-active {
-  border-color: #78716c;
-  background-color: #57534e;
-  color: #f5f5f4;
+html[data-theme="dark"] .site-nav-link {
+  color: #b9c6ba;
 }
 
-html[data-theme="dark"] .site-nav-active:hover {
-  background-color: #66605b;
+html[data-theme="dark"] .site-nav-link:hover {
+  color: #eef3ec;
+  border-bottom-color: #4b5a4d;
+}
+
+html[data-theme="dark"] .site-nav-link[aria-current="page"] {
+  border-bottom-color: #8fb594;
+  color: #eef3ec;
+}
+
+/* Wide screens: sidebar items with a card for the current page. */
+@media (width >= 64rem) {
+  .site-nav-link {
+    position: relative;
+    width: 100%;
+    min-width: 100%;
+    border: 1px solid transparent;
+  }
+
+  .site-nav-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Long labels are cut in the sidebar and expand over the page on hover or focus. */
+  .site-nav-link:hover,
+  .site-nav-link:focus-visible {
+    z-index: 1;
+    width: max-content;
+  }
+
+  .site-nav-link:hover .site-nav-label,
+  .site-nav-link:focus-visible .site-nav-label {
+    overflow: visible;
+  }
+
+  .site-nav-link:hover {
+    border-color: transparent;
+    background-color: #e6eee3;
+  }
+
+  .site-nav-link[aria-current="page"] {
+    border-color: #b7c9b2;
+    background-color: #ffffff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  }
+
+  html[data-theme="dark"] .site-nav-link:hover {
+    border-color: transparent;
+    background-color: #2e342d;
+  }
+
+  html[data-theme="dark"] .site-nav-link[aria-current="page"] {
+    border-color: #4b5a4d;
+    background-color: #333a32;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-nav-link {
+    transition: none;
+  }
 }
 
 html[data-theme="dark"] [data-simulator-header] {

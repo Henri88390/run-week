@@ -25,14 +25,15 @@ export function StravaConnectionPrompt({ notice, linkedEmail }: { notice?: strin
     <Link className="button-primary inline-block" href="/strava/consent">{text.connect}</Link>
   </section>;
 }
-export function AnalyticsPrompt({ failed = false }: { failed?: boolean }) {
+export function AnalyticsPrompt({ failed = false, metrics = false }: { failed?: boolean; metrics?: boolean }) {
   const { locale } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   return <section className="panel space-y-3">
-    <h1 className="text-2xl font-semibold">{text.overview}</h1>
+    <h1 className="text-2xl font-semibold">{metrics ? text.metrics : text.overview}</h1>
     {failed ? <RequestError message={text.error} /> : <>
-      <p>{text.signinBody}</p>
-      <Link className="button-primary inline-block" href="/signin?callbackUrl=%2Factivities">{text.signin}</Link>
+      <p>{metrics ? text.metricsSigninBody : text.signinBody}</p>
+      <Link className="button-primary inline-block"
+        href={`/signin?callbackUrl=${encodeURIComponent(metrics ? "/running-metrics" : "/activities")}`}>{text.signin}</Link>
     </>}
   </section>;
 }

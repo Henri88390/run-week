@@ -7,9 +7,11 @@ export type DropdownProps = Omit<ComponentProps<"button">, "onChange" | "childre
   value: string;
   options: DropdownOption[];
   onChange: (value: string) => void;
+  /** Positioning classes for the option list. */
+  menuClassName?: string;
 };
 
-export function Dropdown({ value, options, onChange, className = "", ref, ...props }: DropdownProps) {
+export function Dropdown({ value, options, onChange, className = "", menuClassName = "right-0 mt-1", ref, ...props }: DropdownProps) {
   const [open, setOpen] = useState(false);
   const listId = useId();
   const container = useRef<HTMLSpanElement>(null);
@@ -59,7 +61,7 @@ export function Dropdown({ value, options, onChange, className = "", ref, ...pro
       </svg>
     </button>
     <ul id={listId} hidden={!open} role="listbox" aria-label={props["aria-label"]}
-      className="absolute right-0 z-40 mt-1 max-h-64 min-w-full overflow-y-auto rounded-lg border border-stone-200 bg-white p-1 text-sm shadow-lg"
+      className={`absolute ${menuClassName} z-40 max-h-64 min-w-full       overflow-y-auto rounded-lg border border-stone-200 bg-white p-1 text-sm shadow-lg`}
       onKeyDown={(event) => {
         const index = optionRefs.current.findIndex((option) => option === document.activeElement);
         const move = (next: number) => optionRefs.current[(next + options.length) % options.length]?.focus();
