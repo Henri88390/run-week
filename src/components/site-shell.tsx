@@ -45,7 +45,14 @@ function SiteHeader() {
   return <header className="site-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-stone-200 px-4 pt-3 sm:px-6
     lg:sticky lg:top-0 lg:z-30 lg:flex lg:h-dvh lg:w-60 lg:shrink-0 lg:flex-col lg:items-stretch lg:self-start lg:border-r lg:border-b-0 lg:px-3 lg:py-5">
     <Link href="/" className="site-brand inline-flex items-center gap-2 justify-self-start whitespace-nowrap rounded-lg font-semibold text-emerald-950 focus-visible:outline-2 focus-visible:outline-emerald-700 lg:mb-6 lg:px-3">
-      <span aria-hidden="true" className="site-brand-mark grid size-8 shrink-0 place-items-center rounded-lg text-sm font-bold">RW</span>
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="site-brand-mark size-8 shrink-0 rounded-lg" fill="none" stroke="currentColor"
+        strokeLinecap="round" strokeLinejoin="round">
+        <rect x="5.5" y="7.5" width="21" height="19" rx="3.5" strokeWidth="2.2" />
+        <path d="M5.5 12.5h21" strokeWidth="2.2" />
+        <path d="M11 5v4.5M21 5v4.5" strokeWidth="2.4" />
+        <rect x="8.75" y="15" width="14.5" height="8.5" rx="4.25" strokeWidth="1.6" />
+        <rect x="12" y="17.9" width="8" height="2.7" rx="1.35" strokeWidth="1.4" />
+      </svg>
       <span className="max-sm:sr-only">Run Week</span>
     </Link>
     <nav aria-label="Run Week" className="site-nav col-span-2 row-start-2 -mx-4 mt-2 flex overflow-x-auto px-2 text-sm sm:-mx-6 sm:gap-1 sm:px-4

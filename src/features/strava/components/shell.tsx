@@ -6,10 +6,8 @@ import { RequestError } from "./request-error";
 
 export function AnalyticsShell({ children }: { children: React.ReactNode }) {
   const { locale } = useI18n();
-  const text = STRAVA_MESSAGES[locale];
   return <main lang={locale} className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
     {children}
-    <p className="text-sm text-stone-600">{text.storage} {text.caution}</p>
   </main>;
 }
 export function AnalyticsLoading() {
