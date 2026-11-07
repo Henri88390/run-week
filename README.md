@@ -69,7 +69,9 @@ Activity screenshots use synthetic data. Regenerate them all with
 
 ![Running metrics: speed, endurance, critical speed, VMA and threshold estimates](docs/screenshots/running-metrics.png)
 
-### Account, consent and privacy
+### About, account, consent and privacy
+
+![About page](docs/screenshots/about.png)
 
 ![Sign-in page](docs/screenshots/signin.png)
 

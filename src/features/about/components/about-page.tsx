@@ -24,15 +24,15 @@ export function AboutPage() {
       <div className="max-w-3xl space-y-4 text-sm text-stone-700">
         {FEATURES.map(({ key, href }) => {
           const feature = text.features[key];
-          return <section key={key} aria-labelledby={`about-${key}`} className="space-y-1">
-            <h3 id={`about-${key}`} className="font-semibold text-stone-900">{feature.title}</h3>
+          return <div key={key} className="space-y-1">
+            <h3 className="font-semibold text-stone-900">{feature.title}</h3>
             <p>
               {feature.body}{" "}
               <Link href={href} className="whitespace-nowrap font-medium text-emerald-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-emerald-700">
                 {feature.link}
               </Link>
             </p>
-          </section>;
+          </div>;
         })}
       </div>
     </section>
