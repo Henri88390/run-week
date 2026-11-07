@@ -19,20 +19,22 @@ export function AboutPage() {
       <h1 className="text-2xl font-semibold">{text.title}</h1>
       <p className="max-w-3xl text-stone-700">{text.intro}</p>
     </section>
-    <section aria-labelledby="about-features" className="space-y-4">
+    <section aria-labelledby="about-features" className="space-y-3">
       <h2 id="about-features" className="text-lg font-semibold">{text.featuresTitle}</h2>
-      <ul className="grid gap-4 md:grid-cols-2">
+      <div className="max-w-3xl space-y-4 text-sm text-stone-700">
         {FEATURES.map(({ key, href }) => {
           const feature = text.features[key];
-          return <li key={key} className="panel flex flex-col gap-3">
-            <h3 className="font-semibold">{feature.title}</h3>
-            <p className="text-sm text-stone-700">{feature.body}</p>
-            <Link href={href} className="mt-auto self-start text-sm font-medium text-emerald-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-emerald-700">
-              {feature.link}
-            </Link>
-          </li>;
+          return <section key={key} aria-labelledby={`about-${key}`} className="space-y-1">
+            <h3 id={`about-${key}`} className="font-semibold text-stone-900">{feature.title}</h3>
+            <p>
+              {feature.body}{" "}
+              <Link href={href} className="whitespace-nowrap font-medium text-emerald-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-emerald-700">
+                {feature.link}
+              </Link>
+            </p>
+          </section>;
         })}
-      </ul>
+      </div>
     </section>
     <section aria-labelledby="about-account" className="space-y-2 text-sm text-stone-700">
       <h2 id="about-account" className="text-lg font-semibold text-stone-900">{text.accountTitle}</h2>

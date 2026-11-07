@@ -22,7 +22,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Training week simulator",
-        body: "Enter a recent race result, a weekly distance or time target, and either the days you run or the number of runs per week. Run Week estimates your VDOT with Jack Daniels’ formulas and builds a week of easy runs, a long run and optional interval or threshold workouts, with target paces and workout details. You can choose which workouts to include and set preferred days.",
+        body: "Enter a recent race result, a weekly distance or time target, and either the days you run or the number of runs per week. Run Week estimates your VDOT with Jack Daniels’ formulas and builds a week of easy runs, a long run and optional interval or threshold workouts, with target paces and workout details.",
         link: "Open the planner",
       },
       garmin: {
@@ -53,7 +53,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Simulateur de semaine d’entraînement",
-        body: "Indiquez un résultat de course récent, un objectif hebdomadaire en distance ou en temps, et vos jours de course ou le nombre de sorties par semaine. Run Week estime votre VDOT avec les formules de Jack Daniels et construit une semaine de footings, une sortie longue et des séances de fractionné ou de seuil facultatives, avec allures cibles et détail des séances. Vous pouvez choisir les séances à inclure et définir vos jours préférés.",
+        body: "Indiquez un résultat de course récent, un objectif hebdomadaire en distance ou en temps, et vos jours de course ou le nombre de sorties par semaine. Run Week estime votre VDOT avec les formules de Jack Daniels et construit une semaine de footings, une sortie longue et des séances de fractionné ou de seuil facultatives, avec allures cibles et détail des séances.",
         link: "Ouvrir le simulateur",
       },
       garmin: {
@@ -84,7 +84,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Trainingswochen-Simulator",
-        body: "Gib ein aktuelles Wettkampfergebnis, ein wöchentliches Distanz- oder Zeitziel und deine Lauftage oder die Anzahl der Läufe pro Woche ein. Run Week schätzt deinen VDOT mit den Formeln von Jack Daniels und erstellt eine Woche mit lockeren Läufen, einem langen Lauf und optionalen Intervall- oder Schwelleneinheiten, mit Zielpaces und Einheitendetails. Du kannst die Einheiten auswählen und bevorzugte Tage festlegen.",
+        body: "Gib ein aktuelles Wettkampfergebnis, ein wöchentliches Distanz- oder Zeitziel und deine Lauftage oder die Anzahl der Läufe pro Woche ein. Run Week schätzt deinen VDOT mit den Formeln von Jack Daniels und erstellt eine Woche mit lockeren Läufen, einem langen Lauf und optionalen Intervall- oder Schwelleneinheiten, mit Zielpaces und Einheitendetails.",
         link: "Planer öffnen",
       },
       garmin: {
@@ -115,7 +115,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Simulador de semana de entrenamiento",
-        body: "Introduce un resultado de carrera reciente, un objetivo semanal de distancia o tiempo, y tus días de carrera o el número de salidas por semana. Run Week estima tu VDOT con las fórmulas de Jack Daniels y crea una semana de rodajes suaves, una tirada larga y sesiones opcionales de series o umbral, con ritmos objetivo y detalles de cada sesión. Puedes elegir las sesiones e indicar tus días preferidos.",
+        body: "Introduce un resultado de carrera reciente, un objetivo semanal de distancia o tiempo, y tus días de carrera o el número de salidas por semana. Run Week estima tu VDOT con las fórmulas de Jack Daniels y crea una semana de rodajes suaves, una tirada larga y sesiones opcionales de series o umbral, con ritmos objetivo y detalles de cada sesión.",
         link: "Abrir el planificador",
       },
       garmin: {
@@ -146,7 +146,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Simulador de semana de treino",
-        body: "Indique um resultado de prova recente, um objetivo semanal de distância ou tempo, e os seus dias de corrida ou o número de corridas por semana. O Run Week estima o seu VDOT com as fórmulas de Jack Daniels e cria uma semana de corridas leves, uma corrida longa e treinos opcionais de intervalos ou limiar, com ritmos-alvo e detalhes dos treinos. Pode escolher os treinos e definir dias preferidos.",
+        body: "Indique um resultado de prova recente, um objetivo semanal de distância ou tempo, e os seus dias de corrida ou o número de corridas por semana. O Run Week estima o seu VDOT com as fórmulas de Jack Daniels e cria uma semana de corridas leves, uma corrida longa e treinos opcionais de intervalos ou limiar, com ritmos-alvo e detalhes dos treinos.",
         link: "Abrir o planeador",
       },
       garmin: {
@@ -177,7 +177,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Simulatore della settimana di allenamento",
-        body: "Inserisci un risultato di gara recente, un obiettivo settimanale di distanza o tempo e i tuoi giorni di corsa o il numero di uscite a settimana. Run Week stima il tuo VDOT con le formule di Jack Daniels e crea una settimana di corse facili, un lungo e allenamenti facoltativi di ripetute o soglia, con ritmi obiettivo e dettagli degli allenamenti. Puoi scegliere gli allenamenti e impostare i giorni preferiti.",
+        body: "Inserisci un risultato di gara recente, un obiettivo settimanale di distanza o tempo e i tuoi giorni di corsa o il numero di uscite a settimana. Run Week stima il tuo VDOT con le formule di Jack Daniels e crea una settimana di corse facili, un lungo e allenamenti facoltativi di ripetute o soglia, con ritmi obiettivo e dettagli degli allenamenti.",
         link: "Apri il pianificatore",
       },
       garmin: {
@@ -208,7 +208,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Symulator tygodnia treningowego",
-        body: "Podaj niedawny wynik z zawodów, tygodniowy cel dystansu lub czasu oraz dni biegania albo liczbę biegów w tygodniu. Run Week szacuje Twój VDOT według wzorów Jacka Danielsa i tworzy tydzień spokojnych biegów, długie wybieganie oraz opcjonalne interwały lub trening progowy, z docelowymi tempami i szczegółami treningów. Możesz wybrać treningi i ustawić preferowane dni.",
+        body: "Podaj niedawny wynik z zawodów, tygodniowy cel dystansu lub czasu oraz dni biegania albo liczbę biegów w tygodniu. Run Week szacuje Twój VDOT według wzorów Jacka Danielsa i tworzy tydzień spokojnych biegów, długie wybieganie oraz opcjonalne interwały lub trening progowy, z docelowymi tempami i szczegółami treningów.",
         link: "Otwórz planer",
       },
       garmin: {
@@ -239,7 +239,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Симулятор тренировочной недели",
-        body: "Укажите недавний результат забега, недельную цель по дистанции или времени, а также дни пробежек или их количество в неделю. Run Week оценивает ваш VDOT по формулам Джека Дэниелса и составляет неделю из лёгких пробежек, длительной и необязательных интервальных или пороговых тренировок с целевым темпом и описанием. Можно выбрать тренировки и предпочтительные дни.",
+        body: "Укажите недавний результат забега, недельную цель по дистанции или времени, а также дни пробежек или их количество в неделю. Run Week оценивает ваш VDOT по формулам Джека Дэниелса и составляет неделю из лёгких пробежек, длительной и необязательных интервальных или пороговых тренировок с целевым темпом и описанием.",
         link: "Открыть планировщик",
       },
       garmin: {
@@ -270,7 +270,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Симулятор тренувального тижня",
-        body: "Вкажіть нещодавній результат забігу, тижневу ціль за дистанцією або часом, а також дні пробіжок або їх кількість на тиждень. Run Week оцінює ваш VDOT за формулами Джека Деніелса і складає тиждень із легких пробіжок, тривалої та необов’язкових інтервальних або порогових тренувань із цільовим темпом і описом. Можна вибрати тренування та бажані дні.",
+        body: "Вкажіть нещодавній результат забігу, тижневу ціль за дистанцією або часом, а також дні пробіжок або їх кількість на тиждень. Run Week оцінює ваш VDOT за формулами Джека Деніелса і складає тиждень із легких пробіжок, тривалої та необов’язкових інтервальних або порогових тренувань із цільовим темпом і описом.",
         link: "Відкрити планувальник",
       },
       garmin: {
@@ -301,7 +301,7 @@ export const ABOUT_MESSAGES: Record<Locale, AboutText> = {
     features: {
       planner: {
         title: "Сімулятар трэніровачнага тыдня",
-        body: "Укажыце нядаўні вынік забегу, тыднёвую мэту па дыстанцыі або часе, а таксама дні прабежак або іх колькасць на тыдзень. Run Week ацэньвае ваш VDOT па формулах Джэка Дэніэлса і складае тыдзень з лёгкіх прабежак, працяглай і неабавязковых інтэрвальных або парогавых трэніровак з мэтавым тэмпам і апісаннем. Можна выбраць трэніроўкі і пажаданыя дні.",
+        body: "Укажыце нядаўні вынік забегу, тыднёвую мэту па дыстанцыі або часе, а таксама дні прабежак або іх колькасць на тыдзень. Run Week ацэньвае ваш VDOT па формулах Джэка Дэніэлса і складае тыдзень з лёгкіх прабежак, працяглай і неабавязковых інтэрвальных або парогавых трэніровак з мэтавым тэмпам і апісаннем.",
         link: "Адкрыць планавальнік",
       },
       garmin: {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { createContext, Suspense, useContext } from "react";
+import { createContext, Suspense, useContext, useEffect, useRef } from "react";
 import { UserMenu } from "@/features/account/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ABOUT_MESSAGES } from "@/features/about/messages";
@@ -46,6 +46,15 @@ function SiteHeader() {
   const { locale } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   const sidebarMenu = "right-0 mt-1 lg:right-auto lg:left-0 lg:bottom-full lg:mt-0 lg:mb-1";
+  const navRef = useRef<HTMLElement>(null);
+  // In the scrollable top bar, keep the current page's tab visible.
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const [navBox, activeBox] = [nav.getBoundingClientRect(), active.getBoundingClientRect()];
+    nav.scrollLeft += activeBox.left - navBox.left - (nav.clientWidth - activeBox.width) / 2;
+  }, [pathname]);
   return <header className="site-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-stone-200 px-4 pt-3 sm:px-6
     lg:sticky lg:top-0 lg:z-30 lg:flex lg:h-dvh lg:w-60 lg:shrink-0 lg:flex-col lg:items-stretch lg:self-start lg:border-r lg:border-b-0 lg:px-3 lg:py-5">
     <Link href="/" className="site-brand inline-flex items-center gap-2 justify-self-start whitespace-nowrap rounded-lg font-semibold text-emerald-950 focus-visible:outline-2 focus-visible:outline-emerald-700 lg:mb-6 lg:px-3">
@@ -59,7 +68,7 @@ function SiteHeader() {
       </svg>
       <span className="max-sm:sr-only">Run Week</span>
     </Link>
-    <nav aria-label="Run Week" className="site-nav col-span-2 row-start-2 -mx-4 mt-2 flex overflow-x-auto px-2 text-sm sm:-mx-6 sm:gap-1 sm:px-4
+    <nav ref={navRef} aria-label="Run Week" className="site-nav col-span-2 row-start-2 -mx-4 mt-2 flex overflow-x-auto px-2 text-sm sm:-mx-6 sm:gap-1 sm:px-4
       lg:mx-0 lg:mt-0 lg:flex-col lg:overflow-visible lg:px-0">
       {[{ href: "/planner", label: text.planner }, { href: "/activities", label: text.overview },
         { href: "/running-metrics", label: text.metrics }, { href: "/about", label: ABOUT_MESSAGES[locale].nav }].map(({ href, label }) => {
