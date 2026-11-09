@@ -40,7 +40,6 @@ jobs:
   migrate:
     name: Migrate database
     needs: checks
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/qa' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Holds the DIRECT_URL secret; add required reviewers to the environment to approve each run.
