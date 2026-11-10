@@ -15,10 +15,39 @@ export const EMAIL_CODE_MAX_AGE_SECONDS = 10 * 60;
 type CodeRequest = { identifier: string; token: string; provider: { from?: string; apiKey?: string } };
 
 class EmailDeliveryError extends Error {
-  constructor(readonly status: number) {
-    super(`Resend responded with ${status}.`);
+  constructor(readonly status: number, type: string, hint: string) {
+    super(`Resend responded with ${status} (${type}). ${hint}`);
     this.name = "EmailDeliveryError";
   }
+}
+
+async function emailDeliveryError(response: Response, from: string | undefined): Promise<EmailDeliveryError> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return new EmailDeliveryError(response.status, "unreadable_response",
+      "Could not read the provider error response. Check Resend Logs for the failed POST /emails request.");
+  }
+  const knownTypes = ["validation_error", "missing_required_field", "missing_required_parameter",
+    "invalid_parameter", "invalid_from_address", "invalid_to_address", "missing_api_key",
+    "restricted_api_key", "suspended_api_key", "rate_limit_exceeded", "daily_quota_exceeded",
+    "monthly_quota_exceeded"];
+  const type = typeof body === "object" && body !== null && "name" in body
+    && typeof body.name === "string" && knownTypes.includes(body.name) ? body.name : "unknown_error";
+  const message = typeof body === "object" && body !== null && "message" in body
+    && typeof body.message === "string" ? body.message : "";
+  // Provider messages can echo addresses or email contents; emit only fixed troubleshooting hints.
+  const hint = !from?.trim() || /\bfrom\b/i.test(message)
+    ? "Check AUTH_EMAIL_FROM: use Name <address@verified-domain>, without surrounding quotes or newlines."
+    : /\bto\b.*\b(address|email|field)\b|\brecipient\b/i.test(message)
+      ? "Check the recipient email address."
+      : response.status === 401 || response.status === 403
+        ? "Check AUTH_RESEND_KEY permissions, the verified sender domain and recipient restrictions."
+        : response.status === 429
+          ? "Check the Resend sending quota and rate limits."
+          : "Check AUTH_EMAIL_FROM and the recipient format. See Resend Logs for the exact failed POST /emails validation.";
+  return new EmailDeliveryError(response.status, type, hint);
 }
 
 export async function sendCode({ identifier, token, provider }: CodeRequest): Promise<void> {
@@ -34,7 +63,7 @@ export async function sendCode({ identifier, token, provider }: CodeRequest): Pr
     body: JSON.stringify({ from: provider.from, to: identifier, subject: `Run Week sign-in code: ${token}`, text }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new EmailDeliveryError(response.status);
+  if (!response.ok) throw await emailDeliveryError(response, provider.from);
 }
 
 function providers(): Provider[] {

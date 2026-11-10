@@ -868,6 +868,13 @@ deletes it (`DELETE /api/account`), which removes all its rows.
 | `AUTH_EMAIL_FROM` | Sender address on a domain verified in Resend |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Optional Google OAuth client; redirect URI `<origin>/api/auth/callback/google` |
 
+Email delivery failures log the HTTP status, a recognized Resend error type and
+a troubleshooting hint on the server, without logging raw provider responses,
+addresses, codes or API keys. For a `422`, check `AUTH_EMAIL_FROM` (for example,
+`Run Week QA <no-reply@your-verified-domain>`; no surrounding quotes or newlines)
+and inspect the failed `POST /emails` request in Resend Logs for the exact
+validation message. Redeploy after updating Vercel environment variables.
+
 Migrations are applied before each Vercel Production build and by the
 **Migrate database** CI job on each push to `main`
 (see [CI and deployment](#ci-and-deployment)). To apply them by hand, run
