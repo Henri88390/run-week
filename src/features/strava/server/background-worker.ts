@@ -16,28 +16,36 @@ import { athleteKey } from "./athlete-key";
 export async function syncChunk(jobId: string, version: number) {
   const found = await db().stravaSyncJob.findUnique({ where: { id: jobId } });
   if (!found || found.version !== version || !activeSync(found.status)) return { done: true };
-  const job = found;
   const leaseId = randomUUID();
   const claimed = await db().$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${job.userId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${found.userId}`}))`;
     const current = await tx.stravaSyncJob.findUnique({ where: { id: jobId } });
-    const connection = await tx.stravaConnection.findUnique({ where: { userId: job.userId } });
+    const connection = await tx.stravaConnection.findUnique({ where: { userId: found.userId } });
     if (!current || current.version !== version || !activeSync(current.status) || !connection
-      || connection.generation !== job.generation || connection.consentVersion !== STRAVA_CONSENT_VERSION) return null;
+      || connection.generation !== current.generation || connection.consentVersion !== STRAVA_CONSENT_VERSION) return null;
     const now = new Date();
+    async function wait(until: Date) {
+      // A queued job may already be executing a durable sleep. Make that visible
+      // to recovery, including global quota waits which previously changed nothing.
+      if (current?.status === "queued")
+        await tx.stravaSyncJob.update({ where: { id: jobId }, data: { status: "paused", retryAt: until } });
+      return { waitUntil: until.toISOString() };
+    }
     const waitUntil = Math.max(current.retryAt?.getTime() ?? 0, connection.leaseUntil?.getTime() ?? 0);
-    if (waitUntil > now.getTime()) return { waitUntil: new Date(waitUntil).toISOString() };
+    if (waitUntil > now.getTime()) return wait(new Date(waitUntil));
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('strava-global-quota'))`;
     const quota = await tx.stravaSyncQuota.findUnique({ where: { id: "api" } });
-    if (quota && quota.nextCallAt > now) return { waitUntil: quota.nextCallAt.toISOString() };
+    if (quota && quota.nextCallAt > now) return wait(quota.nextCallAt);
     await tx.stravaSyncQuota.upsert({ where: { id: "api" }, create: { id: "api", nextCallAt: new Date(now.getTime() + 1100) },
       update: { nextCallAt: new Date(now.getTime() + 1100) } });
-    await tx.stravaConnection.update({ where: { userId: job.userId }, data: { leaseId, leaseUntil: new Date(now.getTime() + 90_000) } });
+    await tx.stravaConnection.update({ where: { userId: current.userId }, data: { leaseId, leaseUntil: new Date(now.getTime() + 90_000) } });
     await tx.stravaSyncJob.update({ where: { id: jobId }, data: { status: "running", retryAt: null } });
-    return { tokens: connection.tokens, athleteKey: connection.athleteKey };
+    return { tokens: connection.tokens, athleteKey: connection.athleteKey, job: current };
   });
   if (!claimed) return { done: true };
   if ("waitUntil" in claimed) return { done: false, waitUntil: claimed.waitUntil };
+  // Use the checkpoint re-read under the lock, not the pre-claim snapshot.
+  const job = claimed.job;
 
   async function commit(write: (tx: Prisma.TransactionClient) => Promise<void>, tokenRefresh = false) {
     await db().$transaction(async (tx) => {

@@ -3,6 +3,16 @@ import { randomUUID } from "node:crypto";
 import { StravaError } from "./api";
 import { z } from "zod";
 
+/** Operational warning/alert signal; deliberately excludes account/job identifiers. */
+export function logStravaRecovery(outcome: "requeued" | "deferred", ageMinutes: number) {
+  console.warn("strava_outbox_recovery", {
+    outcome, ageMinutes, graceMinutes: 30,
+    hint: outcome === "requeued"
+      ? "Published queue head fenced and returned to the outbox. Check Inngest execution health if repeated."
+      : "Recovery blocked by active work, a lease, recent progress or quota. Inspect Inngest before intervening.",
+  });
+}
+
 export function logStravaFailure(error: unknown, operation: string) {
   const requestId = randomUUID();
   const prismaCode = typeof error === "object" && error !== null && "code" in error

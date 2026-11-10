@@ -9,6 +9,7 @@ const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const external = createRequire(import.meta.url);
 const modules = new Map();
 const logs = [];
+const recoveryLogs = [];
 const deliveries = [];
 let deliveryFails = false;
 const api = { summaries: null, streams: null, exchange: null };
@@ -17,17 +18,69 @@ let job;
 let quota;
 let activities;
 let invalidations = 0;
+let otherJobs = [];
+let otherConnections = [];
+let beforeUserLock;
+let afterJobRead;
+const locks = new Map();
+
+function matches(row, where = {}) {
+  return Object.entries(where).every(([key, value]) => {
+    if (key === "OR") return value.some((condition) => matches(row, condition));
+    const actual = row[key] ?? null;
+    if (value === null || typeof value !== "object" || value instanceof Date)
+      return value instanceof Date ? actual?.getTime() === value.getTime() : actual === value;
+    return Object.entries(value).every(([op, operand]) => {
+      if (op === "in") return operand.includes(actual);
+      if (op === "not") return actual !== operand;
+      if (op === "gt") return actual > operand;
+      if (op === "lt") return actual < operand;
+      throw new Error(`Unsupported mock filter: ${op}`);
+    });
+  });
+}
+function rows(where, orderBy) {
+  const found = [job, ...otherJobs].filter((row) => row && matches(row, where));
+  for (const order of [...(Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : [])].reverse()) {
+    const [key, direction] = Object.entries(order)[0];
+    found.sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0) * (direction === "desc" ? -1 : 1));
+  }
+  return found.map((row) => ({ ...row }));
+}
 
 function update(row, data) {
   for (const [key, value] of Object.entries(data)) {
     row[key] = value && typeof value === "object" && "increment" in value ? row[key] + value.increment : value;
   }
+  if ("updatedAt" in row) row.updatedAt = new Date();
   return row;
 }
 const database = {
   async $executeRaw() { return 1; },
-  async $transaction(work) { return work(database); },
+  async $transaction(work) {
+    const releases = [];
+    const tx = { ...database, async $executeRaw(strings, ...values) {
+      const key = strings.join("|") + values.join("|");
+      if (values.some((value) => String(value).startsWith("strava:")) && beforeUserLock) {
+        const hook = beforeUserLock;
+        beforeUserLock = null;
+        await hook();
+      }
+      const previous = locks.get(key) ?? Promise.resolve();
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      locks.set(key, held);
+      await previous;
+      releases.push(() => { release(); if (locks.get(key) === held) locks.delete(key); });
+      return 1;
+    } };
+    try { return await work(tx); }
+    finally { for (const release of releases.reverse()) release(); }
+  },
   stravaConnection: {
+    async findFirst({ where }) {
+      return [connection, ...otherConnections].find((row) => row && matches(row, where)) ?? null;
+    },
     async findMany({ where }) {
       if (!connection || connection.consentVersion !== where.consentVersion
         || (connection.elevationVersion >= 1 && connection.lastSyncedAt && connection.lastSyncedAt >= where.OR[1].lastSyncedAt.lt)) return [];
@@ -47,27 +100,26 @@ const database = {
     },
   },
   stravaSyncJob: {
-    async findMany({ where, take }) {
-      return job && job.status === where.status && job.publishedAt == null
-        ? [{ id: job.id }].slice(0, take) : [];
+    async findMany({ where, take, orderBy }) {
+      return rows(where, orderBy).slice(0, take);
     },
-    async findFirst({ where }) {
-      if (!job || job.userId !== where.userId || (where.generation && job.generation !== where.generation)
-        || (where.status && !where.status.in.includes(job.status))
-        || (where.kind && (typeof where.kind === "string" ? job.kind !== where.kind : !where.kind.in.includes(job.kind)))
-        || (where.OR && !where.OR.some((condition) => job.status === condition.status
-          && (!condition.errorCode || job.errorCode === condition.errorCode)))) return null;
-      return { ...job };
+    async findFirst({ where, orderBy }) {
+      return rows(where, orderBy)[0] ?? null;
     },
-    async findUnique() { return job ? { ...job } : null; },
+    async findUnique() {
+      const snapshot = job ? { ...job } : null;
+      if (afterJobRead) { const hook = afterJobRead; afterJobRead = null; await hook(); }
+      return snapshot;
+    },
     async update({ data }) { return update(job, data); },
     async create({ data }) {
       job = { page: 1, phase: "summaries", status: "queued", version: 1, publishedAt: null,
+        createdAt: new Date(), updatedAt: new Date(),
         retryAt: null, errorCode: null, summaries: 0, recordings: 0, ...data };
       return { ...job };
     },
     async updateMany({ where, data }) {
-      if (!job || job.id !== where.id || (where.version && job.version !== where.version)) return { count: 0 };
+      if (!job || !matches(job, where)) return { count: 0 };
       update(job, data);
       return { count: 1 };
     },
@@ -113,7 +165,10 @@ function load(file) {
     }
     if (file.endsWith("background-worker.ts") && name === "./config") return { stravaConfig: () => ({ encryptionKey: "mock" }) };
     if (name === "./cache") return { clearActivityCache: async () => { invalidations++; } };
-    if (name === "./diagnostics") return { logStravaFailure: (error) => logs.push(error.constructor.name) };
+    if (name === "./diagnostics") return {
+      logStravaFailure: (error) => logs.push(error.constructor.name),
+      logStravaRecovery: (outcome, ageMinutes) => recoveryLogs.push({ outcome, ageMinutes }),
+    };
     if (name === "./inngest") return {
       requireBackgroundSync() {},
       inngest: { createFunction: (options, handler) => ({ options, handler }), async send(event) {
@@ -141,12 +196,17 @@ const { syncChunk } = load("src/features/strava/server/background-worker.ts");
 const { StravaError } = load("src/features/strava/server/api.ts");
 
 function reset() {
+  otherJobs = [];
+  otherConnections = [];
+  beforeUserLock = null;
+  afterJobRead = null;
   connection = { userId: "local-test", generation: "generation-1", consentVersion: STRAVA_CONSENT_VERSION,
     tokens: JSON.stringify({ access_token: "synthetic", refresh_token: "synthetic", expires_at: 4102444800 }),
     leaseId: null, leaseUntil: null, syncHistory: [], syncActive: true, elevationVersion: 1 };
   job = { id: "job", userId: connection.userId, generation: connection.generation, version: 1,
     kind: "history", status: "queued", phase: "summaries", page: 1, start: "2024-01-01", end: "2025-01-01",
-    remaining: [], before: Date.parse("2025-01-01T00:00:00Z") / 1000, summaries: 0, recordings: 0, retryAt: null };
+    remaining: [], before: Date.parse("2025-01-01T00:00:00Z") / 1000, summaries: 0, recordings: 0, retryAt: null,
+    publishedAt: null, createdAt: new Date(), updatedAt: new Date() };
   quota = null;
   activities = [];
   api.summaries = async () => ({ activities: [] });
@@ -231,7 +291,7 @@ api.exchange = async () => ({ access_token: "refreshed", refresh_token: "refresh
 await chunk();
 assert.equal(JSON.parse(connection.tokens).access_token, "refreshed");
 assert.equal(job.page, 1);
-const { createSyncJob, publishJob, scheduleDueSyncAccounts } = load("src/features/strava/server/background-jobs.ts");
+const { createSyncJob, publishJob, scheduleDueSyncAccounts, recoverPublishedSyncJob } = load("src/features/strava/server/background-jobs.ts");
 reset();
 job = null;
 connection.lastSyncedAt = null;
@@ -351,4 +411,182 @@ assert.equal(activities[0].elevationStreamState, "unavailable");
 api.streams = async () => { assert.fail("Unavailable elevation must not be fetched repeatedly"); };
 await chunk();
 assert.equal(job.status, "completed");
-console.log("Background checks passed: checkpoints, pagination, run filtering, streams, quota pauses, resumability and stale-write fencing.");
+
+function stalePublished() {
+  reset();
+  const old = new Date(Date.now() - 31 * 60_000);
+  job.createdAt = old;
+  job.updatedAt = old;
+  job.publishedAt = old;
+}
+
+stalePublished();
+const recoveryDeliveries = deliveries.length;
+const savedCheckpoint = { page: job.page, phase: job.phase, before: job.before };
+assert.equal(await recoverPublishedSyncJob(), 1);
+assert.equal(job.version, 2);
+assert.equal(job.publishedAt, null);
+assert.deepEqual({ page: job.page, phase: job.phase, before: job.before }, savedCheckpoint);
+api.summaries = async () => assert.fail("Superseded deliveries must not call Strava");
+assert.deepEqual(await syncChunk(job.id, 1), { done: true });
+assert.deepEqual(await syncChunk(job.id, 1), { done: true }, "Duplicate stale delivery is inert");
+deliveryFails = true;
+await assert.rejects(publishJob(job.id), (error) => error.code === "unavailable");
+assert.equal(job.publishedAt, null, "A replacement send failure stays in the outbox");
+assert.equal(await recoverPublishedSyncJob(), 0, "An unpublished replacement is not fenced again");
+deliveryFails = false;
+await stravaDispatcher.handler({ step });
+assert.equal(deliveries.length, recoveryDeliveries + 1);
+assert.equal(deliveries.at(-1).id, "strava-sync:job:2");
+assert.ok(job.publishedAt instanceof Date);
+assert.equal(await recoverPublishedSyncJob(), 0, "A fresh replacement has a new grace period");
+assert.ok(recoveryLogs.some((entry) => entry.outcome === "requeued"));
+
+for (const protect of [
+  () => { job.publishedAt = new Date(); },
+  () => { job.updatedAt = new Date(); },
+  () => { job.publishedAt = null; },
+  () => { job.status = "completed"; },
+  () => { job.status = "failed"; },
+  () => { job.status = "cancelled"; },
+  () => { job.status = "running"; },
+  () => { job.status = "paused"; },
+  () => { job.retryAt = new Date(Date.now() + 60_000); },
+  () => { job.retryAt = new Date(Date.now() - 60_000); },
+  () => { connection.leaseUntil = new Date(Date.now() + 60_000); },
+  () => { quota = { nextCallAt: new Date(Date.now() + 86400_000) }; },
+  () => { quota = { nextCallAt: new Date(Date.now() - 60_000) }; },
+  () => { connection.generation = "reconnected"; },
+  () => { connection.consentVersion = "outdated"; },
+  () => { otherConnections = [{ userId: "other", leaseUntil: new Date(Date.now() + 60_000) }]; },
+  () => { otherJobs = [{ ...job, id: "busy", userId: "other", status: "running" }]; },
+  () => { otherJobs = [{ ...job, id: "sleeping", userId: "other", status: "paused" }]; },
+  () => { otherJobs = [{ ...job, id: "progress", status: "completed", updatedAt: new Date() }]; },
+  () => { otherJobs = [{ ...job, id: "earlier", createdAt: new Date(job.createdAt.getTime() - 1), publishedAt: null }]; },
+]) {
+  stalePublished();
+  protect();
+  assert.equal(await recoverPublishedSyncJob(), 0, "Recovery must respect progress, backlog, leases, waits and fencing");
+  assert.equal(job.version, 1);
+}
+assert.ok(recoveryLogs.some((entry) => entry.outcome === "deferred"), "Blocked stalls have an operational warning");
+
+stalePublished();
+otherJobs = [{ ...job, id: "later", createdAt: new Date(job.createdAt.getTime() + 1) }];
+assert.equal(await recoverPublishedSyncJob(), 1);
+assert.equal(otherJobs[0].version, 1, "Only the queue head is recovered, not an aged backlog");
+assert.equal(await recoverPublishedSyncJob(), 0, "The unpublished head protects the backlog");
+
+// Old worker read -> recovery fences -> old worker tries to acquire its user lock.
+stalePublished();
+afterJobRead = async () => assert.equal(await recoverPublishedSyncJob(), 1);
+api.summaries = async () => assert.fail("Recovery won the race");
+assert.deepEqual(await syncChunk(job.id, 1), { done: true });
+assert.equal(job.version, 2);
+
+// Recovery reads candidate -> worker takes the user lock first and makes progress.
+stalePublished();
+let requests = 0;
+api.summaries = async () => { requests++; return { activities: [] }; };
+beforeUserLock = async () => { await syncChunk(job.id, 1); };
+assert.equal(await recoverPublishedSyncJob(), 0);
+assert.equal(job.version, 1);
+assert.equal(requests, 1);
+assert.equal(job.page, 2);
+
+// Two recovery invocations serialize, incrementing exactly once.
+stalePublished();
+assert.deepEqual((await Promise.all([recoverPublishedSyncJob(), recoverPublishedSyncJob()])).sort(), [0, 1]);
+assert.equal(job.version, 2);
+
+// A queued worker can be sleeping on the global quota without making a call.
+stalePublished();
+quota = { nextCallAt: new Date(Date.now() + 3600_000) };
+const sleeping = await syncChunk(job.id, 1);
+assert.equal(sleeping.waitUntil, quota.nextCallAt.toISOString());
+assert.equal(job.status, "paused");
+assert.equal(job.retryAt.getTime(), quota.nextCallAt.getTime());
+assert.equal(await recoverPublishedSyncJob(), 0);
+// Simulate a later quota reservation being cleared: persisted sleep still protects.
+quota = null;
+assert.equal(await recoverPublishedSyncJob(), 0);
+job.retryAt = new Date(Date.now() - 1);
+await syncChunk(job.id, 1);
+assert.equal(job.status, "running", "A persisted pre-claim wait resumes normally after expiry");
+assert.equal(job.page, 2);
+
+// Concurrent duplicate delivery during an actual API request cannot steal a lease.
+stalePublished();
+let enter;
+let finish;
+const entered = new Promise((resolve) => { enter = resolve; });
+const finished = new Promise((resolve) => { finish = resolve; });
+requests = 0;
+api.summaries = async () => { requests++; enter(); await finished; return { activities: [summary] }; };
+const executing = syncChunk(job.id, 1);
+await entered;
+const lease = connection.leaseId;
+assert.equal(await recoverPublishedSyncJob(), 0);
+assert.ok((await syncChunk(job.id, 1)).waitUntil);
+assert.equal(connection.leaseId, lease);
+finish();
+await executing;
+assert.equal(requests, 1);
+assert.equal(activities.length, 1);
+assert.equal(job.page, 2);
+assert.equal(connection.leaseId, null);
+
+// Another delivery can advance the checkpoint between the initial read and claim.
+reset();
+const pages = [];
+api.summaries = async (_, page) => {
+  pages.push(page);
+  return { activities: Array.from({ length: 200 }, (_, index) => ({ ...summary, id: page * 1000 + index })) };
+};
+afterJobRead = async () => {
+  await syncChunk(job.id, 1);
+  quota = null; // Simulate the short global spacing reservation having expired.
+};
+await syncChunk(job.id, 1);
+assert.deepEqual(pages, [1, 2], "A racing delivery uses the locked checkpoint, not a stale pre-claim snapshot");
+assert.equal(activities.length, 400);
+assert.equal(job.page, 3);
+
+// A late failure callback from the superseded run cannot fail the replacement.
+const { stravaImport } = load("src/features/strava/server/background-functions.ts");
+stalePublished();
+job.id = "11111111-1111-4111-8111-111111111111";
+await recoverPublishedSyncJob();
+await stravaImport.options.onFailure({ event: { data: { event: { data: { jobId: job.id, version: 1 } } } } });
+assert.equal(job.status, "queued");
+assert.equal(job.version, 2);
+assert.equal(connection.syncActive, true);
+
+stalePublished();
+job.id = "11111111-1111-4111-8111-111111111111";
+beforeUserLock = async () => assert.equal(await recoverPublishedSyncJob(), 1);
+await stravaImport.options.onFailure({ event: { data: { event: { data: { jobId: job.id, version: 1 } } } } });
+assert.equal(job.status, "queued", "Failure callback that read before recovery is also version-fenced");
+assert.equal(connection.syncActive, true);
+
+stalePublished();
+assert.deepEqual(await stravaDispatcher.handler({ step }), { dispatched: 1 });
+assert.equal(job.version, 2, "Periodic dispatcher automatically recovers and republishes");
+assert.ok(job.publishedAt instanceof Date);
+assert.equal(deliveries.at(-1).data.version, 2);
+
+// Verify the real operational log payload, not just the call-site mocks.
+const { logStravaRecovery } = load("src/features/strava/server/diagnostics.ts");
+const warnings = [];
+const warn = console.warn;
+try {
+  console.warn = (...args) => warnings.push(args);
+  logStravaRecovery("requeued", 31);
+  logStravaRecovery("deferred", 61);
+} finally { console.warn = warn; }
+assert.equal(warnings.length, 2);
+for (const [event, payload] of warnings) {
+  assert.equal(event, "strava_outbox_recovery");
+  assert.deepEqual(Object.keys(payload).sort(), ["ageMinutes", "graceMinutes", "hint", "outcome"]);
+}
+console.log("Background checks passed: checkpoints, pagination, streams, quota waits, conservative published recovery, duplicate delivery, advisory-lock races and stale-version fencing.");

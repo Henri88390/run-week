@@ -7,7 +7,7 @@ import { rangePreviouslySynchronized, syncHistorySchema, uncoveredRanges } from 
 import { activeSync, syncJobSchema } from "../background-sync";
 import { StravaError } from "./api";
 import { inngest } from "./inngest";
-import { logStravaFailure } from "./diagnostics";
+import { logStravaFailure, logStravaRecovery } from "./diagnostics";
 
 const activeStatuses = ["queued", "running", "paused"];
 const importKinds = ["history", "incremental", "elevation"];
@@ -65,6 +65,54 @@ export async function publishJob(jobId: string) {
     logStravaFailure(error, "sync-dispatch");
     throw new StravaError("unavailable");
   }
+}
+
+// Inngest acceptance is not execution acknowledgement. Without a persisted run ID
+// or a supported SDK run-status lookup, age alone cannot identify a lost event.
+const recoveryGraceMs = 30 * 60_000;
+
+/** Recover at most the queue head, and only after global database quiescence. */
+export async function recoverPublishedSyncJob() {
+  return db().$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('strava-outbox-recovery'))`;
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - recoveryGraceMs);
+    // Include unpublished heads: never leapfrog a legitimate concurrency backlog.
+    const head = await tx.stravaSyncJob.findFirst({ where: { status: "queued" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    if (!head?.publishedAt || head.publishedAt > cutoff || head.updatedAt > cutoff) return 0;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${head.userId}`}))`;
+    const current = await tx.stravaSyncJob.findUnique({ where: { id: head.id } });
+    if (!current || current.version !== head.version || current.status !== "queued"
+      || current.publishedAt?.getTime() !== head.publishedAt.getTime()
+      || current.updatedAt.getTime() !== head.updatedAt.getTime()) return 0;
+    const connection = await tx.stravaConnection.findUnique({ where: { userId: head.userId } });
+    if (!connection || connection.generation !== head.generation
+      || connection.consentVersion !== STRAVA_CONSENT_VERSION) return 0;
+    const ageMinutes = Math.floor((now.getTime() - head.publishedAt.getTime()) / 60_000);
+    // Lock order matches the worker (user, then global quota). Re-read quota under
+    // its lock, including sleeps that started before wait persistence was deployed.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('strava-global-quota'))`;
+    const quota = await tx.stravaSyncQuota.findUnique({ where: { id: "api" } });
+    const busy = await tx.stravaSyncJob.findFirst({ where: { OR: [
+      { status: { in: ["running", "paused"] } },
+      { status: { in: activeStatuses }, retryAt: { gt: cutoff } },
+      // Completed/cancelled jobs also demonstrate recent queue progress.
+      { updatedAt: { gt: cutoff } },
+    ] }, select: { id: true } });
+    const leased = await tx.stravaConnection.findFirst({ where: { leaseUntil: { gt: now } }, select: { userId: true } });
+    if (busy || leased || (quota && quota.nextCallAt > cutoff)) {
+      logStravaRecovery("deferred", ageMinutes);
+      return 0;
+    }
+    const recovered = await tx.stravaSyncJob.updateMany({ where: {
+      id: head.id, version: head.version, status: "queued", publishedAt: head.publishedAt, updatedAt: head.updatedAt,
+    }, data: { version: { increment: 1 }, publishedAt: null, retryAt: null } });
+    if (recovered.count) logStravaRecovery("requeued", ageMinutes);
+    // Publishing happens through the normal outbox, after this transaction commits.
+    // A crash/send failure therefore cannot lose the replacement event.
+    return recovered.count;
+  });
 }
 
 export async function scheduleDueSyncAccounts() {

@@ -273,10 +273,49 @@ dashboard data; polling never calls Strava. Progress banners and counters are hi
 network/status failures are still shown explicitly.
 The PostgreSQL outbox is checked every ten minutes for queued, unpublished jobs,
 including after a failed event send. Connection still publishes an import immediately;
-only recovery of a failed publication can wait up to ten minutes. Empty outbox checks
+recovery of a failed publication can wait up to ten minutes. Empty outbox checks
 and hourly scheduling checks appear as Inngest runs even when all activities are synced;
 they do not call Strava or re-import completed jobs. Together these two schedules
 produce 168 maintenance runs per day, excluding imports and retries.
+
+The same dispatcher also recovers **published-but-still-queued** work conservatively:
+only the oldest queued job (creation time, then ID) is eligible, after both its
+publication and last update are at least **30 minutes** old. Recovery is deferred
+while any job is running/paused, any account has an active lease, any job has
+updated in the last 30 minutes, or an active job's retry time / global quota
+reservation is within the last 30 minutes or in the future. This includes recent
+completion and allows a full grace period after quota waits expire. Workers persist
+pre-claim lease/quota waits as paused jobs with a retry time, even before their
+first API call. These guards protect long imports, durable sleeps and legitimate
+concurrency backlogs; an unpublished head also blocks recovery of later jobs.
+
+Under the existing per-account advisory lock, recovery rechecks the connection
+generation and job snapshot, increments the version and clears `publishedAt`,
+preserving all page/phase checkpoints. The normal outbox then sends a new
+versioned event in the same dispatcher execution. A crash or send failure leaves
+it unpublished for the next execution. Old deliveries, commits and failure callbacks
+are version-fenced. At most one published job is recovered per dispatcher execution;
+the replacement starts a fresh grace period.
+
+**Operational limits:** this is a database-quiescence heuristic, not proof that
+Inngest has lost a run. The installed Inngest SDK has no public event-to-run-status
+lookup, and the outbox stores no provider run IDs; no private/undocumented API or
+additional credentials are used. An invisible provider backlog with no database
+progress for 30 minutes may have its head superseded, but not the whole queue.
+Conversely, continual queue activity or a stranded running/paused job can defer
+recovery indefinitely. Inspect Inngest run state, endpoint registration/signatures,
+deployment protection and database health before manual intervention; do not bulk
+reset published jobs. Recovery requires the dispatcher itself to execute, so it
+cannot repair a stopped/misconfigured Inngest environment.
+
+The existing server log stream emits `strava_outbox_recovery` warnings with
+`outcome` (`requeued` or `deferred`), `ageMinutes`, `graceMinutes` and an operational
+hint, without account/job identifiers, tokens or activity data. Configure your
+hosting log alerts for any `requeued` warning and repeated/old `deferred` warnings;
+monitor missing dispatcher executions separately. This adds an alert signal, not
+an external notification provider or an automatically configured hosting alert.
+Publication/execution failures still use sanitized `strava_request_failed` logs.
+
 The hourly scheduler checks accounts due for a daily incremental import; it overlaps
 the last synchronization by one day to cover timestamp boundaries. Transiently
 failed imports are resumed from their saved page/phase on a later scheduler run.
@@ -499,7 +538,9 @@ For local development run `npx inngest-cli@latest dev -u http://localhost:3000/a
 and set `INNGEST_DEV=1` in the app environment. Use separate production/preview/local
 databases and Inngest environments. Preview deployments must not execute production jobs.
 `node scripts/verify-strava-background.mjs` exercises checkpoints, filtering, retries,
-quota pauses and cancellation/reconnect fencing with mocks. The Playwright suite uses
+quota pauses, conservative published-job recovery, duplicate deliveries, worker/recovery
+and failure-callback races, send failures and cancellation/reconnect fencing with
+in-process advisory-lock mocks (not a real PostgreSQL concurrency test). The Playwright suite uses
 a local delivery/worker harness on port 3103 and a disposable database; it requires
 Docker and never contacts Inngest Cloud or real Strava.
 Inngest's transitive Zod dependency uses the patched root package via an override;

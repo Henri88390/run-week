@@ -3,7 +3,7 @@ import { db } from "@/features/account/server/db";
 import { syncEventSchema } from "../background-sync";
 import { inngest } from "./inngest";
 import { syncChunk } from "./background-worker";
-import { publishJob, retryWebhookJobs, scheduleDueSyncAccounts } from "./background-jobs";
+import { publishJob, recoverPublishedSyncJob, retryWebhookJobs, scheduleDueSyncAccounts } from "./background-jobs";
 import { logStravaFailure } from "./diagnostics";
 
 async function safeBackgroundStep<T>(work: () => Promise<T>): Promise<T> {
@@ -63,17 +63,22 @@ export const stravaImport = inngest.createFunction(
     // A fresh event bounds the durable step history. The outbox survives send failures.
     await step.run("continue-import", () =>
       safeBackgroundStep(async () => {
-        await db().stravaSyncJob.updateMany({
-          where: {
-            id: data.jobId,
-            version: data.version,
-            status: { in: ["running", "paused"] },
-          },
-          data: {
-            status: "queued",
-            version: { increment: 1 },
-            publishedAt: null,
-          },
+        const job = await db().stravaSyncJob.findUnique({ where: { id: data.jobId } });
+        if (!job) return;
+        await db().$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${job.userId}`}))`;
+          await tx.stravaSyncJob.updateMany({
+            where: {
+              id: data.jobId,
+              version: data.version,
+              status: { in: ["running", "paused"] },
+            },
+            data: {
+              status: "queued",
+              version: { increment: 1 },
+              publishedAt: null,
+            },
+          });
         });
         await publishJob(data.jobId);
       }),
@@ -89,6 +94,7 @@ export const stravaDispatcher = inngest.createFunction(
     concurrency: { limit: 1 },
   },
   async ({ step }) => {
+    await step.run("recover-published-work", () => safeBackgroundStep(recoverPublishedSyncJob));
     await step.run("retry-targeted-work", () => safeBackgroundStep(retryWebhookJobs));
     const ids = await step.run("queued-jobs", () =>
       safeBackgroundStep(async () =>
