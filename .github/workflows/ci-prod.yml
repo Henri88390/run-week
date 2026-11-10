@@ -40,7 +40,7 @@ jobs:
   e2e:
     name: E2E tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -64,7 +64,7 @@ jobs:
   mobile:
     name: Android app checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -91,7 +91,7 @@ jobs:
     needs: [checks, e2e, mobile]
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     # Holds the DIRECT_URL secret; add required reviewers to the environment to approve each run.
     environment: production
     # Never cancel a running migration; later pushes wait for it.

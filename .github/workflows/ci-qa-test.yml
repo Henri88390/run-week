@@ -23,7 +23,7 @@ jobs:
   checks:
     name: Lint, typecheck and build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -40,7 +40,7 @@ jobs:
   e2e:
     name: E2E tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -65,7 +65,7 @@ jobs:
     name: Migrate database
     needs: checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     # Holds the DIRECT_URL secret; add required reviewers to the environment to approve each run.
     environment: qa
     # Never cancel a running migration; later pushes wait for it.
