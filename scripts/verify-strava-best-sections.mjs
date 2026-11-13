@@ -23,7 +23,7 @@ function load(file) {
     if (name === "server-only") return {};
     if (name.startsWith(".") || name.startsWith("@/")) {
       const base = name.startsWith("@/") ? path.join(root, "src", name.slice(2)) : path.resolve(path.dirname(file), name);
-      return load(`${base}.ts`);
+      return load(fs.existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.tsx`);
     }
     return externalRequire(name);
   };
@@ -205,8 +205,13 @@ if (process.argv.includes("--browser")) {
       assert.equal(await page.locator("[data-best-sections] article").first().locator("li").count(), 5);
       const rankedItems = page.locator("[data-best-sections] article").first().locator("li");
       for (let rank = 0; rank < 5; rank++) {
-        assert.equal(await rankedItems.nth(rank).locator(".sr-only").textContent(), String(rank + 1), "Rank is available to screen readers");
-        assert.equal(await rankedItems.nth(rank).locator(".sr-only").isVisible(), false, "Rank is visually hidden");
+        const rankLabel = rankedItems.nth(rank).locator(".sr-only");
+        assert.equal(await rankLabel.textContent(), String(rank + 1), "Rank is available to screen readers");
+        const rankStyle = await rankLabel.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { position: style.position, width: style.width, clipPath: style.clipPath };
+        });
+        assert.deepEqual(rankStyle, { position: "absolute", width: "1px", clipPath: "inset(50%)" }, "Rank is visually hidden");
         assert.equal(await rankedItems.nth(rank).locator("svg").getAttribute("aria-hidden"), "true", "Medal icon is decorative");
       }
       assert.equal(await page.locator("[data-best-sections] ol").first().evaluate((element) =>

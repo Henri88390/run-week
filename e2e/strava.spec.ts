@@ -6,6 +6,7 @@ import { createClient } from "redis";
 import { accountMenuButton, createWeek, signIn, uniqueEmail } from "./helpers";
 import { syncStatusSchema } from "../src/features/strava/background-sync";
 import { STRAVA_CONSENT_VERSION } from "../src/features/strava/types";
+import { PERFORMANCE_DISTANCES, sectionDuration } from "../src/features/strava/best-sections";
 import { calculateVdot } from "../src/features/running-programs/domain";
 
 const MOCK = "http://127.0.0.1:3102";
@@ -131,17 +132,20 @@ test("fastest sections rank all imported history independently of calendar filte
   await expect(sections.getByRole("heading", { name: "Top performances" })).toBeVisible();
   await expect(sections.locator("article")).toHaveCount(10);
   await expect(sections.locator("h1 + p")).toHaveCount(0);
-  for (const card of await sections.locator("article").all()) {
+  for (const [distanceIndex, card] of (await sections.locator("article").all()).entries()) {
     await expect(card.locator("li")).toHaveCount(5);
+    const meters = PERFORMANCE_DISTANCES[distanceIndex];
     await expect(card.locator("a")).toHaveText(Array.from({ length: 5 }, (_, i) =>
-      `${i === 0 ? "0:20.0" : `0:${String(20 + i * 2).padStart(2, "0")}.0`} - Jan 1, 2020`));
+      `${sectionDuration(meters / 5 + meters * i / 50)} - Jan 1, 2020`));
   }
   const firstRankedList = sections.locator("article").first().locator("ol");
   await expect(firstRankedList).toHaveCSS("list-style-type", "none");
   for (let rank = 0; rank < 5; rank++) {
     const item = firstRankedList.locator("li").nth(rank);
     await expect(item.locator(".sr-only")).toHaveText(String(rank + 1));
-    await expect(item.locator(".sr-only")).toBeHidden();
+    await expect(item.locator(".sr-only")).toHaveCSS("position", "absolute");
+    await expect(item.locator(".sr-only")).toHaveCSS("width", "1px");
+    await expect(item.locator(".sr-only")).toHaveCSS("clip-path", "inset(50%)");
     await expect(item.locator("svg")).toHaveAttribute("aria-hidden", "true");
   }
   await expect(sections.locator("article").first().locator("li").first()).toContainText("0:20.0");
