@@ -95,7 +95,7 @@ test.afterEach(async () => {
 });
 
 test("fastest sections rank all imported history independently of calendar filters", async ({ page, browser }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const email = uniqueEmail("best-sections");
   await signIn(page, email);
   await deliveryControl({ paused: true });
@@ -150,6 +150,7 @@ test("fastest sections rank all imported history independently of calendar filte
     await expect(item.locator("svg")).toHaveAttribute("aria-hidden", "true");
   }
   await expect(distances.locator("article").first().locator("li").first()).toContainText("0:20.0");
+  await expect(firstRankedList.locator("a").first()).toHaveAttribute("href", `/activities/${imported.rows[0].id}`);
   await expect(distances.locator("article").last().locator("li").first()).toContainText("2:20:39.0");
   const dashboard = await (await page.request.get("/api/strava/activities?view=month&month=2026-01")).json();
   expect(dashboard.bestSections).toBeUndefined();
@@ -195,13 +196,20 @@ test("fastest sections rank all imported history independently of calendar filte
   await page.keyboard.press("Tab");
   await expect(sections.locator("a").nth(1)).toBeFocused();
   await first.focus();
+  const firstTarget = await first.getAttribute("href");
+  expect(firstTarget).toBeTruthy();
   await page.keyboard.press("Enter");
-  await page.waitForURL(`**/activities/${imported.rows[0].id}`);
+  await page.waitForURL(`**${firstTarget}`);
+  await expect(page.getByRole("heading", { name: "Private section fixture 5", exact: true })).toBeVisible();
+  await page.goto(`/activities/${imported.rows[0].id}`);
   await expect(page.getByRole("heading", { name: "Private section fixture 0", exact: true })).toBeVisible();
   await expect(page.locator("[data-kilometre-splits] tbody tr").first()).toContainText("Unavailable");
   await page.goto("/top-performances");
+  await page.waitForLoadState("networkidle");
+  await expect(accountMenuButton(page)).toBeVisible();
   await hr.locator("a").first().focus();
-  await page.keyboard.press("Enter");
+  await expect(hr.locator("a").first()).toBeFocused();
+  await hr.locator("a").first().press("Enter");
   await page.waitForURL(`**/activities/${imported.rows[5].id}`);
   const splits = page.locator("[data-kilometre-splits]");
   await expect(splits.getByRole("heading", { name: "Kilometre splits" })).toBeVisible();

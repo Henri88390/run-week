@@ -10,9 +10,13 @@ import { MaximalEffort } from "./maximal-effort";
 import { roundedDuration } from "../analytics";
 import { useActivityImport } from "./use-activity-import";
 import { formatPace } from "@/features/running-programs/domain";
+import type { KilometreSplit } from "../stream-metrics";
+import { KilometreSplits } from "./kilometre-splits";
 
 export type { ChartPoint } from "./activity-chart";
-export function ActivityDetail({ activity, points }: { activity: ActivitySummary; points: ChartPoint[] }) {
+export function ActivityDetail({ activity, points, splits }: {
+  activity: ActivitySummary; points: ChartPoint[]; splits: KilometreSplit[];
+}) {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   const elapsed = roundedDuration(activity.elapsedSeconds);
@@ -44,5 +48,6 @@ export function ActivityDetail({ activity, points }: { activity: ActivitySummary
     <a href={`https://www.strava.com/activities/${activity.sourceId}`} target="_blank" rel="noreferrer" className="underline">{text.source}</a>
     {!points.length && <p>{text.streamMissing}</p>}
     <ActivityChart points={points} />
+    <KilometreSplits splits={splits} />
   </div>;
 }

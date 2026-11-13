@@ -31,6 +31,19 @@ const calendarWeekSchema = z.object({
 });
 export type CalendarWeek = z.infer<typeof calendarWeekSchema>;
 export const bestSectionsSchema = z.object({
+  heartRate: z.object({
+    peak: z.array(z.object({
+      activityId: z.string(), name: z.string(), localDate: z.iso.date(),
+      bpm: finite.min(30).max(240), startSeconds: finite.nonnegative(), endSeconds: finite.nonnegative(),
+    })).max(5),
+    windows: z.array(z.object({
+      seconds: finite.positive(),
+      results: z.array(z.object({
+        activityId: z.string(), name: z.string(), localDate: z.iso.date(),
+        bpm: finite.min(30).max(240), startSeconds: finite.nonnegative(), endSeconds: finite.nonnegative(),
+      })).max(5),
+    })),
+  }),
   distances: z.array(z.object({
     meters: finite.positive(),
     results: z.array(z.object({

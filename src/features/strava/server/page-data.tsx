@@ -17,6 +17,7 @@ import { smoothSeries } from "../chart-smoothing";
 import { readLinkedAccountEmail } from "./linked-account-notice";
 import { cachedBestSections } from "./best-sections";
 import { BestSections, BestSectionsPrompt } from "../components/best-sections";
+import { kilometreSplits } from "../stream-metrics";
 
 export async function DashboardContent({ searchParams, metrics = false }: {
   searchParams: Promise<{ month?: string; strava?: string; view?: string; date?: string; year?: string }>; metrics?: boolean;
@@ -125,5 +126,5 @@ export async function DetailContent({ params }: { params: Promise<{ id: string }
     distanceMeters: row.distanceMeters, movingSeconds: row.movingSeconds, elapsedSeconds: row.elapsedSeconds,
     averageHr: row.averageHr, maxHr: row.maxHr, maximalEffort: row.maximalEffort, streamState: row.streamState,
     elevationGainMeters: row.elevationGainMeters,
-  }} points={points} />;
+  }} points={points} splits={kilometreSplits(parsed.success ? parsed.data : null)} />;
 }

@@ -4,16 +4,18 @@ import { bestSections, insertRankedSection, PERFORMANCE_DISTANCES } from "../bes
 import { bestSectionsSchema, STRAVA_CONSENT_VERSION, streamSchema, type BestSectionsData } from "../types";
 import { StravaError } from "./api";
 import { readActivityCache, writeActivityCache } from "./cache";
+import { heartRateRecords, HR_DURATIONS, insertRankedHr } from "../stream-metrics";
 
 /** Computes all-time rankings from this account's imported, recorded streams. */
 export async function accountBestSections(userId: string): Promise<BestSectionsData> {
   if (!userId) throw new StravaError("unauthorized", 401);
   const linked = await db().stravaConnection.findUnique({ where: { userId }, select: { consentVersion: true } });
   if (linked?.consentVersion !== STRAVA_CONSENT_VERSION) throw new StravaError("notConnected", 409);
-  const field = "dashboard:best-sections:v1";
+  const field = "dashboard:best-sections:v2";
   const cached = await readActivityCache(userId, field, bestSectionsSchema);
   if (cached) return cached;
   const data: BestSectionsData = {
+    heartRate: { peak: [], windows: HR_DURATIONS.map((seconds) => ({ seconds, results: [] })) },
     distances: PERFORMANCE_DISTANCES.map((meters) => ({ meters, results: [] })),
   };
   // No calendar predicates or activity limit. Bound memory while scanning stored,
@@ -32,6 +34,13 @@ export async function accountBestSections(userId: string): Promise<BestSectionsD
         if (effort) insertRankedSection(data.distances[i].results, {
           ...effort, activityId: row.id, name: row.name, localDate: row.localDate,
         });
+      });
+      const hr = heartRateRecords(parsed.success ? parsed.data : null);
+      const identity = { activityId: row.id, name: row.name, localDate: row.localDate };
+      for (const effort of hr.peak) insertRankedHr(data.heartRate.peak, { ...effort, ...identity });
+      hr.windows.forEach((window, i) => {
+        for (const effort of window.results)
+          insertRankedHr(data.heartRate.windows[i].results, { ...effort, ...identity });
       });
     }
     if (rows.length < 100) break;
