@@ -119,6 +119,104 @@ const { BEST_SECTIONS_MESSAGES } = load("src/features/strava/best-sections-messa
 const { LOCALES } = load("src/features/i18n/locales.ts");
 for (const locale of LOCALES) for (const text of Object.values(BEST_SECTIONS_MESSAGES[locale])) assert.ok(text.length > 0);
 
+const { heartRateRecords, kilometreSplits, HR_DURATIONS, insertRankedHr } = load("src/features/strava/stream-metrics.ts");
+const { STREAM_MESSAGES } = load("src/features/strava/stream-messages.ts");
+for (const locale of LOCALES) for (const text of Object.values(STREAM_MESSAGES[locale])) assert.ok(text.length > 0);
+const recording = (time, heartrate, distance = null) => ({ time, heartrate, distance });
+assert.deepEqual(HR_DURATIONS, [10, 60, 300, 600, 1800, 3600, 5400, 7200]);
+const long = recording(Array.from({ length: 725 }, (_, i) => i * 10), Array(725).fill(160));
+const records = heartRateRecords(long);
+assert.equal(records.peak.length, 5);
+assert.deepEqual(records.peak.map((r) => r.startSeconds), [0, 10, 20, 30, 40], "Distinct tied samples, not activities");
+for (const [i, window] of records.windows.entries()) {
+  assert.equal(window.seconds, HR_DURATIONS[i]);
+  assert.equal(window.results.length, 5);
+  assert.deepEqual(window.results.map((r) => r.startSeconds), [0, 10, 20, 30, 40], "Overlapping windows retained");
+  for (const result of window.results) {
+    near(result.bpm, 160);
+    near(result.endSeconds - result.startSeconds, window.seconds);
+  }
+}
+const irregular = recording([0, 2, 10, 12], [100, 200, 150, 100]);
+near(heartRateRecords(irregular).windows[0].results.find((r) => r.startSeconds === 0).bpm, 180);
+assert.notEqual(180, (100 + 200 + 150) / 3, "Elapsed weighting, not arithmetic sample averaging");
+near(heartRateRecords(recording([0, 7, 14], [100, 200, 150])).windows[0].results[0].bpm, 130,
+  "Fractional last interval uses left sample");
+assert.equal(heartRateRecords(recording([0, 5, 10], [100, null, 200])).windows[0].results.length, 0);
+assert.equal(heartRateRecords(recording([0, 16, 26], [240, 150, 150])).windows[0].results[0].startSeconds, 16);
+assert.equal(heartRateRecords(recording([0, 5, 10], [100, 100, null])).windows[0].results.length, 0,
+  "Invalid endpoint excludes entire window");
+assert.equal(heartRateRecords(recording([0, 10], [100, 100])).windows[0].results.length, 1, "Exact complete window");
+assert.equal(heartRateRecords(recording([0, 9.99], [100, 100])).windows[0].results.length, 0);
+assert.deepEqual(heartRateRecords(recording([0, 1, 2, 3, 4], [29, 241, NaN, 30, 240])).peak.map((r) => r.bpm), [240, 30]);
+for (const r of [null, recording([], []), recording([0, 0, 10], [100, 200, 200]),
+  recording([0, 10, 5], [100, 200, 200]), recording([0, Infinity], [100, 200])]) {
+  const result = heartRateRecords(r);
+  assert.equal(result.peak.length, 0);
+  assert.ok(result.windows.every((w) => !w.results.length));
+}
+assert.equal(heartRateRecords(recording([0], [200])).peak.length, 1, "Single valid sample is a peak");
+assert.ok(heartRateRecords(recording([0], [200])).windows.every((w) => !w.results.length));
+const hrTop = [];
+for (const id of ["z", "f", "e", "d", "c", "b", "a"]) for (let t = 5; t >= 0; t--)
+  insertRankedHr(hrTop, { activityId: id, localDate: "2020-01-01", bpm: 200, startSeconds: t, endSeconds: t + 10 });
+assert.deepEqual(hrTop.map((r) => [r.activityId, r.startSeconds]), [["a", 0], ["a", 1], ["a", 2], ["a", 3], ["a", 4]]);
+insertRankedHr(hrTop, { activityId: "a", localDate: "2020-01-01", bpm: 200, startSeconds: 0, endSeconds: 10 });
+assert.equal(hrTop.length, 5, "Do not duplicate the same window");
+insertRankedHr(hrTop, { activityId: "z", localDate: "2019-01-01", bpm: 200, startSeconds: 0, endSeconds: 10 });
+assert.equal(hrTop[0].activityId, "z", "Date precedes ID in deterministic ties");
+// Quadratic independent HR reference over every recorded start and clipped interval.
+for (let trial = 0; trial < 80; trial++) {
+  const time = [0], hr = [100];
+  for (let i = 1; i < 80; i++) {
+    time.push(time[i - 1] + 1 + Math.floor(random() * 18));
+    hr.push(random() < .08 ? null : 100 + Math.floor(random() * 100));
+  }
+  const actual = heartRateRecords(recording(time, hr));
+  for (const window of actual.windows) {
+    const expected = [];
+    for (const start of time) {
+      const end = start + window.seconds;
+      if (end > time.at(-1)) continue;
+      let sum = 0, valid = true;
+      for (let i = 0; i + 1 < time.length; i++) {
+        const dt = Math.min(end, time[i + 1]) - Math.max(start, time[i]);
+        if (dt <= 0) continue;
+        if (hr[i] === null || hr[i + 1] === null || time[i + 1] - time[i] > 15) valid = false;
+        else sum += hr[i] * dt;
+      }
+      if (valid) expected.push({ bpm: sum / window.seconds, startSeconds: start, endSeconds: end });
+    }
+    expected.sort((a, b) => b.bpm - a.bpm || a.startSeconds - b.startSeconds);
+    assert.deepEqual(window.results, expected.slice(0, 5));
+  }
+}
+const splitFixture = recording([0, 10, 20, 30, 40, 50], [100, 120, 140, 160, 180, 200], [0, 500, 500, 1500, 2000, 2250]);
+const splits = kilometreSplits(splitFixture);
+assert.deepEqual(splits.map((s) => s.meters), [1000, 1000, 250]);
+assert.deepEqual(splits.map((s) => s.pace), [25, 15, 40], "Interpolated boundary, stop, actual partial distance");
+near(splits[0].averageHr, (1000 + 1200 + 700) / 25);
+near(splits[1].averageHr, (700 + 1600) / 15);
+assert.equal(splits[0].maxHr, 140);
+assert.equal(splits[1].maxHr, 180);
+const stopped = kilometreSplits(recording([0, 10, 20, 30, 40], [100, 200, 200, 150, 150], [0, 1000, 1000, 2000, 2000]));
+assert.deepEqual(stopped.map((s) => s.pace), [10, 30], "Internal plateau assigned next split; final stop included");
+near(stopped[1].averageHr, (2000 + 2000 + 1500) / 30);
+assert.equal(stopped.length, 2, "No extra zero-distance partial");
+const missingHr = kilometreSplits(recording([0, 10, 20], [100, null, 200], [0, 500, 1000]))[0];
+assert.equal(missingHr.averageHr, null);
+assert.equal(missingHr.maxHr, 200);
+assert.equal(kilometreSplits(recording([0, 20], [100, 200], [0, 1000]))[0].averageHr, null);
+assert.equal(kilometreSplits(recording([0, 20], [100, 200], [0, 1000]))[0].pace, 20, "HR gaps do not discard valid elapsed distance");
+assert.equal(kilometreSplits(recording([0, 10, 20], [100, 100, 100], [0, null, 1000]))[0].pace, null);
+assert.equal(kilometreSplits(recording([0, 10], null, [0, 250]))[0].maxHr, null);
+assert.equal(kilometreSplits(recording([0, 10], null, [50, 250]))[0].pace, null);
+for (const r of [null, recording([], [], []), recording([0], [100], [0]), recording([0, 10], null, [0, 0]),
+  recording([0, 0], null, [0, 1000]), recording([0, 10, 5], null, [0, 500, 1000]),
+  recording([0, 10, 20], null, [0, 1000, 500]), recording([0, 10], null, [0, null])])
+  assert.deepEqual(kilometreSplits(r), []);
+console.log("Recorded stream metrics: all 8 durations + peak, finite sample starts, overlap/repeated activity, ties/top5, missing/gaps/clocks, elapsed weighting, synthetic split interpolation/stops/partial km passed.");
+
 // Server query boundary, ownership, consent, pagination and account-scoped cache.
 const { STRAVA_CONSENT_VERSION } = load("src/features/strava/types.ts");
 const cached = new Map();
@@ -126,10 +224,12 @@ let reads = 0, connectionReads = 0, consent = STRAVA_CONSENT_VERSION;
 const queries = [];
 const ownedRows = Array.from({ length: 205 }, (_, i) => ({
   id: `a-${String(i).padStart(3, "0")}`, userId: "alice", name: "Synthetic", localDate: "2020-01-01",
-  streams: { time: [0, 10000], distance: [0, 50000], velocity_smooth: null, heartrate: null, altitude: null },
+  streams: { time: Array.from({ length: 1001 }, (_, i) => i * 10),
+    distance: Array.from({ length: 1001 }, (_, i) => i * 50),
+    velocity_smooth: null, heartrate: Array(1001).fill(160), altitude: null },
 }));
 ownedRows.push({ ...ownedRows[0], id: "bob-private", userId: "bob", name: "Not Alice", streams: {
-  ...ownedRows[0].streams, time: [0, 5000],
+  ...ownedRows[0].streams, time: [0, 5000], distance: [0, 50000], heartrate: [220, 220],
 } });
 overrides.set("@/features/account/server/db", { db: () => ({
   stravaConnection: { async findUnique({ where }) {
@@ -162,9 +262,14 @@ const alice = await accountBestSections("alice");
 assert.equal(reads, 3, "Full history includes the final partial batch");
 assert.equal(alice.distances.length, 10);
 assert.ok(alice.distances.every((d) => d.results.length === 5 && d.results.every((r) => r.activityId.startsWith("a-"))));
+assert.ok(alice.heartRate.peak.every((r) => r.activityId === "a-000"));
+assert.deepEqual(alice.heartRate.peak.map((r) => r.startSeconds), [0, 10, 20, 30, 40]);
+assert.ok(alice.heartRate.windows.every((w) => w.results.length === 5 && w.results.every((r) => r.activityId === "a-000")));
 assert.ok((await accountBestSections("bob")).distances.every((distance) =>
   distance.results.length === 1 && distance.results[0].activityId === "bob-private"));
 assert.equal(reads, 4);
+assert.ok((await accountBestSections("bob")).heartRate.peak.every((r) => r.activityId === "bob-private"));
+assert.ok(alice.heartRate.peak.every((r) => r.activityId !== "bob-private"), "Higher outsider HR cannot leak");
 assert.deepEqual(await accountBestSections("alice"), alice);
 assert.equal(reads, 4, "Independent cache shared across calendar periods");
 consent = "old";
@@ -183,8 +288,9 @@ if (process.argv.includes("--browser")) {
   const React = externalRequire("react");
   const { renderToStaticMarkup } = externalRequire("react-dom/server");
   let locale = "en";
-  overrides.set("@/features/i18n/use-i18n", { useI18n: () => ({ locale, t: { units: { km: "km" } } }) });
+  overrides.set("@/features/i18n/use-i18n", { useI18n: () => ({ locale, t: { units: { km: "km", min: "min", h: "h" } } }) });
   const { BestSections } = load("src/features/strava/components/best-sections.tsx");
+  const { KilometreSplits } = load("src/features/strava/components/kilometre-splits.tsx");
   const chunks = path.join(root, ".next/static");
   const css = fs.readdirSync(chunks, { recursive: true }).filter((name) => name.endsWith(".css"))
     .map((name) => fs.readFileSync(path.join(chunks, name), "utf8")).join("\n");
@@ -198,12 +304,14 @@ if (process.argv.includes("--browser")) {
       const fixture = structuredClone(alice);
       fixture.distances[9].results = [];
       fixture.distances[0].results[0].name = "Long synthetic activity name ".repeat(8);
-      const markup = renderToStaticMarkup(React.createElement(BestSections, { data: fixture }));
+      const markup = renderToStaticMarkup(React.createElement(React.Fragment, null,
+        React.createElement(BestSections, { data: fixture }),
+        React.createElement(KilometreSplits, { splits })));
       await page.setViewportSize({ width, height: 900 });
       await page.setContent(`<!doctype html><html lang="${locale}" data-theme="${theme}"><head><base href="http://run-week.test"><style>${css}</style></head><body><main class="mx-auto max-w-6xl px-4 py-6">${markup}</main></body></html>`);
-      assert.equal(await page.locator("[data-best-sections] article").count(), 10);
-      assert.equal(await page.locator("[data-best-sections] article").first().locator("li").count(), 5);
-      const rankedItems = page.locator("[data-best-sections] article").first().locator("li");
+      assert.equal(await page.locator("[data-distance-sections] article").count(), 10);
+      assert.equal(await page.locator("[data-distance-sections] article").first().locator("li").count(), 5);
+      const rankedItems = page.locator("[data-distance-sections] article").first().locator("li");
       for (let rank = 0; rank < 5; rank++) {
         const rankLabel = rankedItems.nth(rank).locator(".sr-only");
         assert.equal(await rankLabel.textContent(), String(rank + 1), "Rank is available to screen readers");
@@ -216,10 +324,23 @@ if (process.argv.includes("--browser")) {
       }
       assert.equal(await page.locator("[data-best-sections] ol").first().evaluate((element) =>
         getComputedStyle(element).listStyleType), "none", "Native numeric markers are not visible");
-      assert.equal(await page.locator("[data-best-sections] article").last().innerText().then((text) => text.includes(BEST_SECTIONS_MESSAGES[locale].empty)), true);
+      assert.equal(await page.locator("[data-distance-sections] article").last().innerText().then((text) => text.includes(BEST_SECTIONS_MESSAGES[locale].empty)), true);
+      assert.equal(await page.locator("[data-hr-records] article").count(), 9);
+      assert.equal(await page.locator("[data-hr-records] li").count(), 45);
+      assert.match(await page.locator("[data-hr-records] a").first().innerText(), /160[.,]0 bpm - .*\n\+0:00\.0/);
+      assert.equal(await page.locator("[data-kilometre-splits] tbody tr").count(), 3);
+      assert.match(await page.locator("[data-kilometre-splits] tbody tr").last().innerText(), /0[.,]250/);
       assert.equal(await page.locator("[data-best-sections] h1 + p").count(), 0, "No explanatory text below the title");
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${width}px ${theme}: no horizontal overflow`);
-      await page.keyboard.press("Tab");
+      const definitions = page.locator("[data-hr-records] summary");
+      await definitions.focus();
+      await page.keyboard.press("Enter");
+      assert.equal(await page.locator("[data-hr-records] details").getAttribute("open"), "");
+      const splitRegion = page.locator("[data-kilometre-splits] [role=region]");
+      await splitRegion.focus();
+      assert.equal(await splitRegion.evaluate((element) => element === document.activeElement), true);
+      await page.locator("body").click({ position: { x: 1, y: 1 } });
+      await page.locator("[data-best-sections] a").first().focus();
       const firstLink = page.locator("[data-best-sections] a").first();
       assert.equal(await firstLink.evaluate((element) => element === document.activeElement), true, "Keyboard reaches first activity link");
       assert.match(await firstLink.innerText(), /^0:20\.0 - /, "Link is elapsed time, separator and localized date");

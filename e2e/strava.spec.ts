@@ -6,7 +6,6 @@ import { createClient } from "redis";
 import { accountMenuButton, createWeek, signIn, uniqueEmail } from "./helpers";
 import { syncStatusSchema } from "../src/features/strava/background-sync";
 import { STRAVA_CONSENT_VERSION } from "../src/features/strava/types";
-import { PERFORMANCE_DISTANCES, sectionDuration } from "../src/features/strava/best-sections";
 import { calculateVdot } from "../src/features/running-programs/domain";
 
 const MOCK = "http://127.0.0.1:3102";
@@ -106,9 +105,12 @@ test("fastest sections rank all imported history independently of calendar filte
   await page.keyboard.press("Enter");
   await page.waitForURL("**/top-performances");
   const sections = page.locator("[data-best-sections]");
+  const distances = sections.locator("[data-distance-sections]");
   await expect(sections.getByRole("heading", { name: "Top performances" })).toBeVisible();
-  await expect(sections.locator("article")).toHaveCount(10);
-  await expect(sections.locator("article").first()).toContainText("No recorded section long enough");
+  await expect(distances.locator("article")).toHaveCount(10);
+  await expect(distances.locator("article").first()).toContainText("No recorded section long enough");
+  await expect(sections.locator("[data-hr-records] article")).toHaveCount(9);
+  await expect(sections.locator("[data-hr-records] article").first()).toContainText("No complete recorded HR data");
   const job = await extendQueuedFixture(page);
   await deliveryControl({ paused: false });
   await fullImport(page, job.id);
@@ -130,15 +132,14 @@ test("fastest sections rank all imported history independently of calendar filte
   await expect(page.locator("[data-best-sections]")).toHaveCount(0);
   await page.goto("/top-performances");
   await expect(sections.getByRole("heading", { name: "Top performances" })).toBeVisible();
-  await expect(sections.locator("article")).toHaveCount(10);
+  await expect(distances.locator("article")).toHaveCount(10);
   await expect(sections.locator("h1 + p")).toHaveCount(0);
-  for (const [distanceIndex, card] of (await sections.locator("article").all()).entries()) {
+  for (const card of await distances.locator("article").all()) {
     await expect(card.locator("li")).toHaveCount(5);
-    const meters = PERFORMANCE_DISTANCES[distanceIndex];
-    await expect(card.locator("a")).toHaveText(Array.from({ length: 5 }, (_, i) =>
-      `${sectionDuration(meters / 5 + meters * i / 50)} - Jan 1, 2020`));
+    for (const activityLink of await card.locator("a").all())
+      await expect(activityLink).toHaveText(/^\d+(?::\d{2})?:\d{2}\.\d - Jan 1, 2020$/);
   }
-  const firstRankedList = sections.locator("article").first().locator("ol");
+  const firstRankedList = distances.locator("article").first().locator("ol");
   await expect(firstRankedList).toHaveCSS("list-style-type", "none");
   for (let rank = 0; rank < 5; rank++) {
     const item = firstRankedList.locator("li").nth(rank);
@@ -148,13 +149,39 @@ test("fastest sections rank all imported history independently of calendar filte
     await expect(item.locator(".sr-only")).toHaveCSS("clip-path", "inset(50%)");
     await expect(item.locator("svg")).toHaveAttribute("aria-hidden", "true");
   }
-  await expect(sections.locator("article").first().locator("li").first()).toContainText("0:20.0");
-  await expect(sections.locator("article").last().locator("li").first()).toContainText("2:20:39.0");
+  await expect(distances.locator("article").first().locator("li").first()).toContainText("0:20.0");
+  await expect(distances.locator("article").last().locator("li").first()).toContainText("2:20:39.0");
   const dashboard = await (await page.request.get("/api/strava/activities?view=month&month=2026-01")).json();
   expect(dashboard.bestSections).toBeUndefined();
+  expect(dashboard.heartRate).toBeUndefined();
   const otherPeriod = await page.request.get("/api/strava/activities?view=year&year=2020");
   expect(otherPeriod.headers()["cache-control"]).toBe("no-store");
   expect((await otherPeriod.json()).bestSections).toBeUndefined();
+
+  // All HR entries must be distinct samples/windows, not distinct activities.
+  // This old activity supplies five overlapping windows even for two hours.
+  const times = Array.from({ length: 726 }, (_, i) => i * 10);
+  await query(`UPDATE "StravaActivity" SET streams=$1::jsonb WHERE id=$2`, [
+    JSON.stringify({ time: times, distance: times.map((_, i) => [0, 500, 500, 1500, 2000, 2250][Math.min(i, 5)]),
+      heartrate: times.map(() => 160), velocity_smooth: null, altitude: null }), imported.rows[5].id,
+  ]);
+  await page.reload();
+  const hr = sections.locator("[data-hr-records]");
+  await expect(hr.locator("article")).toHaveCount(9);
+  for (const card of await hr.locator("article").all()) {
+    await expect(card.locator("li")).toHaveCount(5);
+    for (const link of await card.locator("a").all()) {
+      await expect(link).toHaveAttribute("href", `/activities/${imported.rows[5].id}`);
+      await expect(link).toContainText("160.0 bpm - Jan 1, 2020");
+    }
+    await expect(card.locator("a").first()).toContainText("+0:00.0");
+    await expect(card.locator("a").last()).toContainText("+0:40.0");
+  }
+  await expect(hr.locator("article").nth(1).locator("a").first()).toContainText("+0:00.0 – +0:10.0");
+  await expect(hr.locator("article").last().locator("a").first()).toContainText("+0:00.0 – +2:00:00.0");
+  await hr.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(hr.locator("details")).toHaveAttribute("open", "");
 
   for (const width of [1280, 390]) for (const theme of ["light", "dark"]) {
     await page.setViewportSize({ width, height: 844 });
@@ -171,6 +198,25 @@ test("fastest sections rank all imported history independently of calendar filte
   await page.keyboard.press("Enter");
   await page.waitForURL(`**/activities/${imported.rows[0].id}`);
   await expect(page.getByRole("heading", { name: "Private section fixture 0", exact: true })).toBeVisible();
+  await expect(page.locator("[data-kilometre-splits] tbody tr").first()).toContainText("Unavailable");
+  await page.goto("/top-performances");
+  await hr.locator("a").first().focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL(`**/activities/${imported.rows[5].id}`);
+  const splits = page.locator("[data-kilometre-splits]");
+  await expect(splits.getByRole("heading", { name: "Kilometre splits" })).toBeVisible();
+  await expect(splits.locator("tbody tr")).toHaveCount(3);
+  await expect(splits.locator("tbody tr").first()).toContainText("0:25");
+  await expect(splits.locator("tbody tr").last()).toContainText("0.250");
+  await expect(splits.locator("tbody tr").last()).toContainText("160.0");
+  for (const width of [1280, 390]) for (const theme of ["light", "dark"]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; }, theme);
+    await expect(splits.getByRole("table")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await splits.getByRole("region").focus();
+    await expect(splits.getByRole("region")).toBeFocused();
+  }
 
   const isolated = await browser.newContext();
   try {
