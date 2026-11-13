@@ -211,6 +211,49 @@ The planner's activity link is shown only when signed in. Activity overview,
 metrics and detail pages require a current Strava connection and otherwise
 prompt the signed-in user to connect.
 
+### Top performances
+
+The dedicated `/top-performances` page shows five best sections for **each** of 100 m, 200 m,
+400 m, 1 km, 1500 m, 3 km, 5 km, 10 km, half marathon (21097.5 m) and marathon
+(42195 m). Each result is one link displaying elapsed time, a hyphen and localized
+activity date; the activity name is omitted. All imported dates in the
+current account count, independently of calendar filters and maximal-effort marks.
+An activity can appear only once per distance. Results sort by unrounded elapsed
+time, then activity date (oldest first), then internal ID.
+
+The calculation uses existing stored cumulative-distance and elapsed-time streams,
+with linear interpolation between samples; it evaluates both start-vertex and
+end-vertex windows to find the fastest section of the piecewise-linear recording.
+Stops inside a section count; stops before/after it do not. Displayed tenths of a
+second are formatting, **not** a claim of recording accuracy or certified race
+performance. Sparse samples and recording errors limit precision. No average-pace
+proxy, smoothed-speed integration, GPS reconstruction or summary-distance scaling
+is used. Non-increasing time or decreasing distance invalidates a recording;
+missing distance samples split it into continuous portions, never bridged. Short
+valid recordings simply have no result at longer distances.
+
+Only imported history can contribute; results update as background imports finish.
+Empty distances show a concise empty state. A recording without usable distance
+samples has no result. There is no
+schema change, new persistent field, automatic backfill or additional Strava request.
+Rankings are shown outside the activity calendar and are not included in its data
+requests. The server scans account-owned streams in bounded batches and caches only
+derived rankings in the existing encrypted five-minute account cache, invalidated by
+imports and disconnects. Very large histories cost more on a cold cache; Redis
+remains optional. Rankings describe recorded sections, not personalized training advice.
+
+`node scripts/verify-strava-best-sections.mjs` verifies synthetic interpolation,
+stops, gaps, invalid samples, distance boundaries, all ten distances, stable top-five
+ordering, pagination, consent and account isolation with mocked storage.
+After `npm run build`, add `--browser` to check the actual component with synthetic
+data and production CSS in Chromium (desktop/mobile, light/dark, keyboard links and
+the exact time/date link format).
+This component check does not replace the Docker-backed authenticated e2e suite.
+`npm run test:e2e -- e2e/strava.spec.ts --grep "fastest sections rank"`
+checks the dedicated authenticated route, empty states, calendar independence,
+desktop/mobile layouts, light/dark themes, keyboard navigation, activity links and access isolation
+against the existing disposable PostgreSQL/Redis setup and mocked Strava.
+
 If `strava_request_failed` appears in backend logs, diagnostics include a request
 ID, operation, safe Prisma error code/type, configuration-presence flags and an
 actionable hint, never tokens or activity contents. Upstream failures also include

@@ -94,6 +94,96 @@ test.afterEach(async () => {
   await deliveryControl({ paused: false, failDelivery: false });
 });
 
+test("fastest sections rank all imported history independently of calendar filters", async ({ page, browser }) => {
+  test.setTimeout(180_000);
+  const email = uniqueEmail("best-sections");
+  await signIn(page, email);
+  await deliveryControl({ paused: true });
+  await connect(page, 8903);
+  await expect(page.locator("[data-best-sections]")).toHaveCount(0);
+  await page.getByRole("link", { name: "Top performances", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL("**/top-performances");
+  const sections = page.locator("[data-best-sections]");
+  await expect(sections.getByRole("heading", { name: "Top performances" })).toBeVisible();
+  await expect(sections.locator("article")).toHaveCount(10);
+  await expect(sections.locator("article").first()).toContainText("No recorded section long enough");
+  const job = await extendQueuedFixture(page);
+  await deliveryControl({ paused: false });
+  await fullImport(page, job.id);
+  const imported = await query(`SELECT id FROM "StravaActivity"
+    WHERE "userId"=(SELECT id FROM "User" WHERE email=$1) ORDER BY id`, [email]);
+  expect(imported.rows.length).toBeGreaterThanOrEqual(6);
+  // Deliberately contradictory summaries: only the recorded sections can rank.
+  await query(`UPDATE "StravaActivity" SET streams=NULL, "streamState"='unavailable',
+    "localDate"='2020-01-01', "maximalEffort"=false, "distanceMeters"=1, "movingSeconds"=1
+    WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+  for (let i = 0; i < 6; i++) {
+    await query(`UPDATE "StravaActivity" SET streams=$1::jsonb, "streamState"='ready', name=$2 WHERE id=$3`, [
+      JSON.stringify({ time: [0, 10000 + i * 1000], distance: [0, 50000],
+        heartrate: null, velocity_smooth: null, altitude: null }),
+      `Private section fixture ${i}`, imported.rows[i].id,
+    ]);
+  }
+  await page.goto("/activities?month=2026-01");
+  await expect(page.locator("[data-best-sections]")).toHaveCount(0);
+  await page.goto("/top-performances");
+  await expect(sections.getByRole("heading", { name: "Top performances" })).toBeVisible();
+  await expect(sections.locator("article")).toHaveCount(10);
+  await expect(sections.locator("h1 + p")).toHaveCount(0);
+  for (const card of await sections.locator("article").all()) {
+    await expect(card.locator("li")).toHaveCount(5);
+    await expect(card.locator("a")).toHaveText(Array.from({ length: 5 }, (_, i) =>
+      `${i === 0 ? "0:20.0" : `0:${String(20 + i * 2).padStart(2, "0")}.0`} - Jan 1, 2020`));
+  }
+  const firstRankedList = sections.locator("article").first().locator("ol");
+  await expect(firstRankedList).toHaveCSS("list-style-type", "none");
+  for (let rank = 0; rank < 5; rank++) {
+    const item = firstRankedList.locator("li").nth(rank);
+    await expect(item.locator(".sr-only")).toHaveText(String(rank + 1));
+    await expect(item.locator(".sr-only")).toBeHidden();
+    await expect(item.locator("svg")).toHaveAttribute("aria-hidden", "true");
+  }
+  await expect(sections.locator("article").first().locator("li").first()).toContainText("0:20.0");
+  await expect(sections.locator("article").last().locator("li").first()).toContainText("2:20:39.0");
+  const dashboard = await (await page.request.get("/api/strava/activities?view=month&month=2026-01")).json();
+  expect(dashboard.bestSections).toBeUndefined();
+  const otherPeriod = await page.request.get("/api/strava/activities?view=year&year=2020");
+  expect(otherPeriod.headers()["cache-control"]).toBe("no-store");
+  expect((await otherPeriod.json()).bestSections).toBeUndefined();
+
+  for (const width of [1280, 390]) for (const theme of ["light", "dark"]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; }, theme);
+    await expect(sections.getByRole("heading").first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Top performances", exact: true })).toHaveAttribute("aria-current", "page");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  const first = sections.locator("a").first();
+  await first.focus();
+  await page.keyboard.press("Tab");
+  await expect(sections.locator("a").nth(1)).toBeFocused();
+  await first.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL(`**/activities/${imported.rows[0].id}`);
+  await expect(page.getByRole("heading", { name: "Private section fixture 0", exact: true })).toBeVisible();
+
+  const isolated = await browser.newContext();
+  try {
+    const outsider = await isolated.newPage();
+    expect((await outsider.request.get(`${APP_URL}/api/strava/activities?view=month&month=2020-01`)).status()).toBe(401);
+    await signIn(outsider, uniqueEmail("best-sections-outsider"));
+    expect((await outsider.request.get(`${APP_URL}/api/strava/activities?view=month&month=2020-01`)).status()).toBe(409);
+    await outsider.goto(`${APP_URL}/activities/${imported.rows[0].id}`);
+    await expect(outsider.getByRole("heading", { name: "Private section fixture 0", exact: true })).toHaveCount(0);
+    await expect(outsider.locator("[data-best-sections]")).toHaveCount(0);
+    await outsider.goto("/top-performances");
+    await expect(outsider.getByRole("heading", { name: "Top performances" })).toBeVisible();
+    await expect(outsider.getByRole("link", { name: "Connect with Strava", exact: true })).toBeVisible();
+    await expect(outsider.locator("[data-best-sections]")).toHaveCount(0);
+  } finally { await isolated.close(); }
+});
+
 test("simulator offers the highest eligible maximal-effort VDOT only when marked efforts exist", async ({ page }) => {
   test.setTimeout(150_000);
   const email = uniqueEmail("maximal-planner");

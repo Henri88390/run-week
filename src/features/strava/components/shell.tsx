@@ -14,24 +14,25 @@ export function AnalyticsLoading() {
   const { locale } = useI18n();
   return <p role="status">{STRAVA_MESSAGES[locale].loading}</p>;
 }
-export function StravaConnectionPrompt({ notice, linkedEmail }: { notice?: string; linkedEmail?: string }) {
+export function StravaConnectionPrompt({ notice, linkedEmail, title }: { notice?: string; linkedEmail?: string; title?: string }) {
   const { locale } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   return <section className="panel space-y-3">
-    <h1 className="text-2xl font-semibold">{text.connect}</h1>
+    <h1 className="text-2xl font-semibold">{title ?? text.connect}</h1>
     {notice && <RequestError key={notice} message={stravaNoticeMessage(locale, notice, linkedEmail)} />}
     <Link className="button-primary inline-block" href="/strava/consent">{text.connect}</Link>
   </section>;
 }
-export function AnalyticsPrompt({ failed = false, metrics = false }: { failed?: boolean; metrics?: boolean }) {
+export function AnalyticsPrompt({ failed = false, metrics = false, title, body, signInLabel, callbackUrl }:
+  { failed?: boolean; metrics?: boolean; title?: string; body?: string; signInLabel?: string; callbackUrl?: string }) {
   const { locale } = useI18n();
   const text = STRAVA_MESSAGES[locale];
   return <section className="panel space-y-3">
-    <h1 className="text-2xl font-semibold">{metrics ? text.metrics : text.overview}</h1>
+    <h1 className="text-2xl font-semibold">{title ?? (metrics ? text.metrics : text.overview)}</h1>
     {failed ? <RequestError message={text.error} /> : <>
-      <p>{metrics ? text.metricsSigninBody : text.signinBody}</p>
+      <p>{body ?? (metrics ? text.metricsSigninBody : text.signinBody)}</p>
       <Link className="button-primary inline-block"
-        href={`/signin?callbackUrl=${encodeURIComponent(metrics ? "/running-metrics" : "/activities")}`}>{text.signin}</Link>
+        href={`/signin?callbackUrl=${encodeURIComponent(callbackUrl ?? (metrics ? "/running-metrics" : "/activities"))}`}>{signInLabel ?? text.signin}</Link>
     </>}
   </section>;
 }

@@ -30,6 +30,16 @@ const calendarWeekSchema = z.object({
   distanceMeters: finite, movingSeconds: finite, aboveSeconds: finite.nullable(), partialHr: z.boolean(),
 });
 export type CalendarWeek = z.infer<typeof calendarWeekSchema>;
+export const bestSectionsSchema = z.object({
+  distances: z.array(z.object({
+    meters: finite.positive(),
+    results: z.array(z.object({
+      activityId: z.string(), name: z.string(), localDate: z.iso.date(),
+      seconds: finite.positive(), startSeconds: finite.nonnegative(), endSeconds: finite.positive(),
+    })).max(5),
+  })),
+});
+export type BestSectionsData = z.infer<typeof bestSectionsSchema>;
 export const dashboardSchema = z.object({
   connected: z.boolean(), consentCurrent: z.boolean(), syncActive: z.boolean(), syncPage: finite,
   lastSyncedAt: z.iso.datetime().nullable(), retryAt: z.iso.datetime().nullable(), pending: finite,

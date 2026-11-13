@@ -10,7 +10,7 @@ export async function cachedDashboard(userId: string, month: string, weekDate?: 
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${userId}`}))`;
     const linked = await tx.stravaConnection.findUnique({ where: { userId }, select: { consentVersion: true } });
     if (!linked || linked.consentVersion !== STRAVA_CONSENT_VERSION) throw new StravaError("notConnected", 409);
-    const field = `dashboard:v12:${year ? `year:${year}` : weekDate ? `week:${weekDate}` : `month:${month}`}:${today}`;
+    const field = `dashboard:v14:${year ? `year:${year}` : weekDate ? `week:${weekDate}` : `month:${month}`}:${today}`;
     const cached = await readActivityCache(userId, field, dashboardSchema);
     if (cached) return cached;
     const data = await dashboard(userId, month, weekDate, year, today);

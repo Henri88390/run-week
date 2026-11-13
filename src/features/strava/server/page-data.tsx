@@ -6,7 +6,7 @@ import { ActivityDetail, type ChartPoint } from "../components/activity";
 import { AnalyticsPrompt, StravaConnectionPrompt } from "../components/shell";
 import { STRAVA_CONSENT_VERSION, streamSchema } from "../types";
 import { logStravaFailure } from "./diagnostics";
-import type { DashboardData } from "../types";
+import type { BestSectionsData, DashboardData } from "../types";
 import { cachedDashboard } from "./cached-dashboard";
 import { monthValue } from "./http";
 import { notFound, redirect } from "next/navigation";
@@ -15,6 +15,8 @@ import { calendarRange, recordedPace } from "../analytics";
 import { z } from "zod";
 import { smoothSeries } from "../chart-smoothing";
 import { readLinkedAccountEmail } from "./linked-account-notice";
+import { cachedBestSections } from "./best-sections";
+import { BestSections, BestSectionsPrompt } from "../components/best-sections";
 
 export async function DashboardContent({ searchParams, metrics = false }: {
   searchParams: Promise<{ month?: string; strava?: string; view?: string; date?: string; year?: string }>; metrics?: boolean;
@@ -53,6 +55,26 @@ export async function DashboardContent({ searchParams, metrics = false }: {
   if (futureUrl) redirect(futureUrl);
   if (!data) return <StravaConnectionPrompt notice={notice} linkedEmail={linkedEmail} />;
   return <ActivityDashboard data={data} metrics={metrics} notice={notice} linkedEmail={linkedEmail} />;
+}
+export async function TopPerformancesContent() {
+  await connection();
+  const userId = await currentUserId();
+  if (!userId) return <BestSectionsPrompt state="signIn" />;
+  let connected = false;
+  let data: BestSectionsData | null = null;
+  let failed = false;
+  try {
+    const linked = await db().stravaConnection.findUnique({ where: { userId }, select: { consentVersion: true } });
+    connected = linked?.consentVersion === STRAVA_CONSENT_VERSION;
+    if (connected) data = await cachedBestSections(userId);
+  } catch (error) {
+    logStravaFailure(error, "best_sections");
+    failed = true;
+  }
+  if (failed) return <BestSectionsPrompt state="failed" />;
+  if (!connected) return <BestSectionsPrompt state="connect" />;
+  if (!data) return <BestSectionsPrompt state="failed" />;
+  return <BestSections data={data} />;
 }
 export async function DetailContent({ params }: { params: Promise<{ id: string }> }) {
   await connection();
