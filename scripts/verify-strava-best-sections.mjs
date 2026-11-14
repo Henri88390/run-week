@@ -203,12 +203,16 @@ const stopped = kilometreSplits(recording([0, 10, 20, 30, 40], [100, 200, 200, 1
 assert.deepEqual(stopped.map((s) => s.pace), [10, 30], "Internal plateau assigned next split; final stop included");
 near(stopped[1].averageHr, (2000 + 2000 + 1500) / 30);
 assert.equal(stopped.length, 2, "No extra zero-distance partial");
+near(heartRateRecords(recording([0, 5, 10], [100, 200, 200], [0, 0, 0])).windows[0].results[0].bpm, 150,
+  "Stationary elapsed time still contributes to HR records");
 const missingHr = kilometreSplits(recording([0, 10, 20], [100, null, 200], [0, 500, 1000]))[0];
 assert.equal(missingHr.averageHr, null);
 assert.equal(missingHr.maxHr, 200);
 assert.equal(kilometreSplits(recording([0, 20], [100, 200], [0, 1000]))[0].averageHr, null);
 assert.equal(kilometreSplits(recording([0, 20], [100, 200], [0, 1000]))[0].pace, 20, "HR gaps do not discard valid elapsed distance");
 assert.equal(kilometreSplits(recording([0, 10, 20], [100, 100, 100], [0, null, 1000]))[0].pace, null);
+assert.deepEqual(kilometreSplits(recording([0, 10, 20, 30], null, [0, null, 1000, 2000])).map((s) => s.pace),
+  [null, 10], "Known later splits recover without bridging an earlier missing distance");
 assert.equal(kilometreSplits(recording([0, 10], null, [0, 250]))[0].maxHr, null);
 assert.equal(kilometreSplits(recording([0, 10], null, [50, 250]))[0].pace, null);
 for (const r of [null, recording([], [], []), recording([0], [100], [0]), recording([0, 10], null, [0, 0]),
@@ -220,6 +224,11 @@ console.log("Recorded stream metrics: all 8 durations + peak, finite sample star
 // Server query boundary, ownership, consent, pagination and account-scoped cache.
 const { STRAVA_CONSENT_VERSION } = load("src/features/strava/types.ts");
 const cached = new Map();
+let hrComputations = 0;
+overrides.set("../stream-metrics", {
+  HR_DURATIONS, insertRankedHr,
+  heartRateRecords(stream) { hrComputations++; return heartRateRecords(stream); },
+});
 let reads = 0, connectionReads = 0, consent = STRAVA_CONSENT_VERSION;
 const queries = [];
 const ownedRows = Array.from({ length: 205 }, (_, i) => ({
@@ -259,6 +268,7 @@ assert.equal(connectionReads, 0);
 await assert.rejects(accountBestSections("unknown"), (error) => error.code === "notConnected");
 assert.equal(reads, 0);
 const alice = await accountBestSections("alice");
+assert.equal(hrComputations, 205, "Compute HR once per activity, not once per distance category");
 assert.equal(reads, 3, "Full history includes the final partial batch");
 assert.equal(alice.distances.length, 10);
 assert.ok(alice.distances.every((d) => d.results.length === 5 && d.results.every((r) => r.activityId.startsWith("a-"))));

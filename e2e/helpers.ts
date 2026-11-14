@@ -34,6 +34,9 @@ export async function signIn(page: Page, email: string) {
   await page.goto("/signin?callbackUrl=%2Fplanner");
   // Auth.js sets the CSRF cookie from the first session requests; submitting before they settle fails.
   await page.waitForLoadState("networkidle");
+  // Session resolution remounts the page provider. Network idle can precede
+  // that React update, dropping entered email or focus; the header waits for it.
+  await expect(page.getByRole("banner").getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Send code" }).click();
   const code = page.getByLabel("Code");
