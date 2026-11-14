@@ -67,17 +67,17 @@ export function MaximalEffort({ activity, removeOnly = false }: { activity: Acti
     </ConfirmationDialog>}
   </>;
   return <div className="space-y-2">
-    <div className="flex items-center gap-2">
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <input type="checkbox" checked={maximal} disabled={busy}
+    <div className="flex min-w-0 items-center gap-2">
+      <label className="flex min-w-0 items-center gap-2 text-sm font-medium">
+        <input type="checkbox" className="shrink-0" checked={maximal} disabled={busy}
           onChange={(event) => void save(event.target.checked)} />
         {text.label}
       </label>
-      <span className="group relative">
+      <span className="group relative shrink-0">
         <button type="button" aria-label={`${text.label} · ?`} aria-describedby={helpId}
           className="flex size-6 items-center justify-center rounded-full border border-stone-300 text-xs font-semibold text-stone-600 focus-visible:outline-2">?</button>
         <span id={helpId} role="tooltip"
-          className="absolute left-1/2 top-full z-30 hidden w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-stone-200 bg-white p-3 text-xs font-normal text-stone-700 shadow-lg group-hover:block group-focus-within:block">{PERFORMANCE_MESSAGES[locale].help}</span>
+          className="absolute right-0 top-full z-30 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-stone-200 bg-white p-3 text-xs font-normal text-stone-700 shadow-lg group-hover:block group-focus-within:block">{PERFORMANCE_MESSAGES[locale].help}</span>
       </span>
     </div>
     {showError && <RequestError key={error} message={STRAVA_MESSAGES[locale].error} />}

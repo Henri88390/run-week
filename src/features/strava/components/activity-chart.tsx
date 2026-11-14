@@ -1,119 +1,120 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { memo, useCallback, useId, useMemo, useState } from "react";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { formatDecimal, formatInteger } from "@/features/i18n/locales";
 import { formatPace } from "@/features/running-programs/domain";
-import { PRESET_MAX_HR, ZONE_FRACTIONS } from "../analytics";
 import { HEART_RATE_MESSAGES } from "../heart-rate-messages";
 import { ELEVATION_MESSAGES, STRAVA_MESSAGES } from "../messages";
 import { SMOOTHING_MESSAGES } from "../sync-messages";
+import { ACTIVITY_CHART_MESSAGES } from "../activity-chart-messages";
+import { chartExtent, chartRows, markChartWork, type ChartAxis, type ChartPoint } from "../activity-chart-data";
+import { ActivityChartTrack } from "./activity-chart-track";
+import type { SplitInterval } from "../split-selection";
+import type { ZoneSelection } from "./activity-chart-track";
+import { DisclosureHeading } from "./disclosure-heading";
 
-export type ChartPoint = { time: number; hr: number | null; pace: number | null; altitude: number | null; gap: boolean };
-const zoneColors = ["#e0f2fe", "#d1fae5", "#fef9c3", "#ffedd5", "#ffe4e6"];
-const hrColor = "var(--chart-hr)";
-const paceColor = "var(--chart-pace)";
-const altitudeColor = "var(--chart-altitude)";
+export type { ChartPoint } from "../activity-chart-data";
 
-export const ActivityChart = memo(function ActivityChart({ points }: { points: ChartPoint[] }) {
+export const ActivityChart = memo(function ActivityChart({ points, intervals, zones }: {
+  points: ChartPoint[]; intervals: SplitInterval[]; zones: ZoneSelection;
+}) {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
-  const hrText = HEART_RATE_MESSAGES[locale];
-  const elevationText = ELEVATION_MESSAGES[locale];
-  const [showHr, setShowHr] = useState(true);
-  const [showPace, setShowPace] = useState(true);
-  const [showAltitude, setShowAltitude] = useState(true);
-  const { hrs, paces, altitudes, hrMin, hrMax, paceMin, paceMax, altitudeMin, altitudeMax, lastTime, data } = useMemo(() => {
-    const hrs = points.flatMap((point) => point.hr === null ? [] : [point.hr]);
-    const paces = points.flatMap((point) => point.pace === null ? [] : [point.pace]);
-    const altitudes = points.flatMap((point) => point.altitude === null ? [] : [point.altitude]);
-    const altitudeMin = altitudes.length ? Math.floor(Math.min(...altitudes)) : 0;
-    const altitudeMax = altitudes.length ? Math.max(altitudeMin + 1, Math.ceil(Math.max(...altitudes))) : 1;
-    const hrMin = Math.min(PRESET_MAX_HR * .5, ...hrs);
-    const hrMax = Math.max(PRESET_MAX_HR, ...hrs);
-    const paceMin = paces.length ? Math.min(...paces) : 0;
-    const paceMax = paces.length ? Math.max(paceMin + 1, ...paces) : 1;
-    const lastTime = Math.max(1, points.at(-1)?.time ?? 1);
-    const data = points.flatMap((point, index) => {
-      const previous = points[index - 1];
-      return point.gap && previous
-        ? [{ time: (previous.time + point.time) / 2, hr: null, pace: null, altitude: null }, point]
-        : [point];
-    });
-    return { hrs, paces, altitudes, hrMin, hrMax, paceMin, paceMax, altitudeMin, altitudeMax, lastTime, data };
+  const copy = ACTIVITY_CHART_MESSAGES[locale];
+  const helpId = useId();
+  const [selectedAxis, setSelectedAxis] = useState<ChartAxis>("time");
+  const [selected, setSelected] = useState<number | null>(null);
+  const data = useMemo(() => { markChartWork("rows"); return chartRows(points); }, [points]);
+  const extents = useMemo(() => {
+    markChartWork("stats");
+    return { pace: chartExtent(points, "pace"), hr: chartExtent(points, "hr"), altitude: chartExtent(points, "altitude") };
   }, [points]);
-  const heading = `${text.heartRate} / ${hrText.pace} / ${elevationText.altitude}`;
-  const title = `${heading} · ${text.time}`;
-  return <section className="panel space-y-3">
-    <h2 className="text-xl font-semibold">{heading}</h2>
+  const point = selected === null ? null : data[selected] ?? null;
+  const firstDistance = data[0]?.distance;
+  const lastDistance = data.at(-1)?.distance;
+  const distanceAvailable = firstDistance != null && lastDistance != null && lastDistance > firstDistance
+    && data.every((row) => row.distance !== null);
+  const axis: ChartAxis = distanceAvailable ? selectedAxis : "time";
+  const metrics = useMemo(() => [
+    { key: "pace" as const, label: HEART_RATE_MESSAGES[locale].pace, color: "var(--chart-pace)", unit: `${t.units.min}/${t.units.km}`,
+      format: (value: number) => formatPace(value) },
+    { key: "hr" as const, label: text.heartRate, color: "var(--chart-hr)", unit: "bpm",
+      format: (value: number) => formatInteger(locale, Math.round(value)) },
+    { key: "altitude" as const, label: ELEVATION_MESSAGES[locale].altitude, color: "var(--chart-altitude)", unit: "m",
+      format: (value: number) => formatDecimal(locale, value) },
+  ], [locale, text.heartRate, t.units.min, t.units.km]);
+  const heading = `${text.heartRate} / ${HEART_RATE_MESSAGES[locale].pace} / ${ELEVATION_MESSAGES[locale].altitude}`;
+  const shown = metrics.filter((metric) => extents[metric.key] !== null);
+  const choose = useCallback((index: number) => {
+    if (Number.isInteger(index) && index >= 0 && index < data.length) {
+      setSelected((current) => current === index ? current : index);
+    }
+  }, [data.length]);
+  const formatTime = useCallback((value: number) => {
+    const minutes = Math.floor(value / 60);
+    const seconds = value - minutes * 60;
+    return seconds === 0
+      ? `${formatInteger(locale, minutes)} ${t.units.min}`
+      : `${formatInteger(locale, minutes)} ${t.units.min} ${formatDecimal(locale, seconds)} ${t.units.sec}`;
+  }, [locale, t.units.min, t.units.sec]);
+  const formatDistance = useCallback((value: number) => `${formatInteger(locale, value / 1000)} ${t.units.km}`,
+    [locale, t.units.km]);
+  return <details open data-chart-panel className="group/disclosure panel min-w-0">
+    <DisclosureHeading title={heading} />
+    <div className="mt-3 space-y-4">
     <p className="text-xs text-stone-500">{SMOOTHING_MESSAGES[locale]}</p>
-    <div className="flex flex-wrap gap-5">
-      <label className="flex items-center gap-2" style={{ color: hrColor }}>
-        <input type="checkbox" checked={showHr} onChange={(event) => setShowHr(event.target.checked)} />
-        {text.heartRate}
-      </label>
-      <label className="flex items-center gap-2" style={{ color: paceColor }}>
-        <input type="checkbox" checked={showPace} onChange={(event) => setShowPace(event.target.checked)} />
-        {hrText.pace}
-      </label>
-      <label className="flex items-center gap-2" style={{ color: altitudeColor }}>
-        <input type="checkbox" checked={showAltitude} onChange={(event) => setShowAltitude(event.target.checked)} />
-        {elevationText.altitude}
-      </label>
+    {distanceAvailable && <div role="group" aria-label={`${text.time} / ${text.distance}`} className="flex gap-2">
+      {([{ key: "time", label: text.time }, { key: "distance", label: text.distance }] as const).map(({ key, label }) =>
+        <button key={key} type="button" aria-pressed={axis === key} onClick={() => setSelectedAxis(key)}
+          className={`${axis === key ? "button-primary" : "button-secondary"} rounded-full focus-visible:outline-2 focus-visible:outline-offset-2`}>
+          {label}
+        </button>)}
+    </div>}
+    <p id={helpId} className="text-xs text-stone-500">{copy.help}</p>
+    <div data-activity-chart role="group" tabIndex={0} aria-label={`${heading} · ${text.time}`}
+      aria-describedby={helpId} className="min-w-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4"
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (!data.length) return;
+        let next: number;
+        switch (event.key) {
+          case "ArrowRight": next = Math.min(data.length - 1, selected === null ? 0 : selected + 1); break;
+          case "ArrowLeft": next = Math.max(0, selected === null ? data.length - 1 : selected - 1); break;
+          case "Home": next = 0; break;
+          case "End": next = data.length - 1; break;
+          case "Escape": event.preventDefault(); setSelected(null); return;
+          default: return;
+        }
+        event.preventDefault(); choose(next);
+      }}>
+      <dl data-chart-readout
+        className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3 text-xs tabular-nums sm:grid-cols-5">
+        {[{ label: text.time, value: point
+          ? `${formatInteger(locale, Math.floor(point.time / 60))} ${t.units.min} ${formatDecimal(locale, point.time % 60)} ${t.units.sec}` : text.unavailable },
+          { label: text.distance, value: point?.distance != null && !point.separator
+            ? `${formatDecimal(locale, point.distance / 1000, 2)} ${t.units.km}` : text.unavailable },
+          ...metrics.map((metric) => {
+            const value = point?.[metric.key];
+            return { label: metric.label, value: value != null ? `${metric.format(value)} ${metric.unit}` : text.unavailable };
+          }),
+        ].map(({ label, value }) => <div key={label}><dt className="text-stone-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}
+      </dl>
+      <div className="mt-3 space-y-3">
+        {shown.map((metric) => <ActivityChartTrack key={metric.key} data={data} metric={metric.key} label={metric.label}
+          color={metric.color} unit={metric.unit} format={metric.format}
+          axis={axis} formatTime={formatTime} formatDistance={formatDistance}
+          extent={extents[metric.key]} unavailable={text.unavailable}
+          selected={point} intervals={intervals} zones={zones} onSelect={choose} />)}
+        {!shown.length && <p className="py-4 text-sm text-stone-500">{text.streamMissing}</p>}
+      </div>
     </div>
-    <div data-activity-chart className="h-80 min-w-0 rounded-xl bg-stone-50/60 pt-3 sm:h-96"
-      role="group" aria-label={title}>
-      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-        <LineChart data={data} accessibilityLayer aria-label={title} margin={{ top: 24, right: 8, bottom: 8, left: 0 }}>
-          <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
-          <XAxis dataKey="time" type="number" domain={[0, lastTime]} tickLine={false} axisLine={false}
-            tick={{ fill: "var(--chart-axis)", fontSize: 11 }} minTickGap={30}
-            tickFormatter={(value: number) => `${formatDecimal(locale, value / 60)} ${t.units.min}`} />
-          <YAxis yAxisId="hr" hide={!showHr} domain={[hrMin, hrMax]} width={46}
-            tickLine={false} axisLine={false} tick={{ fill: hrColor, fontSize: 11 }}
-            tickFormatter={(value: number) => String(Math.round(value))}
-            label={{ value: "bpm", position: "top", fill: hrColor, fontSize: 11 }} />
-          <YAxis yAxisId="pace" hide={!showPace || !paces.length} orientation="right" reversed
-            domain={[paceMin, paceMax]} width={55} tickLine={false} axisLine={false}
-            tick={{ fill: paceColor, fontSize: 11 }} tickFormatter={formatPace}
-            label={{ value: `${t.units.min}/${t.units.km}`, position: "top", fill: paceColor, fontSize: 11 }} />
-          <YAxis yAxisId="altitude" hide={!showAltitude || !altitudes.length} orientation="right"
-            domain={[altitudeMin, altitudeMax]} width={44} allowDecimals={false}
-            tickLine={false} axisLine={false} tick={{ fill: altitudeColor, fontSize: 11 }}
-            tickFormatter={(value: number) => formatInteger(locale, value)}
-            label={{ value: "m", position: "top", fill: altitudeColor, fontSize: 11 }} />
-          {showHr && ZONE_FRACTIONS.slice(0, -1).map((fraction, index) => <ReferenceArea
-            key={index} yAxisId="hr" y1={index === 0 ? hrMin : PRESET_MAX_HR * fraction}
-            y2={PRESET_MAX_HR * ZONE_FRACTIONS[index + 1]} fill={zoneColors[index]} fillOpacity={.5} stroke="none"
-            label={{ value: `Z${index + 1}`, position: "insideTopLeft", fill: "var(--chart-axis)", fontSize: 10 }} />)}
-          <Tooltip filterNull isAnimationActive={false}
-            cursor={{ stroke: "var(--chart-cursor)", strokeDasharray: "4 4" }}
-            contentStyle={{ backgroundColor: "var(--chart-tooltip-background)", color: "var(--foreground)",
-              borderRadius: 12, border: "1px solid var(--chart-tooltip-border)", boxShadow: "0 8px 24px #0000000d", fontSize: 12 }}
-            labelFormatter={(value) => `${text.time}: ${formatDecimal(locale, Number(value) / 60)} ${t.units.min}`}
-            formatter={(value, name) => [typeof value === "number"
-              ? name === elevationText.altitude ? `${formatDecimal(locale, value)} m`
-                : name === text.heartRate ? `${formatDecimal(locale, value)} bpm` : `${formatPace(value)} ${t.units.min}/${t.units.km}`
-              : text.streamMissing, name]} />
-          {showAltitude && <Line yAxisId="altitude" dataKey="altitude" name={elevationText.altitude} type="linear"
-            stroke={altitudeColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-dot-stroke)", strokeWidth: 2 }}
-            connectNulls={false} isAnimationActive={false} />}
-          {showHr && <Line yAxisId="hr" dataKey="hr" name={text.heartRate} type="monotoneX"
-            stroke={hrColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-dot-stroke)", strokeWidth: 2 }}
-            connectNulls={false} isAnimationActive={false} />}
-          {showPace && <Line yAxisId="pace" dataKey="pace" name={hrText.pace} type="monotoneX"
-            stroke={paceColor} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-dot-stroke)", strokeWidth: 2 }}
-            connectNulls={false} isAnimationActive={false} />}
-        </LineChart>
-      </ResponsiveContainer>
+    {metrics.map((metric) => {
+      const extent = extents[metric.key];
+      return <p key={metric.key} className="text-sm" style={{ color: metric.color }}>{metric.label}: {extent
+        ? `${metric.format(extent.min)}–${metric.format(extent.max)} ${metric.unit}` : text.unavailable}</p>;
+    })}
+    {extents.hr !== null && <p className="text-xs text-stone-500">{copy.zones}</p>}
     </div>
-    {showHr && <p className="text-sm" style={{ color: hrColor }}>{text.heartRate}: {hrs.length
-      ? `${formatDecimal(locale, Math.min(...hrs))}–${formatDecimal(locale, Math.max(...hrs))} bpm` : text.streamMissing}</p>}
-    {showPace && <p className="text-sm" style={{ color: paceColor }}>{hrText.pace}: {paces.length
-      ? `${formatPace(paceMin)}–${formatPace(Math.max(...paces))} ${t.units.min}/${t.units.km}` : text.streamMissing}</p>}
-    {showAltitude && <p className="text-sm" style={{ color: altitudeColor }}>{elevationText.altitude}: {altitudes.length
-      ? `${formatDecimal(locale, Math.min(...altitudes))}–${formatDecimal(locale, Math.max(...altitudes))} m` : text.unavailable}</p>}
-    <p className="text-sm text-stone-600">HRmax: {PRESET_MAX_HR} bpm</p>
-  </section>;
+  </details>;
 });

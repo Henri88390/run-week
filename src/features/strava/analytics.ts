@@ -12,6 +12,46 @@ export function roundedDuration(seconds: number) {
   return { hours: Math.floor(minutes / 60), minutes: minutes % 60 };
 }
 
+/** Round the duration once before decomposing it, including minute/hour rollover. */
+export function durationWithSeconds(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+  return { hours: Math.floor(total / 3600), minutes: Math.floor(total % 3600 / 60), seconds: total % 60 };
+}
+
+/** Activity zones extend the highest reference band through the valid recorded HR limit. */
+export function activityZoneBounds(zone: number): [number, number] {
+  return [zone === 1 ? 30 : PRESET_MAX_HR * ZONE_FRACTIONS[zone - 1],
+    zone === 5 ? 240 : PRESET_MAX_HR * ZONE_FRACTIONS[zone]];
+}
+
+/** Shared raw left-sample holds: neither display smoothing nor missing gaps affect classification. */
+export function activityZoneIntervals(stream: ActivityStreams | null, elapsedSeconds: number) {
+  const total = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
+  const intervals: { zone: number; startSeconds: number; endSeconds: number; sample: number }[] = [];
+  const time = stream?.time;
+  if (time && time.every((t, i) => Number.isFinite(t) && t >= 0 && (i === 0 || t > time[i - 1]))) {
+    for (let i = 0; i + 1 < time.length; i++) {
+      const dt = time[i + 1] - time[i];
+      const hr = stream?.heartrate?.[i];
+      if (dt > 15 || hr == null || hr > 240) continue;
+      const zone = heartRateZone(hr, PRESET_MAX_HR, 240);
+      const startSeconds = Math.min(total, time[i]), endSeconds = Math.min(total, time[i + 1]);
+      if (zone !== null && endSeconds > startSeconds) intervals.push({ zone, startSeconds, endSeconds, sample: i });
+    }
+  }
+  return intervals;
+}
+
+/** Account for the whole elapsed duration using exactly the same holds as activity highlights. */
+export function activityZoneTimes(stream: ActivityStreams | null, elapsedSeconds: number) {
+  const total = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
+  const zones = Array<number>(5).fill(0);
+  for (const interval of activityZoneIntervals(stream, elapsedSeconds)) {
+    zones[interval.zone - 1] += interval.endSeconds - interval.startSeconds;
+  }
+  return { zones, unclassified: Math.max(0, total - zones.reduce((sum, value) => sum + value, 0)) };
+}
+
 export function recentEnduranceRange(today: string) {
   const end = new Date(`${today}T00:00:00Z`);
   end.setUTCDate(end.getUTCDate() + 1);
@@ -115,12 +155,9 @@ export function aboveThresholdPercent(aboveSeconds: number | null, movingSeconds
   return aboveSeconds === null || movingSeconds <= 0 ? null : aboveSeconds / movingSeconds * 100;
 }
 
-export function heartRateZone(hr: number | null, maxHr: number | null): number | null {
-  if (hr === null || maxHr === null || !Number.isFinite(hr) || hr < 30 || hr > maxHr) return null;
-  if (hr < maxHr * .7) return 1;
-  if (hr < maxHr * .8) return 2;
-  if (hr < maxHr * .85) return 3;
-  if (hr < maxHr * .9) return 4;
+export function heartRateZone(hr: number | null, maxHr: number | null, validMaxHr = maxHr): number | null {
+  if (hr === null || maxHr === null || validMaxHr === null || !Number.isFinite(hr) || hr < 30 || hr > validMaxHr) return null;
+  for (let zone = 1; zone < 5; zone++) if (hr < maxHr * ZONE_FRACTIONS[zone]) return zone;
   return 5;
 }
 

@@ -114,6 +114,9 @@ export function kilometreSplits(stream: Stream | null): KilometreSplit[] {
   const integral = hrIntegral(stream);
   let cursor = 0;
   const boundary = (meters: number): number | null => {
+    // Activity elapsed time establishes the start even if its first distance
+    // reading is already positive. A late or missing first sample cannot.
+    if (meters === 0 && time[0] === 0 && distance[0] !== null && distance[0] < 1000) return 0;
     while (cursor < distance.length && (distance[cursor] === null || (distance[cursor] ?? 0) < meters)) cursor++;
     const right = distance[cursor];
     if (right == null) return null;

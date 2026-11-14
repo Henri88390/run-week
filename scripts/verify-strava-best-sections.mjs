@@ -214,7 +214,21 @@ assert.equal(kilometreSplits(recording([0, 10, 20], [100, 100, 100], [0, null, 1
 assert.deepEqual(kilometreSplits(recording([0, 10, 20, 30], null, [0, null, 1000, 2000])).map((s) => s.pace),
   [null, 10], "Known later splits recover without bridging an earlier missing distance");
 assert.equal(kilometreSplits(recording([0, 10], null, [0, 250]))[0].maxHr, null);
-assert.equal(kilometreSplits(recording([0, 10], null, [50, 250]))[0].pace, null);
+assert.equal(kilometreSplits(recording([0, 10], null, [50, 250]))[0].pace, 40,
+  "Elapsed origin establishes the first partial split despite a positive initial distance");
+const positiveOrigin = kilometreSplits(recording([0, 1, 5, 10, 15], [100, 100, 100, 100, 100],
+  [2.2, 4.8, 500, 1000, 1500]));
+assert.equal(positiveOrigin[0].startSeconds, 0);
+assert.equal(positiveOrigin[0].pace, 10);
+assert.equal(positiveOrigin[0].averageHr, 100);
+assert.equal(positiveOrigin[0].maxHr, 100);
+assert.equal(positiveOrigin[1].pace, 10, "Later split boundaries remain cumulative kilometres");
+assert.equal(kilometreSplits(recording([1, 10], null, [2.2, 1000]))[0].pace, null,
+  "Do not infer an origin when the recording starts late");
+assert.equal(kilometreSplits(recording([0, 10, 20], null, [null, 2.2, 1000]))[0].pace, null,
+  "Do not bridge a missing initial distance sample");
+assert.equal(kilometreSplits(recording([0, 10], null, [1100, 2000]))[0].pace, null,
+  "Do not invent an entire missing kilometre");
 for (const r of [null, recording([], [], []), recording([0], [100], [0]), recording([0, 10], null, [0, 0]),
   recording([0, 0], null, [0, 1000]), recording([0, 10, 5], null, [0, 500, 1000]),
   recording([0, 10, 20], null, [0, 1000, 500]), recording([0, 10], null, [0, null])])

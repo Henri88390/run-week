@@ -16,6 +16,11 @@
   --chart-average-pace: #9f1239;
   --chart-dot-stroke: #ffffff;
   --calendar-zone-2: #10b981;
+  --activity-zone-1: #3685b5;
+  --activity-zone-2: #66806b;
+  --activity-zone-3: #c4a21c;
+  --activity-zone-4: #c8793c;
+  --activity-zone-5: #bc6079;
 }
 
 @theme inline {
@@ -98,6 +103,24 @@ html[data-theme="dark"] {
   --chart-average-pace: #fb7185;
   --chart-dot-stroke: #1c1917;
   --calendar-zone-2: #66806b;
+  --activity-zone-1: #70acd0;
+  --activity-zone-2: #87a68c;
+  --activity-zone-3: #d0b94f;
+  --activity-zone-4: #d79a65;
+  --activity-zone-5: #d58a9e;
+}
+
+.activity-zone-row {
+  border-inline-start: 4px solid var(--activity-zone-color);
+}
+
+.activity-zone-row[aria-pressed="true"] {
+  border-color: var(--activity-zone-color);
+  background-color: color-mix(in srgb, var(--activity-zone-color) 12%, var(--background));
+}
+
+.activity-zone-row:focus-visible {
+  outline-color: var(--activity-zone-color);
 }
 
 html[data-theme="dark"] [data-calendar-date-picker] {

@@ -11,9 +11,10 @@ import { cachedDashboard } from "./cached-dashboard";
 import { monthValue } from "./http";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
-import { calendarRange, recordedPace } from "../analytics";
+import { activityZoneTimes, calendarRange } from "../analytics";
+import { activityZoneSelectionIntervals } from "../zone-selection";
 import { z } from "zod";
-import { smoothSeries } from "../chart-smoothing";
+import { activityChartPoints } from "../activity-chart-data";
 import { readLinkedAccountEmail } from "./linked-account-notice";
 import { cachedBestSections } from "./best-sections";
 import { BestSections, BestSectionsPrompt } from "../components/best-sections";
@@ -96,35 +97,13 @@ export async function DetailContent({ params }: { params: Promise<{ id: string }
   if (!connected) return <StravaConnectionPrompt />;
   if (!row) notFound();
   const parsed = streamSchema.safeParse(row.streams);
-  const points: ChartPoint[] = [];
-  if (parsed.success) {
-    const stream = parsed.data;
-    const hrs = smoothSeries(stream.time, stream.time.map((_, i) => stream.heartrate?.[i] ?? null));
-    const speeds = smoothSeries(stream.time, stream.time.map((_, i) =>
-      recordedPace(stream.velocity_smooth?.[i]) === null ? null : stream.velocity_smooth?.[i] ?? null));
-    const stride = Math.max(1, Math.ceil(stream.time.length / 600));
-    let gap = false;
-    let hrMissing = false;
-    let speedMissing = false;
-    let altitudeMissing = false;
-    for (let i = 0; i < stream.time.length; i++) {
-      gap ||= i > 0 && stream.time[i] - stream.time[i - 1] > 15;
-      hrMissing ||= stream.heartrate?.[i] == null;
-      speedMissing ||= recordedPace(stream.velocity_smooth?.[i]) === null;
-      altitudeMissing ||= stream.altitude?.[i] == null;
-      if (i % stride === 0 || i === stream.time.length - 1) {
-        const velocity = speeds[i];
-        points.push({ time: stream.time[i], hr: hrMissing ? null : hrs[i],
-          pace: speedMissing ? null : recordedPace(velocity),
-          altitude: altitudeMissing ? null : stream.altitude?.[i] ?? null, gap });
-        gap = false; hrMissing = false; speedMissing = false; altitudeMissing = false;
-      }
-    }
-  }
+  const points: ChartPoint[] = parsed.success ? activityChartPoints(parsed.data) : [];
   return <ActivityDetail key={row.id} activity={{
     id: row.id, sourceId: row.sourceId, name: row.name, sport: row.sport, localDate: row.localDate,
     distanceMeters: row.distanceMeters, movingSeconds: row.movingSeconds, elapsedSeconds: row.elapsedSeconds,
     averageHr: row.averageHr, maxHr: row.maxHr, maximalEffort: row.maximalEffort, streamState: row.streamState,
     elevationGainMeters: row.elevationGainMeters,
-  }} points={points} splits={kilometreSplits(parsed.success ? parsed.data : null)} />;
+  }} points={points} splits={kilometreSplits(parsed.success ? parsed.data : null)}
+    zoneTimes={activityZoneTimes(parsed.success ? parsed.data : null, row.elapsedSeconds)}
+    zoneIntervals={activityZoneSelectionIntervals(parsed.success ? parsed.data : null, row.elapsedSeconds)} />;
 }
