@@ -1,6 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { formatDate, formatDecimal, formatInteger } from "@/features/i18n/locales";
 import { ELEVATION_MESSAGES, STRAVA_MESSAGES } from "../messages";
@@ -8,7 +7,6 @@ import type { ActivitySummary } from "../types";
 import { ActivityChart, type ChartPoint } from "./activity-chart";
 import { MaximalEffort } from "./maximal-effort";
 import { durationWithSeconds } from "../analytics";
-import { useActivityImport } from "./use-activity-import";
 import { formatPace } from "@/features/running-programs/domain";
 import type { KilometreSplit } from "../stream-metrics";
 import { KilometreSplits } from "./kilometre-splits";
@@ -17,6 +15,8 @@ import { ActivityZones } from "./activity-zones";
 import { selectedZoneIntervals, type ZoneInterval } from "../zone-selection";
 import { ACTIVITY_SUMMARY_MESSAGES } from "../activity-summary-messages";
 import { DisclosureHeading } from "./disclosure-heading";
+import { isRunning } from "../sports";
+import { CROSS_TRAINING_MESSAGES, sportLabel } from "../cross-training-messages";
 
 export type { ChartPoint } from "./activity-chart";
 export function ActivityDetail({ activity, points, splits, zoneTimes, zoneIntervals }: {
@@ -26,26 +26,21 @@ export function ActivityDetail({ activity, points, splits, zoneTimes, zoneInterv
 }) {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
+  const running = isRunning(activity.sport);
   const duration = (seconds: number) => {
     const value = durationWithSeconds(seconds);
     return `${value.hours > 0 ? `${formatInteger(locale, value.hours)} ${t.units.h} ` : ""}${formatInteger(locale, value.minutes)} ${t.units.min} ${formatInteger(locale, value.seconds)} ${t.units.sec}`;
   };
   const averagePace = activity.distanceMeters > 0 && activity.movingSeconds > 0
     ? activity.movingSeconds * 1000 / activity.distanceMeters : null;
-  const router = useRouter();
-  const activityImport = useActivityImport();
-  useEffect(() => {
-    if (activity.streamState !== "pending" || !activityImport.importing) return;
-    const timer = setInterval(() => router.refresh(), 5000);
-    return () => clearInterval(timer);
-  }, [activity.streamState, activityImport.importing, router]);
   return <div className="space-y-4">
     <div className="flex items-start gap-3">
       <h1 className="min-w-0 flex-1 break-words text-3xl font-semibold">{activity.name || text.details}</h1>
-      <div data-activity-effort className="min-w-0 max-w-[55%]">
+      {running && <div data-activity-effort className="min-w-0 max-w-[55%]">
         <MaximalEffort activity={activity} />
-      </div>
+      </div>}
     </div>
+    {!running && <p className="text-sm text-indigo-800">{sportLabel(locale, activity.sport)} · {CROSS_TRAINING_MESSAGES[locale].label}</p>}
     <div data-activity-date-row className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm text-stone-500">
       <p><time dateTime={activity.localDate}>{formatDate(locale, activity.localDate)}</time></p>
       <a href={`https://www.strava.com/activities/${activity.sourceId}`} target="_blank" rel="noreferrer"
@@ -58,7 +53,8 @@ export function ActivityDetail({ activity, points, splits, zoneTimes, zoneInterv
         { label: text.distance, value: `${formatDecimal(locale, activity.distanceMeters / 1000)} ${t.units.km}`, color: "border-emerald-200 bg-emerald-50 text-emerald-950" },
         { label: text.time, value: duration(activity.elapsedSeconds), color: "border-amber-200 bg-amber-50 text-amber-950" },
         { label: text.hr, value: activity.averageHr === null ? text.unavailable : `${formatInteger(locale, activity.averageHr)} bpm`, color: "border-rose-200 bg-rose-50 text-rose-950" },
-        { label: text.pace, value: averagePace === null ? text.unavailable : `${formatPace(averagePace)} ${t.units.min}/${t.units.km}`, color: "border-blue-200 bg-blue-50 text-blue-950" },
+        ...(running ? [{ label: text.pace, value: averagePace === null ? text.unavailable : `${formatPace(averagePace)} ${t.units.min}/${t.units.km}`, color: "border-blue-200 bg-blue-50 text-blue-950" }]
+          : [{ label: CROSS_TRAINING_MESSAGES[locale].duration, value: duration(activity.movingSeconds), color: "border-indigo-200 bg-indigo-50 text-indigo-950" }]),
         { label: ELEVATION_MESSAGES[locale].gain, value: activity.elevationGainMeters === null ? text.unavailable : `${formatInteger(locale, Math.round(activity.elevationGainMeters))} m`, color: "border-stone-300 bg-stone-100 text-stone-950" },
       ].map(({ label, value, color }) => <div key={label} className={`min-w-0 rounded-xl border p-3 sm:p-4 ${color}`}>
         <dt className="text-xs leading-5 opacity-75">{label}</dt>
@@ -66,9 +62,9 @@ export function ActivityDetail({ activity, points, splits, zoneTimes, zoneInterv
       </div>)}
       </dl>
     </details>
-    {!points.length && <p>{text.streamMissing}</p>}
-    <ActivityAnalysis key={activity.id} points={points} splits={splits} zoneTimes={zoneTimes}
-      zoneIntervals={zoneIntervals} elapsedSeconds={activity.elapsedSeconds} />
+    {running && !points.length && <p>{text.streamMissing}</p>}
+    {running && <ActivityAnalysis key={activity.id} points={points} splits={splits} zoneTimes={zoneTimes}
+      zoneIntervals={zoneIntervals} elapsedSeconds={activity.elapsedSeconds} />}
   </div>;
 }
 

@@ -230,11 +230,23 @@ try {
   provider.detail = { ...summary, sport_type: "Ride" };
   await persistWebhook(event({ aspect_type: "update", event_time: now + 4 }));
   await finish(id);
-  assert.equal(activities.length, 0, "Non-running changes are not retained");
+  assert.equal(activities.length, 1, "Non-running changes are retained");
+  assert.equal(activities[0].sport, "Ride");
+  assert.equal(activities[0].streams, null);
+  assert.equal(activities[0].streamState, "unavailable");
+  assert.equal(activities[0].maximalEffort, false);
+  assert.equal(jobs.get(id).webhookDeleted, false);
+  const streamCalls = calls.filter((call) => call.endsWith("/streams")).length;
+  await saveSummary(database, connection.userId, summary);
+  assert.equal(activities[0].sport, "Ride", "Stale list imports cannot undo a sport change");
+  assert.equal(calls.filter((call) => call.endsWith("/streams")).length, streamCalls);
   provider.detail = structuredClone(summary);
   await persistWebhook(event({ aspect_type: "create", event_time: now + 5 }));
   await finish(id);
-  assert.equal(activities.length, 1, "Only authoritative run restoration clears the tombstone");
+  assert.equal(activities.length, 1, "Authoritative run restoration updates the existing activity");
+  assert.equal(activities[0].sport, "Run");
+  assert.equal(activities[0].streamState, "ready");
+  assert.equal(calls.filter((call) => call.endsWith("/streams")).length, streamCalls + 1);
   assert.equal(jobs.get(id).webhookDeleted, false);
 
   reset();

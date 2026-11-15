@@ -2,6 +2,7 @@
 // Same interval exclusion and distance/time OLS eligibility; no inferred zones.
 import type { ActivityStreams, AnalyticsSettings, ActivitySummary, CalendarWeek } from "./types";
 import { calculateVdot, paceAtFraction } from "@/features/running-programs/domain";
+import { isRunning } from "./sports";
 
 export const ZONE_FRACTIONS = [0, .7, .8, .85, .9, 1] as const;
 export const PRESET_MAX_HR = 190;
@@ -214,10 +215,11 @@ export function calendarWeeks(month: string, activities: readonly ActivitySummar
     let measured = 0;
     for (let day = 0; day < 7; day++) {
       const date = cursor.toISOString().slice(0, 10);
-      const runs = activities.filter((activity) => activity.localDate === date);
+      const entries = activities.filter((activity) => activity.localDate === date);
+      const runs = entries.filter((activity) => isRunning(activity.sport));
       const zoneSeconds = Array.from({ length: 5 }, (_, i) =>
         runs.reduce((sum, activity) => sum + (measurements.get(activity.id)?.zoneSeconds[i] ?? 0), 0));
-      week.days.push({ date, activities: runs, zone: dominantZone(zoneSeconds), zoneSeconds });
+      week.days.push({ date, activities: entries, zone: dominantZone(zoneSeconds), zoneSeconds });
       for (const activity of runs) {
         week.distanceMeters += activity.distanceMeters;
         week.movingSeconds += activity.movingSeconds;

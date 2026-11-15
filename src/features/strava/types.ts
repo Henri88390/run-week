@@ -54,6 +54,7 @@ export const bestSectionsSchema = z.object({
 });
 export type BestSectionsData = z.infer<typeof bestSectionsSchema>;
 export const dashboardSchema = z.object({
+  sportsBackfillPending: z.boolean().default(false),
   connected: z.boolean(), consentCurrent: z.boolean(), syncActive: z.boolean(), syncPage: finite,
   lastSyncedAt: z.iso.datetime().nullable(), retryAt: z.iso.datetime().nullable(), pending: finite,
   activities: z.array(activitySummarySchema), settings: settingsSchema,

@@ -7,6 +7,7 @@ import { accountMenuButton, createWeek, signIn, uniqueEmail } from "./helpers";
 import { syncStatusSchema } from "../src/features/strava/background-sync";
 import { STRAVA_CONSENT_VERSION } from "../src/features/strava/types";
 import { calculateVdot } from "../src/features/running-programs/domain";
+import { calendarRange } from "../src/features/strava/analytics";
 
 const MOCK = "http://127.0.0.1:3102";
 const DELIVERY = "http://127.0.0.1:3103";
@@ -87,11 +88,192 @@ async function extendQueuedFixture(page: Page) {
 
 test.beforeEach(async () => {
   await deliveryControl({ paused: false, failDelivery: false });
-  await control({ history: false, latest: false, rate: false, delay: 0, tokenDelay: 0 });
+  await control({ history: false, latest: false, crossTraining: false, rate: false, delay: 0, tokenDelay: 0 });
 });
 test.afterEach(async () => {
-  await control({ history: false, latest: false, rate: false, delay: 0, tokenDelay: 0 });
+  await control({ history: false, latest: false, crossTraining: false, rate: false, delay: 0, tokenDelay: 0 });
   await deliveryControl({ paused: false, failDelivery: false });
+});
+
+test("cross-training backfills completed accounts and shows accessible weekly sport totals", async ({ page, browser }) => {
+  test.setTimeout(240_000);
+  const email = uniqueEmail("cross-training");
+  const athlete = 8997;
+  await signIn(page, email);
+  await deliveryControl({ paused: true });
+  await connect(page, athlete);
+  const initial = await extendQueuedFixture(page);
+  await deliveryControl({ paused: false });
+  await fullImport(page, initial.id);
+  // Model an account fully imported by the previous deployment, preserving its
+  // run history and completed elevation coverage. Only the new marker is absent.
+  await query(`DELETE FROM "StravaActivity" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1) AND sport NOT IN ('Run','TrailRun','VirtualRun')`, [email]);
+  await query(`INSERT INTO "StravaActivity" (id,"userId","sourceId",name,sport,"startedAt","localDate","distanceMeters","movingSeconds","elapsedSeconds","streamState","elevationStreamState","updatedAt")
+    SELECT 'cross-existing-run', id, 'cross-existing-run', 'Existing run', 'Run', '2024-11-03T10:00:00Z','2024-11-03',10000,3600,3700,'unavailable','unavailable',CURRENT_TIMESTAMP FROM "User" WHERE email=$1`, [email]);
+  await query(`UPDATE "StravaConnection" SET "sportsVersion"=0,"elevationVersion"=1,"lastSyncedAt"=CURRENT_TIMESTAMP,
+    "syncHistory"='[{"start":"1970-01-01","end":"2026-11-15","syncedAt":"2026-11-15T00:00:00Z"}]'::jsonb
+    WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+  await deliveryControl({ paused: true });
+  await control({ crossTraining: true });
+  const before = await (await fetch(`${MOCK}/__control`)).json();
+  const streamCount = before.calls.filter((call: { path: string; athlete: number }) => call.athlete === athlete && call.path.endsWith("/streams")).length;
+  expect((await fetch(`${DELIVERY}/__schedule`, { method: "POST" })).ok).toBe(true);
+  const backfill = await currentJob(page);
+  expect(backfill?.status).toBe("queued");
+  if (!backfill) throw new Error("Missing cross-training backfill");
+  const queued = await query(`SELECT kind,page FROM "StravaSyncJob" WHERE id=$1`, [backfill.id]);
+  expect(queued.rows[0].kind).toBe("sports");
+  await page.goto("/activities?month=2024-11");
+  await expect(page.locator("[data-sports-coverage]")).toBeVisible();
+  await deliveryControl({ paused: false });
+  await fullImport(page, backfill.id);
+  const marker = await query(`SELECT "sportsVersion" FROM "StravaConnection" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email]);
+  expect(marker.rows[0].sportsVersion).toBe(1);
+  expect((await fetch(`${DELIVERY}/__schedule`, { method: "POST" })).ok).toBe(true);
+  expect((await currentJob(page))?.id).toBe(backfill.id);
+  const after = await (await fetch(`${MOCK}/__control`)).json();
+  expect(after.calls.filter((call: { path: string; athlete: number }) => call.athlete === athlete && call.path.endsWith("/streams"))).toHaveLength(streamCount);
+  await page.reload();
+  await expect(page.locator("[data-sports-coverage]")).toHaveCount(0);
+  const week = page.locator('[data-week="2024-10-28"]:visible');
+  await expect(week).toHaveCount(1);
+  await expect(week.locator("[data-week-cross-training]")).toHaveText("Cross-training: 1 h 40 min");
+  const summary = week.locator("aside button");
+  await summary.focus();
+  const breakdown = week.locator("[data-cross-training-breakdown]");
+  await expect(breakdown).toContainText("Cycling");
+  await expect(breakdown.getByRole("listitem")).toHaveCount(3);
+  await expect(breakdown.getByRole("listitem").filter({ hasText: "Walking" })).toContainText("30 min");
+  await expect(breakdown.getByRole("listitem").filter({ hasText: "Hiking" })).toContainText("40 min");
+  await expect(breakdown.getByRole("listitem").filter({ hasText: "Hiking" })).not.toContainText(" h ");
+  await expect(summary).toContainText("10.0 km");
+  await page.keyboard.press("Escape");
+  await expect(breakdown).toHaveCount(0);
+  await summary.hover();
+  await expect(breakdown).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(page.locator('[data-week="2024-11-04"]:visible [data-week-cross-training]')).toHaveCount(0);
+  const crossDay = page.locator('[data-date="2024-11-01"]:visible');
+  await expect(crossDay.locator("[data-cross-training-event]")).toContainText("Walking");
+  await expect(crossDay.locator('[data-cross-training-event] [data-sport-icon="walking"]')).toHaveCount(1);
+  await expect(crossDay.locator("a").first()).toHaveClass(/bg-indigo-50/);
+  await query(`INSERT INTO "StravaActivity" (id,"userId","sourceId",name,sport,"startedAt","localDate","distanceMeters","movingSeconds","elapsedSeconds","streamState","elevationStreamState","updatedAt")
+    SELECT 'cross-extra-swim', id, 'cross-extra-swim', 'Extra swim', 'Swim', TIMESTAMP '2024-11-03 16:00:00','2024-11-03',1000,1200,1300,'unavailable','unavailable',CURRENT_TIMESTAMP FROM "User" WHERE email=$1
+    UNION ALL SELECT 'mixed-' || sport, id, 'mixed-' || sport, 'Mixed ' || sport, sport, TIMESTAMP '2024-11-03 18:00:00', '2024-11-03',0,600,600,'unavailable','unavailable',CURRENT_TIMESTAMP
+      FROM "User", (VALUES ('WeightTraining'),('Rowing'),('Yoga')) AS extra(sport) WHERE email=$1
+    UNION ALL SELECT 'multi-' || key, id, 'multi-' || key, 'Multi ' || key, sport, TIMESTAMP '2024-11-06 08:00:00' + hours * INTERVAL '1 hour', '2024-11-06',0,seconds,seconds,'unavailable','unavailable',CURRENT_TIMESTAMP
+      FROM "User", (VALUES ('Ride','Ride',1800,0),('Ride2','Ride',1200,9),('Swim','Swim',1200,1),('Walk','Walk',900,2),('Yoga','Yoga',600,3)) AS extra(key,sport,seconds,hours) WHERE email=$1`, [email]);
+  await page.reload();
+  const mixedDay = page.locator('[data-date="2024-11-03"]:visible');
+  const mixedCross = mixedDay.locator("[data-cross-training-event]");
+  await expect(mixedCross).toHaveCount(5);
+  await expect(mixedDay.locator("[data-cross-total]")).toHaveCount(0);
+  await expect(mixedCross.filter({ hasText: "Hiking" })).toContainText("40 min");
+  await expect(mixedCross.filter({ hasText: "Swimming" })).toContainText("20 min");
+  for (const icon of ["hiking", "swimming", "strength", "rowing", "yoga"])
+    await expect(mixedDay.locator(`[data-sport-icon="${icon}"]`)).toHaveCount(1);
+  const multiDay = page.locator('[data-date="2024-11-06"]:visible [data-cross-training-event]');
+  await expect(multiDay).toHaveCount(5);
+  await expect(multiDay.nth(0)).toContainText("Cycling");
+  await expect(multiDay.nth(0)).toContainText("30 min");
+  await expect(multiDay.nth(1)).toContainText("Cycling");
+  await expect(multiDay.nth(1)).toContainText("20 min");
+  await expect(multiDay.nth(2)).toContainText("Swimming");
+  await expect(multiDay.nth(3)).toContainText("Walking");
+  await expect(multiDay.nth(4)).toContainText("Yoga");
+  await expect(mixedDay.locator('[data-run-distance] [data-sport-icon="running"]')).toHaveCount(1);
+  await expect(page.locator('[data-date="2024-11-06"]:visible [data-run-distance]')).toHaveCount(0);
+  await expect(multiDay.nth(0)).toHaveAttribute("data-sport-tone", "cycling");
+  const [rideColor, swimColor] = await Promise.all([0, 2].map((i) => multiDay.nth(i).evaluate((element) => getComputedStyle(element).backgroundColor)));
+  expect(rideColor).not.toBe(swimColor);
+  await expect(week.locator("[data-week-running]")).toContainText("10.0 km");
+  await expect(week.locator("[data-week-total]")).toHaveText("Total: 3 h 30 min");
+  const stack = mixedDay.locator("[data-cross-training-stack]");
+  const [bars, crossBlock, cell] = await Promise.all([mixedDay.locator("[data-zone-bars]").boundingBox(),
+    stack.boundingBox(), mixedDay.locator("button").first().boundingBox()]);
+  if (!bars || !crossBlock || !cell) throw new Error("Missing mixed-day layout");
+  expect(crossBlock.y).toBeGreaterThanOrEqual(bars.y + bars.height + 3);
+  expect(Math.abs(crossBlock.y + crossBlock.height - (cell.y + cell.height))).toBeLessThan(2);
+  expect(Math.abs(crossBlock.x - cell.x)).toBeLessThan(2);
+  expect(Math.abs(crossBlock.width - cell.width)).toBeLessThan(3);
+  // Every activity stays visible: the cell (and its whole week row) grows instead of clipping.
+  expect(cell.height).toBeGreaterThan(176);
+  const rowHeights = await page.locator('[data-week="2024-10-28"]:visible [data-date]').evaluateAll((cells) =>
+    cells.map((element) => Math.round(element.getBoundingClientRect().height)));
+  expect(new Set(rowHeights).size).toBe(1);
+  const sidebarHeight = await page.locator('[data-week="2024-10-28"]:visible aside > div').evaluate((element) =>
+    Math.round(element.getBoundingClientRect().height));
+  expect(Math.abs(sidebarHeight - rowHeights[0])).toBeLessThanOrEqual(1);
+  expect(await stack.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  await mixedDay.locator("button").first().hover();
+  await expect(mixedDay.getByRole("group")).toContainText("Historical Hike 73");
+  await expect(mixedDay.getByRole("group")).toContainText("Extra swim");
+  await expect(mixedDay.locator("button").first()).toHaveClass(/\brun-tone\b/);
+  await expect(mixedDay.locator("[data-cross-training-breakdown]")).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  const crossToggle = page.getByRole("checkbox", { name: "Cross-training", exact: true });
+  await expect(crossToggle).toBeChecked();
+  const periodCross = page.locator("[data-period-cross-training]");
+  await expect(page.locator("[data-period-running]")).toContainText("Runs");
+  await expect(periodCross.getByRole("heading", { name: "Cross-training" })).toBeVisible();
+  await expect(periodCross.locator('[data-period-sport="Hike"]')).toContainText("Hiking");
+  await expect(periodCross.locator('[data-period-sport="Swim"] [data-sport-icon="swimming"]')).toHaveCount(1);
+  await expect(periodCross.locator("[data-period-cross-total]")).toContainText(/^Total\d+ h \d+ min$/);
+  await crossToggle.uncheck();
+  await expect(periodCross).toHaveCount(0);
+  await expect(page.locator("[data-period-running]")).toHaveCount(0);
+  await expect(page.locator("dt").filter({ hasText: /^Runs$/ })).toHaveCount(1);
+  await expect(page.locator("[data-cross-training-event]:visible")).toHaveCount(0);
+  await expect(page.locator("[data-week-cross-training]:visible")).toHaveCount(0);
+  await expect(summary).toContainText("10.0 km");
+  await crossToggle.check();
+  await expect(crossDay.locator("[data-cross-training-event]")).toContainText("Walking");
+  await expect(week.locator("[data-week-cross-training]")).toHaveText("Cross-training: 2 h 30 min");
+  await crossDay.locator("a").first().click();
+  await expect(page.getByRole("heading", { name: "Historical Walk 71" })).toBeVisible();
+  await expect(page.locator("[data-activity-effort]")).toHaveCount(0);
+  await expect(page.getByText("Active duration", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-activity-summary]:visible").getByText("Average moving pace", { exact: true })).toHaveCount(0);
+  const crossId = new URL(page.url()).pathname.split("/").at(-1);
+  expect((await page.request.patch(`/api/strava/activities/${crossId}`, {
+    headers: { Origin: APP_URL }, data: { maximalEffort: true },
+  })).status()).toBe(404);
+  const data = await (await page.request.get("/api/strava/activities?view=month&month=2024-11")).json();
+  expect(data.maximalEfforts.every((activity: { sport: string }) => ["Run", "TrailRun", "VirtualRun"].includes(activity.sport))).toBe(true);
+  expect(data.zones.every((zone: { seconds: number }) => zone.seconds === 0)).toBe(true);
+  expect(data.volumeBuckets.reduce((sum: number, bucket: { distanceMeters: number }) => sum + bucket.distanceMeters, 0)).toBe(10000);
+  expect(data.endurance?.name).toMatch(/^Synthetic run /);
+  await page.goto("/activities?view=week&date=2024-11-01");
+  await expect(page.locator("[data-week-cross-training]:visible")).toHaveText("Cross-training: 2 h 30 min");
+  const mobile = await browser.newContext({ storageState: await page.context().storageState(),
+    viewport: { width: 390, height: 844 }, hasTouch: true });
+  try {
+    const phone = await mobile.newPage();
+    await phone.goto(`${APP_URL}/activities?view=week&date=2024-11-01`);
+    await expect(async () => {
+      await phone.locator("aside button").tap();
+      await expect(phone.locator("aside [data-cross-training-breakdown]")).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    await expect(phone.locator('aside [data-cross-training-breakdown] [data-sport-icon="walking"]')).toHaveCount(1);
+    const backgrounds = [];
+    for (const dark of [false, true]) {
+      await phone.evaluate((value) => { document.documentElement.dataset.theme = value ? "dark" : "light"; }, dark);
+      expect(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const color = await phone.locator("[data-cross-training-event]").first().evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(color).not.toBe("rgba(0, 0, 0, 0)");
+      backgrounds.push(color);
+    }
+    expect(backgrounds[0]).not.toBe(backgrounds[1]);
+    await phone.goto(`${APP_URL}/activities?view=year&year=2024`);
+    await expect(phone.locator('[data-year-month="2024-11"] [data-cross-training-event]')).toContainText("Walking");
+  } finally { await mobile.close(); }
+  const guest = await browser.newContext();
+  try {
+    expect((await guest.request.get(`${APP_URL}/api/strava/activities?month=2024-11`)).status()).toBe(401);
+    expect((await guest.request.patch(`${APP_URL}/api/strava/activities/${crossId}`, {
+      headers: { Origin: APP_URL }, data: { maximalEffort: true },
+    })).status()).toBe(401);
+  } finally { await guest.close(); }
 });
 
 test("fastest sections rank all imported history independently of calendar filters", async ({ page, browser }) => {
@@ -178,8 +360,8 @@ test("fastest sections rank all imported history independently of calendar filte
     await expect(card.locator("a").first()).toContainText("+0:00.0");
     await expect(card.locator("a").last()).toContainText("+0:40.0");
   }
-  await expect(hr.locator("article").nth(1).locator("a").first()).toContainText("+0:00.0 – +0:10.0");
-  await expect(hr.locator("article").last().locator("a").first()).toContainText("+0:00.0 – +2:00:00.0");
+  await expect(hr.locator("article").nth(1).locator("a").first()).toContainText("+0:00.0 Ã¢â‚¬â€œ +0:10.0");
+  await expect(hr.locator("article").last().locator("a").first()).toContainText("+0:00.0 Ã¢â‚¬â€œ +2:00:00.0");
   await hr.locator("summary").focus();
   await page.keyboard.press("Enter");
   await expect(hr.locator("details")).toHaveAttribute("open", "");
@@ -429,7 +611,7 @@ test("account menu connects and disconnects Strava with confirmation", async ({ 
   await connect(page, 8502);
   await page.setViewportSize({ width: 390, height: 844 });
   await account.click();
-  const disconnect = page.getByRole("menuitem", { name: "Strava · Disconnect", exact: true });
+  const disconnect = page.getByRole("menuitem", { name: "Strava Ã‚Â· Disconnect", exact: true });
   await expect(disconnect).toBeVisible();
   await disconnect.focus();
   await page.keyboard.press("Enter");
@@ -465,7 +647,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
   await expect(page.getByRole("link", { name: "Sign in to view your running data" })).toBeVisible();
   await page.goto("/running-metrics");
   await expect(page.getByRole("heading", { level: 1, name: "Running metrics" })).toBeVisible();
-  await expect(page.getByText("Running metrics require an account.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Running metrics require an account.", { exact: false }).filter({ visible: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in to view your running data" }))
     .toHaveAttribute("href", "/signin?callbackUrl=%2Frunning-metrics");
   expect((await post(page, "/api/strava/sync")).status()).toBe(405);
@@ -501,7 +683,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByRole("banner").getByRole("status")).toHaveCount(0);
     await expect(page.getByRole("banner")).not.toContainText("Running summaries");
     await deliveryControl({ paused: false });
-    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elapsed time" }).locator("dd")).toHaveText("2 min");
+    await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elapsed time" }).locator("dd")).toHaveText("2 min 0 sec");
     await expect(page.locator('[data-activity-chart] [data-chart-track="hr"]').filter({ visible: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Average heart rate" }).locator("dd")).toHaveText("155 bpm");
     await expect(page.getByRole("button", { name: "Continue import", exact: true })).toHaveCount(0);
@@ -532,15 +714,18 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const exportResponse = await page.request.get("/api/account");
     expect(exportResponse.headers()["cache-control"]).toBe("no-store");
     const exported = await exportResponse.json();
-    expect(exported.stravaActivities).toHaveLength(21);
-    expect(new Set(exported.stravaActivities.map((a: { sourceId: string }) => a.sourceId)).size).toBe(21);
+    expect(exported.stravaActivities).toHaveLength(22);
+    expect(new Set(exported.stravaActivities.map((a: { sourceId: string }) => a.sourceId)).size).toBe(22);
+    const ride = exported.stravaActivities.find((a: { sport: string }) => a.sport === "Ride");
+    expect(ride.streamState).toBe("unavailable");
+    expect(ride.streams).toBeNull();
     expect(exported.stravaActivities.find((a: { sourceId: string }) => a.sourceId.endsWith("03")).streams.heartrate).toBeNull();
     expect(exported.stravaActivities.find((a: { sourceId: string }) => a.sourceId.endsWith("04")).streamState).toBe("unavailable");
     expect(JSON.stringify(exported)).not.toMatch(/synthetic-access|synthetic-refresh|athleteKey|latitude|longitude|latlng/);
     const repeatJob = await scheduleIncremental(page, email);
     await fullImport(page, repeatJob.id);
     const repeat = await (await page.request.get("/api/account")).json();
-    expect(repeat.stravaActivities).toHaveLength(21);
+    expect(repeat.stravaActivities).toHaveLength(22);
     const calls = await (await fetch(`${MOCK}/__control`)).json();
     const own = calls.calls.filter((c: { athlete: number }) => c.athlete === athlete);
     expect(own.filter((c: { grant?: string }) => c.grant === "refresh_token")).toHaveLength(1);
@@ -562,7 +747,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const imported = await query(`SELECT c."syncActive", (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId") total,
       (SELECT count(*)::int FROM "StravaActivity" a WHERE a."userId"=c."userId" AND a."streamState"='pending') pending
       FROM "StravaConnection" c JOIN "User" u ON c."userId"=u.id WHERE u.email=$1`, [email]);
-    expect(imported.rows[0]).toEqual({ syncActive: false, total: 21, pending: 0 });
+    expect(imported.rows[0]).toEqual({ syncActive: false, total: 22, pending: 0 });
     expect(syncRequests).toHaveLength(0);
     await expect(page.getByRole("button", { name: "Synchronize Strava", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Import recent activities", exact: true })).toHaveCount(0);
@@ -594,15 +779,15 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       expect(Math.abs(panelBounds[left].height - panelBounds[right].height)).toBeLessThan(1);
       expect(Math.abs(panelBounds[left].y - panelBounds[right].y)).toBeLessThan(1);
     }
-    await expect(page.getByText(/Z4 85–90% ·/)).toBeVisible();
+    await expect(page.getByText(/Z4 85Ã¢â‚¬â€œ90% Ã‚Â·/)).toBeVisible();
     await expect(page.locator(`[data-date="${month}-01"]`)).toHaveAttribute("data-zone", "2");
     await expect(page.locator(`[data-date="${month}-03"]`)).toHaveAttribute("data-zone", "");
     const firstWeek = page.locator("[data-week]").filter({ has: page.locator(`[data-date="${month}-01"]`) });
-    await expect(firstWeek.getByText(/Time: \d+ h \d+ min/)).toBeVisible();
-    await expect(firstWeek.getByText(/> threshold:.*\d.*%/)).toBeVisible();
-    await expect(firstWeek.getByRole("complementary").getByText(/km$/, { exact: false }).first()).toBeVisible();
-    await expect(firstWeek.locator("[data-week-hr]")).toContainText("155.0 bpm");
-    await expect(firstWeek.locator("[data-week-pace]")).toHaveText(/Pace: \d+:[0-5]\d min\/km/);
+    await expect(firstWeek.locator("[data-week-time]")).toHaveText(/^(\d+ h \d{2} min|\d+ min)$/);
+    await expect(firstWeek.locator("[data-week-above]")).toHaveText(/\d.*Ã‚Â· \d.*%$/);
+    await expect(firstWeek.locator("[data-week-distance]")).toContainText("km");
+    await expect(firstWeek.locator("[data-week-hr]")).toHaveText("155 bpm");
+    await expect(firstWeek.locator("[data-week-pace]")).toHaveText(/^\d+:[0-5]\d \/km$/);
     await page.screenshot({ path: test.info().outputPath("calendar-desktop.png"), fullPage: true });
     await expect(page.getByRole("heading", { name: "Runs", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Pace distribution", exact: true })).toBeVisible();
@@ -628,7 +813,8 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const mobileHeights = await page.locator("[data-date], [data-week] aside > div").evaluateAll((elements) =>
       elements.map((element) => element.getBoundingClientRect().height));
     expect(new Set(mobileHeights).size).toBe(1);
-    await expect(page.getByRole("checkbox")).toHaveCount(0);
+    await expect(page.getByRole("checkbox")).toHaveCount(1);
+    await expect(page.getByRole("checkbox", { name: "Cross-training", exact: true })).toBeChecked();
     const volumeChart = page.locator("[data-volume-chart]").filter({ visible: true });
     await expect(volumeChart.locator("[data-volume-bucket]")).toHaveCount(6);
     await expect(volumeChart.locator("[data-volume-month]")).toHaveText(
@@ -682,7 +868,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
       ["Endurance", "Ability to sustain an effort for a long time,"],
       ["Speed-endurance", "Ability to sustain a high running speed despite accumulating fatigue."],
     ]) {
-      const help = page.getByRole("button", { name: `${title} · ?`, exact: true });
+      const help = page.getByRole("button", { name: `${title} Ã‚Â· ?`, exact: true });
       await expect(help).toBeEnabled();
       await help.hover();
       await expect(page.getByRole("tooltip")).toContainText(definition);
@@ -717,7 +903,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const enduranceIndicator = page.locator('[data-performance-indicator="endurance"]').filter({ visible: true });
     const enduranceMinutes = Math.round(enduranceRun.movingSeconds / 60);
     await expect(enduranceIndicator.locator("[data-indicator-value]")).toHaveText(
-      `${Math.floor(enduranceMinutes / 60)} h ${enduranceMinutes % 60} min · ${(enduranceRun.distanceMeters / 1000).toFixed(1)} km`);
+      `${Math.floor(enduranceMinutes / 60)} h ${enduranceMinutes % 60} min Ã‚Â· ${(enduranceRun.distanceMeters / 1000).toFixed(1)} km`);
     await expect(enduranceIndicator.getByRole("link")).toHaveAttribute("href", `/activities/${enduranceRun.id}`);
     await page.keyboard.press("Escape");
     await page.mouse.move(0, 0);
@@ -805,12 +991,22 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(summary.getByLabel("Average heart rate", { exact: true })).toHaveText("155.0 bpm");
     await expect(summary.getByLabel("Pace", { exact: true })).toHaveText(/\d+:\d{2} min\/km/);
     await expect(summary.getByLabel("Distance", { exact: true })).toHaveText("0.7 km");
-    await expect(summary.getByLabel("Time", { exact: true })).toHaveText("0 h 2 min");
+    await expect(summary.getByLabel("Time", { exact: true })).toHaveText("2 min");
     await expect(summary.locator("[data-zone-percent]")).toHaveCount(5);
     await expect(summary.locator('[data-zone-percent="2"]')).toContainText("33.3%");
     await page.screenshot({ path: test.info().outputPath("calendar-mobile.png") });
     const barColors = await singleDay.locator("[data-zone-bar]").evaluateAll((elements) => elements.map((element) => getComputedStyle(element).backgroundColor));
     expect(new Set(barColors).size).toBe(5);
+    const zone = await singleDay.getAttribute("data-zone");
+    expect(zone).toMatch(/^[1-5]$/);
+    const dayCell = singleDay.locator("a, button").first();
+    await expect(dayCell).toHaveClass(/\brun-tone\b/);
+    const cross = page.getByRole("checkbox", { name: "Cross-training", exact: true });
+    await cross.uncheck();
+    await expect(dayCell).not.toHaveClass(/\brun-tone\b/);
+    await expect(dayCell).toHaveClass(new RegExp(`bg-${["sky", "emerald", "yellow", "orange", "rose"][Number(zone) - 1]}-50`));
+    await cross.check();
+    await expect(dayCell).toHaveClass(/\brun-tone\b/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.keyboard.press("Escape");
     await expect(summary).toHaveCount(0);
@@ -830,7 +1026,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const missingHrDay = page.locator(`[data-date="${month}-03"]`);
     await missingHrDay.hover();
     await expect(missingHrDay.locator("[data-zone-bars]")).toHaveAttribute("aria-label", /Z1: Unavailable/);
-    await expect(missingHrDay.locator('[data-zone-percent="1"]')).toContainText("—");
+    await expect(missingHrDay.locator('[data-zone-percent="1"]')).toContainText("Ã¢â‚¬â€");
     await page.keyboard.press("Escape");
     await singleDay.getByRole("link").focus();
     await expect(singleDay.getByRole("tooltip")).toBeVisible();
@@ -855,12 +1051,12 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(maximalEffort).toBeChecked();
     await expect(page.getByRole("alert").filter({ hasText: "Unable to complete this request." })).toBeVisible();
     await page.unroute("**/api/strava/activities/*");
-    const effortHelp = page.getByRole("button", { name: "Maximal effort · ?" });
+    const effortHelp = page.getByRole("button", { name: "Maximal effort Ã‚Â· ?" });
     await effortHelp.hover();
-    await expect(page.getByRole("tooltip")).toContainText("critical-speed and D′");
+    await expect(page.getByRole("tooltip")).toContainText("critical-speed and DÃ¢â‚¬Â²");
     await effortHelp.focus();
     await expect(page.getByRole("tooltip")).toContainText("Does not change HR zones or the planner");
-    await expect(chart).toHaveAttribute("aria-label", "Heart rate / Pace / Elevation · Elapsed time");
+    await expect(chart).toHaveAttribute("aria-label", "Heart rate / Pace / Elevation Ã‚Â· Elapsed time");
     await expect(chart.locator(".recharts-reference-area")).toHaveCount(5);
     await expect(page.locator("[data-activity-summary] dt")).toHaveText([
       "Distance", "Elapsed time", "Average heart rate", "Average moving pace", "Elevation gain (D+)",
@@ -871,36 +1067,36 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const paceLine = chart.locator('.recharts-area-curve[stroke="var(--chart-pace)"]');
     const altitudeLine = chart.locator('.recharts-area-curve[stroke="var(--chart-altitude)"]');
     await expect(altitudeLine).toHaveCount(1);
-    await expect(page.getByText("Elevation: -5.0–4.0 m", { exact: true })).toBeVisible();
+    await expect(page.getByText("Elevation: -5.0Ã¢â‚¬â€œ4.0 m", { exact: true })).toBeVisible();
     await expect(hrLine).toHaveCount(1);
     await expect(paceLine).toHaveCount(1);
     await expect(paceLine).toHaveAttribute("d", /L/);
     await expect(chart.getByText("Z5", { exact: true })).toBeVisible();
-    await expect(page.getByText("Pace: 4:10–5:33 min/km", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pace: 4:10Ã¢â‚¬â€œ5:33 min/km", { exact: true })).toBeVisible();
     await expect(page.getByText(/5555:33/)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Distance", exact: true })).toHaveCount(0);
     await expect(page.getByText("Requires HR samples and manual settings.", { exact: false })).toHaveCount(0);
-    const hrCheckbox = page.getByRole("checkbox", { name: "Heart rate", exact: true });
-    const paceCheckbox = page.getByRole("checkbox", { name: "Pace", exact: true });
-    const altitudeCheckbox = page.getByRole("checkbox", { name: "Elevation", exact: true });
-    await hrCheckbox.uncheck();
-    await expect(hrLine).toHaveCount(0);
-    await expect(paceLine).toHaveCount(1);
-    await expect(chart.locator(".recharts-reference-area")).toHaveCount(0);
-    await paceCheckbox.uncheck();
-    await expect(altitudeLine).toHaveCount(1);
-    await altitudeCheckbox.focus();
+    const hrTrack = chart.locator('[data-chart-track="hr"]');
+    const paceTrack = chart.locator('[data-chart-track="pace"]');
+    const altitudeTrack = chart.locator('[data-chart-track="altitude"]');
+    await hrTrack.locator("summary").click();
+    await expect(hrLine).toBeHidden();
+    await expect(paceLine).toBeVisible();
+    await expect(chart.locator(".recharts-reference-area").filter({ visible: true })).toHaveCount(0);
+    await paceTrack.locator("summary").click();
+    await expect(altitudeLine).toBeVisible();
+    await altitudeTrack.locator("summary").focus();
     await page.keyboard.press("Space");
-    await expect(altitudeCheckbox).not.toBeChecked();
+    await expect(altitudeTrack).not.toHaveAttribute("open", "");
     await expect(chart.locator(".recharts-reference-line-line")).toHaveCount(0);
-    await expect(chart.locator(".recharts-area-curve")).toHaveCount(0);
-    await hrCheckbox.focus();
+    await expect(chart.locator(".recharts-area-curve").filter({ visible: true })).toHaveCount(0);
+    await hrTrack.locator("summary").focus();
     await page.keyboard.press("Space");
-    await expect(hrCheckbox).toBeChecked();
-    await expect(hrLine).toHaveCount(1);
-    await paceCheckbox.check();
-    await altitudeCheckbox.check();
-    await expect(paceLine).toHaveCount(1);
+    await expect(hrTrack).toHaveAttribute("open", "");
+    await expect(hrLine).toBeVisible();
+    await paceTrack.locator("summary").click();
+    await altitudeTrack.locator("summary").click();
+    await expect(paceLine).toBeVisible();
     const interactiveChart = chart;
     await interactiveChart.focus();
     await page.keyboard.press("ArrowRight");
@@ -953,25 +1149,26 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const thresholdCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "Time above threshold (>90%)", exact: true }) });
     await expect(thresholdCard.getByRole("listitem").filter({ hasText: "> threshold" })).toContainText("0 h 30 min");
     const boundaryWeek = page.locator('[data-week="2026-10-26"]');
-    await expect(boundaryWeek.getByRole("complementary")).toContainText("0 h 30 min");
+    await expect(boundaryWeek.locator("[data-week-above]")).toHaveText(/^30 min Ã‚Â· /);
     const weekSummary = boundaryWeek.getByRole("complementary");
     await weekSummary.getByRole("button").hover();
     const weekTooltip = weekSummary.getByRole("tooltip");
     await expect(weekTooltip.locator("[data-zone-percent]")).toHaveCount(5);
-    await expect(weekTooltip.locator('[data-zone-percent="5"]')).toContainText("0 h 30 min");
+    await expect(weekTooltip.locator('[data-zone-percent="5"]')).toContainText("30 min");
     const expectedWeek = (await query(`SELECT SUM("distanceMeters") AS distance, SUM("movingSeconds") AS moving
       FROM "StravaActivity" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)
       AND "localDate">='2026-10-26' AND "localDate"<='2026-11-01'`, [email])).rows[0];
     await expect(weekTooltip.getByLabel("Distance", { exact: true })).toHaveText(`${(Number(expectedWeek.distance) / 1000).toFixed(1)} km`);
     const roundedMinutes = Math.round(Number(expectedWeek.moving) / 60);
-    await expect(weekTooltip.getByLabel("Time", { exact: true })).toHaveText(`${Math.floor(roundedMinutes / 60)} h ${roundedMinutes % 60} min`);
+    await expect(weekTooltip.getByLabel("Time", { exact: true })).toHaveText(roundedMinutes >= 60
+      ? `${Math.floor(roundedMinutes / 60)} h ${String(roundedMinutes % 60).padStart(2, "0")} min` : `${roundedMinutes} min`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.keyboard.press("Escape");
     await expect(weekTooltip).toHaveCount(0);
     await weekSummary.getByRole("button").focus();
     await expect(weekTooltip).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByText("Uses the account planner’s VDOT ranges.", { exact: false })).toHaveCount(0);
+    await expect(page.getByText("Uses the account plannerÃ¢â‚¬â„¢s VDOT ranges.", { exact: false })).toHaveCount(0);
     await page.getByRole("link", { name: "Week", exact: true }).click();
     await expect(page).toHaveURL(/view=week&date=2026-11-01/);
     await expect(page.locator("[data-week]")).toHaveCount(1);
@@ -981,7 +1178,10 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page).toHaveURL(/view=week&date=2026-11-02/);
     await expect(page.locator("[data-week]").filter({ visible: true })).toHaveCount(1);
     await expect(page.locator('[data-week="2026-11-02"]').filter({ visible: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Next period" })).toBeDisabled();
+    // This historical fixture week is only the latest available week before
+    // November 9; the real current date must determine forward navigation.
+    await expect(page.getByRole("button", { name: "Next period" }))
+      .toHaveJSProperty("disabled", new Date().toISOString().slice(0, 10) < "2026-11-09");
     await page.getByRole("button", { name: "Previous period" }).focus();
     await page.keyboard.press("Enter");
     await expect(page.locator('[data-week="2026-10-26"]')).toBeVisible();
@@ -1047,7 +1247,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(october.locator('[data-zone-bar="5"]')).toHaveAttribute("style", /height: 100%/);
     await october.getByRole("link").hover();
     const monthTooltip = october.getByRole("tooltip");
-    await expect(monthTooltip.locator('[data-zone-percent="5"]')).toContainText("0 h 30 min · 100.0%");
+    await expect(monthTooltip.locator('[data-zone-percent="5"]')).toContainText("30 min Ã‚Â· 100.0%");
     await expect(monthTooltip.getByLabel("Average heart rate", { exact: true })).toContainText("180.0");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.keyboard.press("Escape");
@@ -1081,7 +1281,8 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.goto("/activities?view=week&date=2027-01-01");
     await expect(page).toHaveURL(new RegExp(`view=week&date=${new Date().toISOString().slice(0, 10)}`));
     await expect(page.locator("[data-week]").filter({ visible: true })).toHaveCount(1);
-    await expect(page.locator('[data-week="2026-11-02"]').filter({ visible: true })).toBeVisible();
+    const today = new Date().toISOString().slice(0, 10);
+    await expect(page.locator(`[data-week="${calendarRange(today.slice(0, 7), today).start}"]`).filter({ visible: true })).toBeVisible();
     await expect(page.locator("[data-volume-chart] [data-volume-bucket]").filter({ visible: true })).toHaveCount(7);
   });
 

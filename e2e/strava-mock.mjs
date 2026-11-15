@@ -1,7 +1,7 @@
 // Synthetic activities only. Never reads environment files or real activity datasets.
 import http from "node:http";
 const calls = [];
-const controls = { rate: false, delay: 0, tokenDelay: 0, history: false, latest: false,
+const controls = { rate: false, delay: 0, tokenDelay: 0, history: false, latest: false, crossTraining: false,
   details: {}, revoked: [], detailDelay: 0, streamVersion: 0 };
 let nextAthlete = 5000;
 const codes = new Map();
@@ -92,6 +92,17 @@ http.createServer(async (request, response) => {
         ...(i !== 2 ? { average_heartrate: 155, max_heartrate: 180 } : {}),
       };
     });
+    if (controls.crossTraining) {
+      for (const [offset, sport, date, moving, elapsed] of [
+        [70, "Ride", "2024-10-31", 1800, 2000],
+        [71, "Walk", "2024-11-01", 600, 900],
+        [72, "Walk", "2024-11-02", 1200, 1500],
+        [73, "Hike", "2024-11-03", null, 2400],
+        [74, "Yoga", "2024-11-04", 0, 3600],
+      ]) records.push({ id: athlete * 100 + offset, name: `Historical ${sport} ${offset}`,
+        sport_type: sport, type: sport, start_date: `${date}T23:30:00Z`, start_date_local: `${date}T18:30:00Z`,
+        moving_time: moving, elapsed_time: elapsed, distance: 50000, average_heartrate: 230, max_heartrate: 240 });
+    }
     for (const [enabled, offset, name, started] of [
       [controls.history, 90, "Historical run", `${new Date().getUTCFullYear() - 2}-06-01T10:00:00Z`],
       [controls.latest, 91, "Newly synchronized run", new Date(Date.now() - 60_000).toISOString()],

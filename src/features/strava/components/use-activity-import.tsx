@@ -36,9 +36,14 @@ function useImportController() {
     if (!query.data) return;
     const progress = `${revision ?? ""}:${job ? `${job.id}:${job.status}:${job.summaries}:${job.recordings}` : "none"}`;
     if (previous.current !== null && previous.current !== progress) {
+      // Mounted dashboards already refresh through their query. Refreshing the
+      // route as well repeats server reads and can remount request consumers.
+      const dashboardMounted = queries.getQueryCache().findAll({
+        queryKey: ACTIVITY_QUERY_KEY, type: "active",
+      }).length > 0;
       void queries.invalidateQueries({ queryKey: ACTIVITY_QUERY_KEY });
       void queries.invalidateQueries({ queryKey: STRAVA_STATUS_KEY });
-      router.refresh();
+      if (!dashboardMounted) router.refresh();
     }
     previous.current = progress;
   }, [job, revision, query.data, queries, router]);

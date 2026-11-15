@@ -118,9 +118,13 @@ test("public webhooks durably drive targeted updates, browser refresh, deletion 
     await control(provider, { details: { [sourceId]: { sport_type: "Ride", type: "Ride" } } });
     await notify(event({ aspect_type: "update", updates: { type: "Ride" } }));
     await completed();
-    expect(await activityRows()).toHaveLength(0);
-    expect((await targetJob()).webhookDeleted).toBe(true);
-    await expect(calendarLink).toHaveCount(0, { timeout: 75_000 });
+    expect(await activityRows()).toHaveLength(1);
+    const changedSport = (await activityRows())[0];
+    expect(changedSport.sport).toBe("Ride");
+    expect(changedSport.streams).toBeNull();
+    expect(changedSport.maximalEffort).toBe(false);
+    expect((await targetJob()).webhookDeleted).toBe(false);
+    await expect(calendarLink).toBeVisible({ timeout: 75_000 });
     await control(provider, { details: {} });
 
     // Delivery outage: acknowledge after DB commit, then recover with existing outbox.

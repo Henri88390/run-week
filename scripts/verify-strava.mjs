@@ -346,15 +346,40 @@ assert.deepEqual(calendarRange("2027-02"), { start: "2027-02-01", end: "2027-03-
 assert.deepEqual(calendarRange("2026-11", "2026-11-01"), { start: "2026-10-26", end: "2026-11-02" });
 assert.deepEqual(calendarRange("2027-01", "2027-01-01"), { start: "2026-12-28", end: "2027-01-04" });
 const runs = [
-  { id: "oct", localDate: "2026-10-31", movingSeconds: 3600, elapsedSeconds: 3600, distanceMeters: 10000, averageHr: 150 },
-  { id: "nov-a", localDate: "2026-11-01", movingSeconds: 1800, elapsedSeconds: 1900, distanceMeters: 5000, averageHr: 180 },
-  { id: "nov-b", localDate: "2026-11-01", movingSeconds: 5400, elapsedSeconds: 5500, distanceMeters: 15000, averageHr: 140 },
+  { id: "oct", sport: "Run", localDate: "2026-10-31", movingSeconds: 3600, elapsedSeconds: 3600, distanceMeters: 10000, averageHr: 150 },
+  { id: "nov-a", sport: "TrailRun", localDate: "2026-11-01", movingSeconds: 1800, elapsedSeconds: 1900, distanceMeters: 5000, averageHr: 180 },
+  { id: "nov-b", sport: "VirtualRun", localDate: "2026-11-01", movingSeconds: 5400, elapsedSeconds: 5500, distanceMeters: 15000, averageHr: 140 },
 ];
 const weeks = calendarWeeks("2026-11", runs, new Map([
   ["oct", { above: 100, measured: 3600, zoneSeconds: [0, 1000, 1000, 1500, 100] }],
   ["nov-a", { above: 200, measured: 1000, zoneSeconds: [0, 300, 300, 200, 200] }],
   ["nov-b", { above: 0, measured: 500, zoneSeconds: [100, 400, 0, 0, 0] }],
 ]), 200);
+const { crossTraining, isRunning } = load("src/features/strava/sports.ts");
+const { CROSS_TRAINING_MESSAGES, CROSS_TRAINING_DISCLOSURE, sportLabel } = load("src/features/strava/cross-training-messages.ts");
+for (const locale of Object.keys(STRAVA_MESSAGES)) {
+  assert.ok(CROSS_TRAINING_MESSAGES[locale].coverage);
+  assert.ok(CROSS_TRAINING_DISCLOSURE[locale]);
+  assert.ok(sportLabel(locale, "Hike"));
+  assert.equal(sportLabel(locale, "NewSport"), "New Sport");
+}
+assert.deepEqual(["Run", "TrailRun", "VirtualRun", "Walk", "Hike", "Ride"].map(isRunning), [true, true, true, false, false, false]);
+const mixedActivities = [...runs,
+  { ...runs[0], id: "walk-1", sport: "Walk", localDate: "2026-10-31", movingSeconds: 600, distanceMeters: 1000 },
+  { ...runs[0], id: "walk-2", sport: "Walk", localDate: "2026-11-01", movingSeconds: 1200, distanceMeters: 2000 },
+  { ...runs[0], id: "hike-1", sport: "Hike", localDate: "2026-11-01", movingSeconds: 0, distanceMeters: 3000 },
+  { ...runs[0], id: "ride-1", sport: "Ride", localDate: "2026-11-02", movingSeconds: 7200, distanceMeters: 50000 },
+];
+const mixedWeeks = calendarWeeks("2026-11", mixedActivities, new Map([
+  ["walk-1", { above: 9999, measured: 9999, zoneSeconds: [0, 0, 0, 0, 9999] }],
+]), 200);
+assert.equal(mixedWeeks[0].distanceMeters, 30000);
+assert.equal(mixedWeeks[0].movingSeconds, 10800);
+assert.deepEqual(mixedWeeks[0].days[5].zoneSeconds, [0, 0, 0, 0, 0], "Non-running HR cannot affect running zones");
+assert.deepEqual(crossTraining(mixedWeeks[0].days.flatMap((day) => day.activities)), [
+  { sport: "Hike", seconds: 0 }, { sport: "Walk", seconds: 1800 },
+], "Full week includes October's boundary day, not next Monday");
+assert.deepEqual(crossTraining(mixedWeeks[1].days.flatMap((day) => day.activities)), [{ sport: "Ride", seconds: 7200 }]);
 assert.equal(weeks.length, 6);
 assert.equal(weeks[0].movingSeconds, 10800);
 assert.equal(weeks[0].distanceMeters, 30000);
@@ -446,6 +471,11 @@ try {
   assert.ok((await summaries("synthetic", 1, 0, 100)).delay > 0);
   const summary = { id: 1, name: "Synthetic run", type: "Run", start_date: "2026-01-01T10:00:00Z",
     start_date_local: "2026-01-01T11:00:00Z", distance: 5000, moving_time: 1500, elapsed_time: 1510 };
+  for (const moving_time of [undefined, null, 0, 60]) {
+    global.fetch = async () => Response.json([{ ...summary, type: "Hike", moving_time }]);
+    const result = await summaries("synthetic", 1, 0, 100);
+    assert.equal(result.activities[0].moving_time, moving_time, "Missing duration is accepted without changing legitimate zero");
+  }
   global.fetch = async () => Response.json([{ ...summary, total_elevation_gain: 42.5 }]);
   assert.equal((await summaries("synthetic", 1, 0, 100)).activities[0].total_elevation_gain, 42.5);
   for (const invalid of [-1, "10"]) {

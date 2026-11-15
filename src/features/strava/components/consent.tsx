@@ -7,6 +7,7 @@ import { STRAVA_CONSENT_VERSION } from "../types";
 import { BACKGROUND_MESSAGES, ELEVATION_DISCLOSURE } from "../background-messages";
 import { useHydrated } from "@/components/use-hydrated";
 import { WEBHOOK_DISCLOSURE } from "../webhook-messages";
+import { CROSS_TRAINING_DISCLOSURE } from "../cross-training-messages";
 
 export function StravaConsent({ signedIn }: { signedIn: boolean }) {
   const hydrated = useHydrated();
@@ -26,6 +27,7 @@ export function StravaConsent({ signedIn }: { signedIn: boolean }) {
         </label>
         <p className="text-sm">{BACKGROUND_MESSAGES[locale].consent}</p>
         <p className="text-sm">{ELEVATION_DISCLOSURE[locale]}</p>
+        <p className="text-sm">{CROSS_TRAINING_DISCLOSURE[locale]}</p>
         <p className="text-sm">{WEBHOOK_DISCLOSURE[locale]}</p>
         <p className="text-sm"><Link href="/privacy" className="underline">{text.privacy}</Link> · {STRAVA_CONSENT_VERSION}</p>
         <button className="button-primary" type="submit" disabled={!ready}>{text.accept}</button>

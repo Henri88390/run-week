@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/features/i18n/use-i18n";
@@ -23,6 +23,9 @@ import { METRIC_DEFINITIONS } from "../metric-definitions";
 import { INDICATOR_MESSAGES } from "../indicator-messages";
 import { DANIELS_MESSAGES } from "../daniels-messages";
 import { VolumeChart } from "./volume-chart";
+import { crossTraining, isRunning } from "../sports";
+import { CROSS_TRAINING_MESSAGES, sportLabel } from "../cross-training-messages";
+import { CrossTrainingIcon, SportIcon } from "./sport-icon";
 
 const zoneColors: Record<number, string> = {
   1: "border-sky-300 bg-sky-50", 2: "border-emerald-300 bg-emerald-50",
@@ -35,6 +38,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
   const period = periodFromSearch(searchParams, metrics, initialData);
   const query = useActivityQuery(period, initialData);
   const data = query.data;
+  const [showCrossTraining, setShowCrossTraining] = useState(true);
   const notice = searchParams.has("strava") ? initialNotice : undefined;
   const calendarMonths = useMemo(() => {
     if (!data.months.length) return [];
@@ -75,8 +79,9 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
     event.preventDefault();
     navigate(event.currentTarget.getAttribute("href") ?? "");
   };
-  const distance = data.activities.reduce((s, a) => s + a.distanceMeters, 0);
-  const moving = data.activities.reduce((s, a) => s + a.movingSeconds, 0);
+  const runningActivities = data.activities.filter((activity) => isRunning(activity.sport));
+  const distance = runningActivities.reduce((s, a) => s + a.distanceMeters, 0);
+  const moving = runningActivities.reduce((s, a) => s + a.movingSeconds, 0);
   const unit = (seconds: number) => {
     const { hours, minutes } = roundedDuration(seconds);
     return `${formatInteger(locale, hours)} ${t.units.h} ${formatInteger(locale, minutes)} ${t.units.min}`;
@@ -106,6 +111,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
     : showWeek ? periodStart < currentWeek : selectedMonth < data.today.slice(0, 7);
   const next = canGoNext ? shiftedPeriod(1) : null;
   return <div className="space-y-6">
+    {data.sportsBackfillPending && <p role="status" data-sports-coverage className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950">{CROSS_TRAINING_MESSAGES[locale].coverage}</p>}
     {query.isError && <RequestError key={query.errorUpdatedAt} message={text.error} />}
     {metrics && <h1 className="text-3xl font-semibold">{text.metrics}</h1>}
     {!metrics && <div className="grid items-center gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -155,11 +161,38 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
     </div>}
     <div aria-busy={query.loading} className={`space-y-6 transition-opacity ${query.loading ? "opacity-60" : ""}`}>
     {data.truncated && <p role="alert">{text.truncated}</p>}
-    {!metrics && <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[[text.runs, formatInteger(locale, data.activities.length)], [text.distance, `${formatDecimal(locale, distance / 1000)} ${t.units.km}`],
-        [text.duration, unit(moving)], [text.pace, distance > 0 ? `${formatPace(moving * 1000 / distance)} ${t.units.min}/${t.units.km}` : "—"]].map(([label, value]) =>
-        <div key={label} className="panel"><dt className="text-sm text-stone-600">{label}</dt><dd className="mt-2 text-xl font-semibold">{value}</dd></div>)}
-    </dl>}
+    {!metrics && (() => {
+      const runStats = [[text.runs, formatInteger(locale, runningActivities.length)], [text.distance, `${formatDecimal(locale, distance / 1000)} ${t.units.km}`],
+        [text.duration, unit(moving)], [text.pace, distance > 0 ? `${formatPace(moving * 1000 / distance)} ${t.units.min}/${t.units.km}` : "—"]];
+      if (!showCrossTraining) return <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {runStats.map(([label, value]) =>
+          <div key={label} className="panel"><dt className="text-sm text-stone-600">{label}</dt><dd className="mt-2 text-xl font-semibold">{value}</dd></div>)}
+      </dl>;
+      const cross = crossTraining(data.activities);
+      const crossTotal = cross.reduce((sum, entry) => sum + entry.seconds, 0);
+      return <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <section data-period-running aria-labelledby="period-running" className="run-tone space-y-3 rounded-2xl border p-4 sm:p-5">
+          <h2 id="period-running" className="flex items-center gap-2 font-semibold"><SportIcon sport="Run" className="size-4" />{calendarText.running}</h2>
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {runStats.map(([label, value]) =>
+              <div key={label}><dt className="text-sm opacity-80">{label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd></div>)}
+          </dl>
+        </section>
+        <section data-period-cross-training aria-labelledby="period-cross-training"
+          className="flex flex-col gap-2 rounded-2xl border border-indigo-300 bg-indigo-50 p-4 text-indigo-950 sm:p-5">
+          <h2 id="period-cross-training" className="flex items-center gap-2 font-semibold"><CrossTrainingIcon className="size-4" />{CROSS_TRAINING_MESSAGES[locale].label}</h2>
+          {cross.length > 0 && <ul className="space-y-1 text-sm">
+            {cross.map((entry) => <li key={entry.sport} data-period-sport={entry.sport} className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1.5"><SportIcon sport={entry.sport} className="size-3.5" /><span className="truncate">{sportLabel(locale, entry.sport)}</span></span>
+              <span className="shrink-0 tabular-nums">{unit(entry.seconds)}</span>
+            </li>)}
+          </ul>}
+          <p data-period-cross-total className="mt-auto flex items-center justify-between gap-2 border-t border-indigo-300 pt-2 font-semibold">
+            <span>{calendarText.total}</span><span className="tabular-nums">{unit(crossTotal)}</span>
+          </p>
+        </section>
+      </div>;
+    })()}
     {metrics ? <>
       {data.performance && !data.criticalSpeed && <section data-provisional-performance className="panel space-y-3">
         <h2 className="text-xl font-semibold">{performanceText.title}</h2>
@@ -219,16 +252,24 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
         <p className="text-sm text-stone-600">{DANIELS_MESSAGES[locale]}</p>
       </section>
     </> : <>
+      <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium">
+        <input type="checkbox" checked={showCrossTraining} onChange={(event) => setShowCrossTraining(event.target.checked)}
+          className="size-4 accent-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2" />
+        {CROSS_TRAINING_MESSAGES[locale].label}
+      </label>
       {yearly ? <section className="panel space-y-4">
         <h2 className="text-xl font-semibold">{text.calendar} · {data.year}</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {calendarMonths.map((month, i) =>
-            <CalendarDay key={month.date} month={month} index={i % 3} />)}
+            <CalendarDay key={month.date} month={month} index={i % 3} showCrossTraining={showCrossTraining} />)}
         </div>
       </section> : <section className="panel space-y-4">
         <h2 className="text-xl font-semibold">{text.calendar}</h2>
         <div className="flex flex-wrap gap-2 text-xs" aria-label={text.zones}>
-          {zoneLabels.map((label, index) => <span key={label} className={`rounded border px-2 py-1 ${zoneColors[index + 1]}`}>{label}</span>)}
+          {showCrossTraining ? <>
+            <span className="run-tone rounded border px-2 py-1">{calendarText.running}</span>
+            <span className="rounded border border-indigo-300 bg-indigo-100 px-2 py-1 text-indigo-950">{CROSS_TRAINING_MESSAGES[locale].label}</span>
+          </> : zoneLabels.map((label, index) => <span key={label} className={`rounded border px-2 py-1 ${zoneColors[index + 1]}`}>{label}</span>)}
         </div>
         <div className="space-y-3">
           <div className="grid grid-cols-7 gap-1 text-center text-xs md:mr-56 sm:text-sm">
@@ -236,11 +277,12 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
           </div>
           {data.weeks.map((week) => <div key={week.startDate} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]" data-week={week.startDate}>
             <div className="grid min-w-0 grid-cols-7 gap-1 text-center text-sm">
-              {week.days.map((day, index) => <CalendarDay key={day.date} day={day} index={index}
+              {week.days.map((day, index) => <CalendarDay key={day.date} day={day} index={index} showCrossTraining={showCrossTraining}
                 outside={!day.date.startsWith(data.month)}
-                color={day.zone === null ? "border-stone-200 bg-stone-50" : zoneColors[day.zone]} />)}
+                color={showCrossTraining && day.activities.some((activity) => isRunning(activity.sport)) ? "run-tone"
+                  : day.zone === null ? "border-stone-200 bg-stone-50" : zoneColors[day.zone]} />)}
             </div>
-            <aside aria-label={`${formatDate(locale, week.startDate)} · ${hrText.totalTime}`}><CalendarDay week={week} /></aside>
+            <aside className="grid" aria-label={`${formatDate(locale, week.startDate)} · ${hrText.totalTime}`}><CalendarDay week={week} showCrossTraining={showCrossTraining} /></aside>
           </div>)}
         </div>
       </section>}

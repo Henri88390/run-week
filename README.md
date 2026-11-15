@@ -99,6 +99,15 @@ On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`. Without
 `AUTH_RESEND_KEY`, development sign-in codes are printed to the dev server
 console.
 
+If a local development page repeatedly reloads and cancels requests, check the
+document navigations and the Next.js HMR console/websocket messages as well as
+the API responses. A Turbopack `restart` or `HMR hash mismatch` causes a full
+reload (including new session and Garmin status requests); it is distinct from
+the Strava import's five-second active polling. Restart the affected `next dev`
+process and check whether the reloads stop. If they persist, investigate the
+development server's rebuilds rather than treating canceled requests as API
+failures.
+
 ## Android app
 
 The [mobile](mobile) directory contains a React Native app built with Expo, not a
@@ -194,7 +203,7 @@ mock server. They do not replace testing the Android app on a device.
 
 ## Website Strava activity dashboards
 
-`/activities` provides a month calendar, real run summaries, configured HR-zone
+`/activities` provides week/month/year calendars, all-sport activity summaries, configured HR-zone
 and threshold duration charts; `/activities/[id]` shows recorded non-GPS streams.
 `/running-metrics` includes critical speed for explicitly confirmed whole-activity
 maximal race/test efforts. Marked efforts supply descriptive speed indicators and
@@ -210,6 +219,86 @@ keeping original Strava activities. Failed disconnects remain actionable in the 
 The planner's activity link is shown only when signed in. Activity overview,
 metrics and detail pages require a current Strava connection and otherwise
 prompt the signed-in user to connect.
+
+### Cross-training and historical coverage
+
+The Activities calendar's Cross-training checkbox shows or hides other sports
+in day/week/month/year tiles, popovers and weekly summaries. It defaults to
+shown and stays selected while switching calendar periods; reloading resets
+it. This display-only filter does not change imports or running metrics.
+
+All non-running Strava sports, **including walking and hiking**, appear in the
+calendar with individual activity links and summary-only detail pages. Each
+sport family (cycling, swimming, walking, hiking, strength, workout,
+elliptical, yoga, rowing/paddling, snow, skating, climbing, racket sports) has
+its own calendar and breakdown icon and its own muted day-chip color (light and
+dark); other sports use a generic activity icon and indigo. While cross-training
+is shown, every running day and the weekly running container use one warm
+orange that contrasts with cross-training's indigo, instead of heart-rate-zone
+colors (the in-cell zone bars and popovers still show zones), and the legend
+lists Running and Cross-training; hiding cross-training restores zone-colored
+days and the zone legend. Running stats in a day cell start with a run icon.
+Day cells show every activity: one chip per cross-training session (two rides
+are two chips), stacked below the run on mixed days; when they don't fit, the
+cell and its whole week row grow taller instead of clipping. Year tiles use one
+chip with the month's combined cross-training time when several sports are
+involved. While cross-training is shown, the period summary above the calendar
+has a Running container and a Cross-training container (time per sport plus a
+total). Day popovers still list every activity.
+Runs remain exactly `Run`, `TrailRun`, and `VirtualRun`; their zone colors,
+weekly running distance/time, HR charts, volume charts, endurance, maximal efforts
+and top performances exclude every other sport. Non-running details do not offer
+running pace, splits, zones or maximal-effort controls.
+
+Each week's sidebar groups running metrics in a running container, followed by
+cross-training active duration and a running + cross-training total. Hover, keyboard focus,
+or tap opens the existing dismissible breakdown, grouped by sport (not activity).
+Calendar weeks include adjacent-month days using Strava's `start_date_local`;
+year tiles also show cross-training. Duration uses moving time, falling back to
+elapsed time **only when moving time is absent/null**, never when it is zero.
+Common sport names are localized in all ten languages; unfamiliar Strava sport
+identifiers use a readable fallback. Summaries are stored with the account and
+are removed by disconnect/account deletion; no cross-training streams are fetched.
+These are descriptive totals, not personalized training recommendations. Calendar
+reads include the full displayed date range without a shared run/non-run row cap,
+so adding another sport cannot truncate a week's running or cross-training totals.
+
+**Rollout:** apply `20261115142423_strava_all_sports` with `npm run db:deploy`
+against the intended database before promoting the application. This additive
+migration defaults `StravaConnection.sportsVersion` to zero and extends the
+existing ordinary-job exclusion index; it changes no activities, running-history
+coverage, checkpoints, encryption or consent version. Older application code can
+still use the schema but cannot mark this new backfill complete. Sports jobs use
+separate internal summary/terminal phases so legacy run-only pagination cannot
+be mistaken for all-sport coverage during a mixed deployment; unmarked completed
+jobs remain eligible for automatic catch-up. Sync the deployed
+`/api/inngest` endpoint and verify `strava-background-import`, `strava-sync-outbox`
+(every ten minutes), and `strava-incremental-sync` (hourly) remain registered.
+
+The hourly scheduler automatically selects connected, current-consent accounts
+with `sportsVersion < 1`, **even with complete `syncHistory`, recent
+`lastSyncedAt`, and completed elevation backfill**. Active jobs finish first;
+transiently failed/cancelled imports resume their existing page/phase unchanged.
+Elevation catch-up precedes sports catch-up when both are pending. A separate
+`sports` job pages all historical summaries in batches of 200 using the same
+fixed time bound, account leases, outbox, generation/version fencing, quotas,
+429 sleeps and retries. It does not fetch streams or reset running coverage.
+The completion marker is written only at terminal completion after every page;
+failures retain the checkpoint and cannot claim coverage. The next hourly check
+does not repeat a completed backfill. Historical coverage remains visibly
+incomplete in all locales until this finishes; quotas/backlogs can delay it.
+New imports and targeted webhooks retain all sports immediately. Sport changes
+work both ways, invalidate caches, clear non-running recordings/effort marks and
+keep stale historical pages from overwriting authoritative webhook data.
+
+Verification: `node scripts/verify-strava-background.mjs` covers legacy-account
+scheduling, multi-page sport persistence, exhausted-failure resumption, zero/missing
+duration, terminal markers and no-repeat cron behavior. The Strava/webhook/best-section
+scripts cover boundary-week totals, sport changes, deletion/revocation and run-only
+rankings. `npm run test:e2e -- e2e/strava.spec.ts --grep "cross-training backfills"`
+uses disposable Docker PostgreSQL/Redis and mock Strava/Inngest to check historical
+catch-up, no additional stream requests, authenticated details, metric isolation,
+week/month/year rendering, keyboard/hover/tap breakdowns and mobile light/dark layout.
 
 ### Top performances
 
@@ -285,7 +374,7 @@ After successful Strava authorization, a conflicting link identifies the existin
 Run Week account by email. The notice is carried in a short-lived, encrypted,
 HttpOnly cookie bound to the requesting account, not in redirect URLs or logs.
 
-Strava connection queues a full running-history import in PostgreSQL, atomically
+Strava connection queues a full activity-history import in PostgreSQL, atomically
 with saving the encrypted connection. Inngest executes it through signed requests
 to `/api/inngest`. Each durable chunk performs at most one Strava request: token
 refresh, a 200-summary page, or one missing recording. Checkpoints are committed
@@ -312,7 +401,8 @@ cascades jobs; connection generations and leases prevent stale writes after reco
 
 The app polls a database-only job status endpoint every five seconds while a
 job is queued/running/paused, and every minute otherwise. Progress refreshes stored
-dashboard data; polling never calls Strava. Progress banners and counters are hidden;
+dashboard data; polling never calls Strava. General progress counters are hidden;
+the cross-training coverage notice remains visible until its historical import finishes;
 network/status failures are still shown explicitly.
 The PostgreSQL outbox is checked every ten minutes for queued, unpublished jobs,
 including after a failed event send. Connection still publishes an import immediately;
@@ -422,7 +512,8 @@ Periods use activity-local calendar dates; upstream timestamp queries include a
 one-day boundary margin to cover timezone offsets. Imports do not delete data
 outside the selected period. Disconnect is
 available in privacy controls and deletes all local imports and tokens; original
-Strava activities remain unchanged. Only Run, TrailRun and VirtualRun are retained.
+Strava activities remain unchanged. All sports are retained as summaries; only
+Run, TrailRun and VirtualRun contribute recordings and running metrics.
 Streams request only `time,heartrate,velocity_smooth,distance,altitude`; no GPS coordinates, profile
 details, AI or Garmin activity API is involved. Missing HR remains null. Available
 streams are retained on ordinary reimport. Configured webhooks refresh a changed

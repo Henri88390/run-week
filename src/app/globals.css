@@ -87,6 +87,12 @@ html[data-theme="dark"] {
   --color-violet-300: #6d28d9;
   --color-violet-800: #ddd6fe;
   --color-violet-950: #ede9fe;
+  --color-indigo-50: #22213b;
+  --color-indigo-100: #2e2b4a;
+  --color-indigo-200: #454063;
+  --color-indigo-300: #5a547a;
+  --color-indigo-800: #c7d2fe;
+  --color-indigo-950: #e0e7ff;
   --color-yellow-50: #422006;
   --color-yellow-300: #854d0e;
   --color-green-700: #86efac;
@@ -325,6 +331,51 @@ html[data-theme="dark"] [data-zone="2"] {
   --color-emerald-50: #292e29;
   --color-emerald-300: #586b5b;
 }
+
+/* Running tiles while cross-training is shown: warm orange, contrasting the indigo cross-training. */
+.run-tone {
+  background-color: #ffedd5;
+  border-color: #fdba74;
+  color: #7c2d12;
+}
+html[data-theme="dark"] .run-tone {
+  background-color: #362619;
+  border-color: #7a5232;
+  color: #fed7aa;
+}
+
+/* Cross-training chips: one muted color per sport family (see sport-icon.tsx). */
+.sport-tone {
+  background-color: var(--sport-bg, var(--color-indigo-100));
+  border-color: var(--sport-border, var(--color-indigo-300));
+  color: var(--sport-fg, var(--color-indigo-950));
+}
+[data-sport-tone="cycling"] { --sport-bg: #dcfce7; --sport-border: #86efac; --sport-fg: #14532d; }
+[data-sport-tone="swimming"] { --sport-bg: #cffafe; --sport-border: #67e8f9; --sport-fg: #164e63; }
+[data-sport-tone="walking"] { --sport-bg: #fce7f3; --sport-border: #f9a8d4; --sport-fg: #831843; }
+[data-sport-tone="hiking"] { --sport-bg: #f3e8dc; --sport-border: #d6b48c; --sport-fg: #5c3d1e; }
+[data-sport-tone="strength"] { --sport-bg: #e2e8f0; --sport-border: #94a3b8; --sport-fg: #1e293b; }
+[data-sport-tone="workout"] { --sport-bg: #fee2e2; --sport-border: #fca5a5; --sport-fg: #7f1d1d; }
+[data-sport-tone="elliptical"] { --sport-bg: #ede9fe; --sport-border: #c4b5fd; --sport-fg: #4c1d95; }
+[data-sport-tone="yoga"] { --sport-bg: #ccfbf1; --sport-border: #5eead4; --sport-fg: #134e4a; }
+[data-sport-tone="rowing"] { --sport-bg: #dbeafe; --sport-border: #93c5fd; --sport-fg: #1e3a8a; }
+[data-sport-tone="skiing"] { --sport-bg: #e0f2fe; --sport-border: #7dd3fc; --sport-fg: #0c4a6e; }
+[data-sport-tone="skating"] { --sport-bg: #ffe4e6; --sport-border: #fda4af; --sport-fg: #881337; }
+[data-sport-tone="climbing"] { --sport-bg: #ecfccb; --sport-border: #bef264; --sport-fg: #365314; }
+[data-sport-tone="racket"] { --sport-bg: #fef9c3; --sport-border: #fde047; --sport-fg: #713f12; }
+html[data-theme="dark"] [data-sport-tone="cycling"] { --sport-bg: #1c3324; --sport-border: #3a6b48; --sport-fg: #bbf7d0; }
+html[data-theme="dark"] [data-sport-tone="swimming"] { --sport-bg: #17323a; --sport-border: #2f6672; --sport-fg: #a5f3fc; }
+html[data-theme="dark"] [data-sport-tone="walking"] { --sport-bg: #3b1f30; --sport-border: #7a3b5f; --sport-fg: #fbcfe8; }
+html[data-theme="dark"] [data-sport-tone="hiking"] { --sport-bg: #33281d; --sport-border: #6e5236; --sport-fg: #ead7c0; }
+html[data-theme="dark"] [data-sport-tone="strength"] { --sport-bg: #262c36; --sport-border: #4b5768; --sport-fg: #cbd5e1; }
+html[data-theme="dark"] [data-sport-tone="workout"] { --sport-bg: #3b1d1d; --sport-border: #7a3434; --sport-fg: #fecaca; }
+html[data-theme="dark"] [data-sport-tone="elliptical"] { --sport-bg: #2c2340; --sport-border: #5b4a8a; --sport-fg: #ddd6fe; }
+html[data-theme="dark"] [data-sport-tone="yoga"] { --sport-bg: #173532; --sport-border: #2f6d66; --sport-fg: #99f6e4; }
+html[data-theme="dark"] [data-sport-tone="rowing"] { --sport-bg: #1c2840; --sport-border: #3a5486; --sport-fg: #bfdbfe; }
+html[data-theme="dark"] [data-sport-tone="skiing"] { --sport-bg: #172e3d; --sport-border: #2e5f7c; --sport-fg: #bae6fd; }
+html[data-theme="dark"] [data-sport-tone="skating"] { --sport-bg: #3b1d25; --sport-border: #7a3446; --sport-fg: #fecdd3; }
+html[data-theme="dark"] [data-sport-tone="climbing"] { --sport-bg: #283318; --sport-border: #50662c; --sport-fg: #d9f99d; }
+html[data-theme="dark"] [data-sport-tone="racket"] { --sport-bg: #36311a; --sport-border: #6e6230; --sport-fg: #fef08a; }
 
 html[data-theme="dark"] [data-training-simulator] .bg-emerald-50 {
   background-color: #292e29;

@@ -35,6 +35,7 @@ function matches(row, where = {}) {
       if (op === "not") return actual !== operand;
       if (op === "gt") return actual > operand;
       if (op === "lt") return actual < operand;
+      if (op === "gte") return actual >= operand;
       throw new Error(`Unsupported mock filter: ${op}`);
     });
   });
@@ -83,7 +84,7 @@ const database = {
     },
     async findMany({ where }) {
       if (!connection || connection.consentVersion !== where.consentVersion
-        || (connection.elevationVersion >= 1 && connection.lastSyncedAt && connection.lastSyncedAt >= where.OR[1].lastSyncedAt.lt)) return [];
+        || (connection.elevationVersion >= 1 && connection.sportsVersion >= 1 && connection.lastSyncedAt && connection.lastSyncedAt >= where.OR[1].lastSyncedAt.lt)) return [];
       const blocked = job && where.jobs.none.OR.some((condition) =>
         (typeof condition.status === "string" ? job.status === condition.status : condition.status.in.includes(job.status))
         && (!condition.errorCode || condition.errorCode.in.includes(job.errorCode)));
@@ -129,6 +130,14 @@ const database = {
     async upsert({ create, update: data }) { quota = quota ? update(quota, data) : create; },
   },
   stravaActivity: {
+    async upsert({ where, create, update: data }) {
+      const row = activities.find((activity) => activity.userId === where.userId_sourceId.userId
+        && activity.sourceId === where.userId_sourceId.sourceId);
+      if (row) return update(row, data);
+      const created = { id: create.sourceId, streamState: "pending", elevationStreamState: "pending", maximalEffort: false, ...create };
+      activities.push(created);
+      return created;
+    },
     async findFirst({ where }) { return activities.find((activity) => where.OR
       ? where.OR.some((condition) => Object.entries(condition).every(([key, value]) => activity[key] === value))
       : activity.streamState === where.streamState) ?? null; },
@@ -176,12 +185,6 @@ function load(file) {
         deliveries.push(event);
       } },
     };
-    if (name === "./save-summary") return { saveSummary: async (_, userId, summary) => {
-      if (!["Run", "TrailRun", "VirtualRun"].includes(summary.type)) return;
-      if (!activities.some((activity) => activity.id === String(summary.id))) {
-        activities.push({ id: String(summary.id), sourceId: String(summary.id), userId, streamState: "pending" });
-      }
-    } };
     if (name.startsWith(".") || name.startsWith("@/")) {
       const base = name.startsWith("@/") ? path.join(root, "src", name.slice(2)) : path.resolve(path.dirname(absolute), name);
       return load(`${base}.ts`);
@@ -202,7 +205,7 @@ function reset() {
   afterJobRead = null;
   connection = { userId: "local-test", generation: "generation-1", consentVersion: STRAVA_CONSENT_VERSION,
     tokens: JSON.stringify({ access_token: "synthetic", refresh_token: "synthetic", expires_at: 4102444800 }),
-    leaseId: null, leaseUntil: null, syncHistory: [], syncActive: true, elevationVersion: 1 };
+    leaseId: null, leaseUntil: null, syncHistory: [], syncActive: true, elevationVersion: 1, sportsVersion: 1 };
   job = { id: "job", userId: connection.userId, generation: connection.generation, version: 1,
     kind: "history", status: "queued", phase: "summaries", page: 1, start: "2024-01-01", end: "2025-01-01",
     remaining: [], before: Date.parse("2025-01-01T00:00:00Z") / 1000, summaries: 0, recordings: 0, retryAt: null,
@@ -213,7 +216,8 @@ function reset() {
   api.streams = async () => ({ data: null });
 }
 async function chunk() { quota = null; return syncChunk("job", 1); }
-const summary = { id: 1, type: "Run", start_date_local: "2024-06-01T10:00:00Z" };
+const summary = { id: 1, name: "Synthetic activity", type: "Run", start_date: "2024-06-01T10:00:00Z",
+  start_date_local: "2024-06-01T10:00:00Z", distance: 5000, moving_time: 1800, elapsed_time: 1900 };
 reset();
 api.summaries = async (_, page) => ({ activities: page === 1
   ? Array.from({ length: 200 }, (_, index) => ({ ...summary, id: index + 1 }))
@@ -224,13 +228,15 @@ assert.equal(job.phase, "summaries");
 assert.equal(activities.length, 200);
 await chunk();
 assert.equal(job.phase, "streams");
-assert.equal(activities.length, 201);
-assert.equal(job.summaries, 201);
+assert.equal(activities.length, 202);
+assert.equal(activities[201].sport, "Ride");
+assert.equal(activities[201].streamState, "unavailable");
+assert.equal(job.summaries, 202);
 api.streams = async () => ({ data: { time: [0, 5], heartrate: null, distance: null, velocity_smooth: null } });
 await chunk();
 assert.equal(job.recordings, 1);
 assert.equal(activities[0].streamState, "ready");
-activities.forEach((activity) => { activity.streamState = "ready"; });
+activities.forEach((activity) => { activity.streamState = "ready"; activity.elevationStreamState = "ready"; });
 await chunk();
 assert.equal(job.status, "completed");
 assert.equal(connection.syncActive, false);
@@ -343,6 +349,104 @@ job.status = "completed";
 connection.lastSyncedAt = new Date();
 assert.equal(await scheduleDueSyncAccounts(), 0, "Recently synchronized accounts are not due");
 const { stravaDispatcher, stravaIncremental } = load("src/features/strava/server/background-functions.ts");
+// Deployment catch-up: a fully imported account is due independently of every
+// legacy coverage/checkpoint. Exercise the real summary persistence function.
+reset();
+connection.sportsVersion = 0;
+connection.lastSyncedAt = new Date();
+connection.syncHistory = [{ start: "1970-01-01", end: new Date().toISOString().slice(0, 10), syncedAt: new Date().toISOString() }];
+const oldHistory = structuredClone(connection.syncHistory);
+const oldSynced = connection.lastSyncedAt.getTime();
+job.status = "completed";
+assert.equal(await scheduleDueSyncAccounts(), 1);
+assert.equal(job.kind, "sports");
+assert.equal(job.start, "1970-01-01");
+assert.equal(job.phase, "sports-summaries", "Legacy workers cannot enter their run-only summaries branch");
+assert.equal(await scheduleDueSyncAccounts(), 0);
+const sportsJobId = job.id;
+api.streams = async () => assert.fail("Cross-training history must never request streams");
+api.summaries = async (_, page) => {
+  assert.equal(page, 1);
+  return { activities: Array.from({ length: 200 }, (_, i) => ({ ...summary, id: i + 1,
+    type: i % 2 ? "Walk" : "Ride", moving_time: 60, elapsed_time: 90 })) };
+};
+quota = null;
+await syncChunk(sportsJobId, job.version);
+assert.equal(job.page, 2);
+assert.equal(connection.sportsVersion, 0, "A full page must not prematurely complete coverage");
+api.summaries = async () => { throw new Error("Synthetic outage on historical page 2"); };
+quota = null;
+await assert.rejects(syncChunk(sportsJobId, job.version));
+assert.equal(job.page, 2);
+assert.equal(connection.sportsVersion, 0);
+await stravaImportFailure();
+async function stravaImportFailure() {
+  const { stravaImport } = load("src/features/strava/server/background-functions.ts");
+  await stravaImport.options.onFailure({ event: { data: { event: { data: { jobId: job.id, version: job.version } } } } });
+}
+assert.equal(job.status, "failed");
+assert.equal(await scheduleDueSyncAccounts(), 1);
+assert.equal(job.id, sportsJobId);
+assert.equal(job.page, 2, "Exhausted retry resumes the same historical page");
+api.summaries = async (_, page) => {
+  assert.equal(page, 2);
+  return { activities: [
+    { ...summary, id: 201, type: "Hike", moving_time: 0, elapsed_time: 600,
+      start_date: "2024-06-02T01:00:00Z", start_date_local: "2024-06-01T18:00:00Z" },
+    { ...summary, id: 202, type: "Yoga", moving_time: undefined, elapsed_time: 600 },
+    { ...summary, id: 203, type: "NewStravaSport", moving_time: null, elapsed_time: 300 },
+    { ...summary, id: 204, type: "Run", name: "Ordinary import owns running metadata" },
+  ] };
+};
+quota = null;
+await syncChunk(sportsJobId, job.version);
+assert.equal(activities.length, 203);
+assert.equal(activities.some((activity) => activity.sourceId === "204"), false, "Sports catch-up does not introduce unstreamed runs or rewrite run coverage");
+assert.equal(activities[200].movingSeconds, 0, "Legitimate zero never falls back to elapsed");
+assert.equal(activities[200].localDate, "2024-06-01", "Calendar grouping uses Strava's local day, not the UTC start day");
+assert.equal(activities[200].startedAt.toISOString(), "2024-06-02T01:00:00.000Z");
+assert.equal(activities[201].movingSeconds, 600);
+assert.equal(activities[202].movingSeconds, 300);
+assert.equal(connection.sportsVersion, 0);
+quota = null;
+await syncChunk(sportsJobId, job.version);
+assert.equal(job.status, "completed");
+assert.equal(connection.sportsVersion, 1);
+assert.deepEqual(connection.syncHistory, oldHistory, "Running-history coverage is preserved");
+assert.equal(connection.lastSyncedAt.getTime(), oldSynced);
+assert.equal(job.recordings, 0);
+assert.equal(await scheduleDueSyncAccounts(), 0, "Next cron does not repeat completed sports history");
+reset();
+connection.sportsVersion = 0;
+connection.lastSyncedAt = new Date();
+job.kind = "sports";
+job.phase = "streams";
+await chunk();
+assert.equal(job.status, "completed");
+assert.equal(connection.sportsVersion, 0, "An uncertified/legacy terminal phase never proves all-sport coverage");
+assert.equal(await scheduleDueSyncAccounts(), 1);
+assert.equal(job.phase, "sports-summaries", "An old deployment's unmarked completion is caught up automatically");
+// An already active or transiently failed legacy job retains every checkpoint.
+reset();
+connection.sportsVersion = 0;
+connection.lastSyncedAt = new Date();
+job.page = 7;
+job.kind = "elevation";
+job.phase = "streams";
+assert.equal(await scheduleDueSyncAccounts(), 0);
+assert.equal(job.page, 7);
+job.status = "failed";
+job.errorCode = "unavailable";
+assert.equal(await scheduleDueSyncAccounts(), 1);
+assert.equal(job.page, 7);
+assert.equal(job.phase, "streams");
+assert.equal(job.kind, "elevation");
+job.status = "completed";
+assert.equal(await scheduleDueSyncAccounts(), 1);
+assert.equal(job.kind, "sports", "Backfill is eventually queued after legacy work finishes");
+reset();
+job.status = "completed";
+connection.lastSyncedAt = new Date();
 assert.deepEqual(stravaDispatcher.options.triggers, [{ cron: "*/10 * * * *" }]);
 assert.deepEqual(stravaIncremental.options.triggers, [{ cron: "0 * * * *" }]);
 const step = { run: async (_id, work) => work() };
@@ -370,10 +474,9 @@ job.errorCode = "unavailable";
 job.page = 4;
 const legacyJobId = job.id;
 await scheduleDueSyncAccounts();
-assert.equal(job.id, legacyJobId, "A failed legacy import is upgraded, not abandoned for later resumption");
-assert.equal(job.kind, "elevation");
-assert.equal(job.start, "1970-01-01");
-assert.equal(job.page, 1, "Upgrading to full history resets the incremental checkpoint");
+assert.equal(job.id, legacyJobId, "A failed legacy import is resumed before backfill");
+assert.equal(job.kind, "incremental");
+assert.equal(job.page, 4, "Backfill must not reset an existing checkpoint");
 job.status = "failed";
 job.errorCode = "unavailable";
 job.page = 3;

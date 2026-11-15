@@ -44,7 +44,7 @@ const summarySchema = z.object({
   id: z.number().int().positive().safe(), name: z.string().max(1000),
   sport_type: z.string().optional(), type: z.string(),
   start_date: z.iso.datetime(), start_date_local: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
-  distance: z.number().finite().nonnegative(), moving_time: z.number().int().nonnegative(),
+  distance: z.number().finite().nonnegative(), moving_time: z.number().int().nonnegative().nullish(),
   elapsed_time: z.number().int().nonnegative(), average_heartrate: summaryHeartRate,
   max_heartrate: summaryHeartRate,
   total_elevation_gain: z.number().finite().nonnegative().nullable().optional(),

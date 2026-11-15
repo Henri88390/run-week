@@ -5,6 +5,7 @@ import { readJson } from "@/features/account/server/http";
 import { websiteUser, failure, json } from "@/features/strava/server/http";
 import { StravaError } from "@/features/strava/server/api";
 import { clearActivityCache } from "@/features/strava/server/cache";
+import { RUN_SPORTS } from "@/features/strava/sports";
 
 export async function PATCH(request: NextRequest, context: RouteContext<"/api/strava/activities/[id]">) {
   try {
@@ -15,7 +16,7 @@ export async function PATCH(request: NextRequest, context: RouteContext<"/api/st
     const result = await db().$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strava:${userId}`}))`;
       await clearActivityCache(userId, true);
-      return tx.stravaActivity.updateMany({ where: { id, userId }, data: parsed.data });
+      return tx.stravaActivity.updateMany({ where: { id, userId, sport: { in: RUN_SPORTS } }, data: parsed.data });
     });
     if (!result.count) return json({ error: "invalid" }, 404);
     return json({ ok: true });

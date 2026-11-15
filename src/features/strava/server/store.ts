@@ -15,6 +15,7 @@ import { volumeBuckets } from "../volume-chart";
 import { createSyncJob } from "./background-jobs";
 import { requireBackgroundSync } from "./inngest";
 import { athleteKey as keyedAthlete } from "./athlete-key";
+import { isRunning, RUN_SPORTS, SPORTS_VERSION } from "../sports";
 
 export async function saveConnection(config: StravaConfig, userId: string, tokens: Tokens, consentAt: Date, state: string) {
   requireBackgroundSync();
@@ -42,6 +43,7 @@ export async function saveConnection(config: StravaConfig, userId: string, token
         lastSyncedAt: old?.athleteKey === athleteKey ? old.lastSyncedAt : null,
         syncHistory: old?.athleteKey === athleteKey ? syncHistorySchema.parse(old.syncHistory) : [],
         elevationVersion: old?.athleteKey === athleteKey ? old.elevationVersion : 0,
+        sportsVersion: old?.athleteKey === athleteKey ? old.sportsVersion : 0,
       };
       await tx.stravaConnection.upsert({ where: { userId }, create: { userId, ...data }, update: data });
       await createSyncJob(tx, userId);
@@ -76,29 +78,31 @@ export async function dashboard(userId: string, month: string, weekDate?: string
   const [connection, rows, pending, maximalEfforts, volumeDays, endurance, periodVolumeDays] = await Promise.all([
     db().stravaConnection.findUnique({ where: { userId } }),
     db().stravaActivity.findMany({ where: { userId, localDate: { gte: range.start, lt: range.end } },
-      orderBy: [{ localDate: "desc" }, { startedAt: "asc" }, { id: "asc" }], take: year ? undefined : 1001 }),
-    db().stravaActivity.count({ where: { userId, streamState: "pending" } }),
-    db().stravaActivity.findMany({ where: { userId, maximalEffort: true },
+      orderBy: [{ localDate: "desc" }, { startedAt: "asc" }, { id: "asc" }] }),
+    db().stravaActivity.count({ where: { userId, sport: { in: RUN_SPORTS }, streamState: "pending" } }),
+    db().stravaActivity.findMany({ where: { userId, sport: { in: RUN_SPORTS }, maximalEffort: true },
       orderBy: [{ startedAt: "desc" }, { id: "asc" }],
       select: { id: true, sourceId: true, name: true, sport: true, localDate: true, distanceMeters: true,
         movingSeconds: true, elapsedSeconds: true, averageHr: true, maxHr: true, elevationGainMeters: true, maximalEffort: true, streamState: true } }),
-    db().stravaActivity.groupBy({ by: ["localDate"], where: { userId,
+    db().stravaActivity.groupBy({ by: ["localDate"], where: { userId, sport: { in: RUN_SPORTS },
       localDate: { lt: calendarRange(today.slice(0, 7), today).start } },
       _sum: { distanceMeters: true, movingSeconds: true } }),
-    db().stravaActivity.findFirst({ where: { userId, movingSeconds: { gt: 0 }, distanceMeters: { gt: 0 },
+    db().stravaActivity.findFirst({ where: { userId, sport: { in: RUN_SPORTS }, movingSeconds: { gt: 0 }, distanceMeters: { gt: 0 },
       localDate: { gte: enduranceRange.start, lt: enduranceRange.end } },
       orderBy: [{ movingSeconds: "desc" }, { distanceMeters: "desc" }, { localDate: "desc" }, { id: "asc" }],
       select: { id: true, name: true, localDate: true, movingSeconds: true, distanceMeters: true } }),
-    db().stravaActivity.groupBy({ by: ["localDate"], where: { userId,
+    db().stravaActivity.groupBy({ by: ["localDate"], where: { userId, sport: { in: RUN_SPORTS },
       localDate: { gte: volumeRange.start, lt: volumeRange.end } },
       _sum: { distanceMeters: true, movingSeconds: true } }),
   ]);
   const settings = settingsSchema.safeParse({ maxHr: PRESET_MAX_HR });
   if (!settings.success) throw new StravaError("unavailable");
-  const selected = year ? rows : rows.slice(0, 1000);
+  // Full displayed weeks must not lose boundary days or sport totals to a
+  // shared run/non-run row cap. The date range still bounds this calendar read.
+  const selected = rows;
   const measurements = new Map<string, { above: number; measured: number; zoneSeconds: number[] }>();
   const samples = selected.flatMap((row) => {
-    if (row.streams === null) return [];
+    if (!isRunning(row.sport) || row.streams === null) return [];
     const value = streamSchema.safeParse(row.streams);
     if (!value.success) throw new StravaError("unavailable");
     const { threshold: hr, zones } = heartRateTimes([value.data], settings.data);
@@ -115,6 +119,7 @@ export async function dashboard(userId: string, month: string, weekDate?: string
   const monthActivities = weekDate || year ? activities : activities.filter((activity) => activity.localDate.startsWith(month));
   return {
     connected: !!connection, consentCurrent: connection?.consentVersion === STRAVA_CONSENT_VERSION,
+    sportsBackfillPending: !!connection && connection.sportsVersion < SPORTS_VERSION,
     syncActive: connection?.syncActive ?? false, syncPage: connection?.syncPage ?? 1,
     lastSyncedAt: connection?.lastSyncedAt?.toISOString() ?? null, retryAt: connection?.retryAt?.toISOString() ?? null,
     pending, month, year: year ?? null, weekDate: weekDate ? range.start : null, activities: monthActivities, settings: settings.data, ...heartRateTimes(samples, settings.data),
@@ -132,6 +137,6 @@ export async function dashboard(userId: string, month: string, weekDate?: string
     weeklyVolumes: weeklyVolumes(volumeDays.map((day) => ({ localDate: day.localDate,
       distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0 }))),
     maximalEfforts, performance: effortPerformance(maximalEfforts), endurance, today,
-    criticalSpeed: criticalSpeed(maximalEfforts), truncated: !year && rows.length > 1000,
+    criticalSpeed: criticalSpeed(maximalEfforts), truncated: false,
   };
 }

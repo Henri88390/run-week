@@ -246,7 +246,7 @@ overrides.set("../stream-metrics", {
 let reads = 0, connectionReads = 0, consent = STRAVA_CONSENT_VERSION;
 const queries = [];
 const ownedRows = Array.from({ length: 205 }, (_, i) => ({
-  id: `a-${String(i).padStart(3, "0")}`, userId: "alice", name: "Synthetic", localDate: "2020-01-01",
+  id: `a-${String(i).padStart(3, "0")}`, userId: "alice", sport: "Run", name: "Synthetic", localDate: "2020-01-01",
   streams: { time: Array.from({ length: 1001 }, (_, i) => i * 10),
     distance: Array.from({ length: 1001 }, (_, i) => i * 50),
     velocity_smooth: null, heartrate: Array(1001).fill(160), altitude: null },
@@ -254,6 +254,10 @@ const ownedRows = Array.from({ length: 205 }, (_, i) => ({
 ownedRows.push({ ...ownedRows[0], id: "bob-private", userId: "bob", name: "Not Alice", streams: {
   ...ownedRows[0].streams, time: [0, 5000], distance: [0, 50000], heartrate: [220, 220],
 } });
+for (const sport of ["Ride", "Walk", "Hike", "Swim", "WeightTraining", "NewStravaSport"]) {
+  ownedRows.push({ ...ownedRows[0], sport, id: `cross-${sport}`, name: "Not a running performance",
+    streams: { ...ownedRows[0].streams, time: [0, 1], distance: [0, 50000], heartrate: [240, 240] } });
+}
 overrides.set("@/features/account/server/db", { db: () => ({
   stravaConnection: { async findUnique({ where }) {
     connectionReads++;
@@ -262,8 +266,9 @@ overrides.set("@/features/account/server/db", { db: () => ({
   stravaActivity: { async findMany(query) {
     reads++;
     queries.push(query);
-    assert.deepEqual(Object.keys(query.where), ["userId"], "No page filters");
-    const owned = ownedRows.filter((row) => row.userId === query.where.userId);
+    assert.deepEqual(Object.keys(query.where), ["userId", "sport"], "No page filters; runs only");
+    assert.deepEqual(query.where.sport.in, ["Run", "TrailRun", "VirtualRun"]);
+    const owned = ownedRows.filter((row) => row.userId === query.where.userId && query.where.sport.in.includes(row.sport));
     const offset = query.cursor ? owned.findIndex((row) => row.id === query.cursor.id) + query.skip : 0;
     return owned.slice(offset, offset + query.take);
   } },

@@ -115,6 +115,8 @@ model StravaConnection {
   lastSyncedAt   DateTime?
   syncHistory    Json     @default("[]")
   elevationVersion Int    @default(0)
+  /// Completed all-sport historical summary import; independent of running/elevation coverage.
+  sportsVersion  Int      @default(0)
   generation     String   @default(uuid())
   jobs           StravaSyncJob[]
   retryAt        DateTime?
@@ -146,7 +148,7 @@ model StravaSyncJob {
   webhookKey    String?  @unique
   webhookEventTime Int?
   webhookFingerprint String?
-  /// Authoritative absence/non-running result fences later summary imports.
+  /// Authoritative absence. Targeted activity jobs also fence stale list updates.
   webhookDeleted Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

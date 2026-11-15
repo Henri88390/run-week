@@ -5,13 +5,14 @@ import { bestSectionsSchema, STRAVA_CONSENT_VERSION, streamSchema, type BestSect
 import { StravaError } from "./api";
 import { readActivityCache, writeActivityCache } from "./cache";
 import { heartRateRecords, HR_DURATIONS, insertRankedHr } from "../stream-metrics";
+import { RUN_SPORTS } from "../sports";
 
 /** Computes all-time rankings from this account's imported, recorded streams. */
 export async function accountBestSections(userId: string): Promise<BestSectionsData> {
   if (!userId) throw new StravaError("unauthorized", 401);
   const linked = await db().stravaConnection.findUnique({ where: { userId }, select: { consentVersion: true } });
   if (linked?.consentVersion !== STRAVA_CONSENT_VERSION) throw new StravaError("notConnected", 409);
-  const field = "dashboard:best-sections:v2";
+  const field = "dashboard:best-sections:v3";
   const cached = await readActivityCache(userId, field, bestSectionsSchema);
   if (cached) return cached;
   const data: BestSectionsData = {
@@ -23,7 +24,7 @@ export async function accountBestSections(userId: string): Promise<BestSectionsD
   let cursor: string | undefined;
   for (;;) {
     const rows = await db().stravaActivity.findMany({
-      where: { userId }, orderBy: { id: "asc" }, take: 100,
+      where: { userId, sport: { in: RUN_SPORTS } }, orderBy: { id: "asc" }, take: 100,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: { id: true, name: true, localDate: true, streams: true },
     });

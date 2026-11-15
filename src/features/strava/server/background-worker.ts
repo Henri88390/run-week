@@ -12,6 +12,7 @@ import { saveSummary } from "./save-summary";
 import { clearActivityCache } from "./cache";
 import { logStravaFailure } from "./diagnostics";
 import { athleteKey } from "./athlete-key";
+import { isRunning, RUN_SPORTS, SPORTS_VERSION } from "../sports";
 
 export async function syncChunk(jobId: string, version: number) {
   const found = await db().stravaSyncJob.findUnique({ where: { id: jobId } });
@@ -98,43 +99,46 @@ export async function syncChunk(jobId: string, version: number) {
       const result = await fetchActivity(tokens.access_token, job.sourceId);
       if (result.data && athleteKey(config.encryptionKey, result.data.athlete.id) !== claimed.athleteKey)
         throw new StravaError("unavailable");
-      const run = result.data && ["Run", "TrailRun", "VirtualRun"].includes(result.data.sport_type ?? result.data.type);
+      const run = result.data && isRunning(result.data.sport_type ?? result.data.type);
       await commit(async (tx) => {
-        if (run && result.data) {
+        if (result.data) {
           await saveSummary(tx, job.userId, result.data, true);
-          await tx.stravaActivity.updateMany({ where: { userId: job.userId, sourceId: job.sourceId ?? "" },
+          if (run) await tx.stravaActivity.updateMany({ where: { userId: job.userId, sourceId: job.sourceId ?? "" },
             data: { streams: Prisma.DbNull, streamState: "pending", elevationStreamState: "pending" } });
         } else {
-          // 404 means inaccessible/deleted; a changed sport is also no longer a retained run.
+          // Only authoritative absence removes an activity.
           await tx.stravaActivity.deleteMany({ where: { userId: job.userId, sourceId: job.sourceId ?? "" } });
         }
         await tx.stravaSyncJob.update({ where: { id: jobId }, data: {
-          webhookDeleted: !run, phase: "streams", summaries: { increment: 1 }, errorCode: null,
+          webhookDeleted: !result.data, phase: "streams", summaries: { increment: 1 }, errorCode: null,
           ...(!run ? { status: "completed" } : {}),
         } });
       });
       return result.delay ? await pause(result.delay) : { done: !run };
     }
-    if (job.phase === "summaries") {
+    if (job.phase === "summaries" || job.phase === "sports-summaries") {
       const result = await summaries(tokens.access_token, job.page,
         Math.max(0, Math.floor(Date.parse(`${job.start}T00:00:00Z`) / 1000) - 86400),
         Math.min(job.before, Math.floor(Date.parse(`${job.end}T00:00:00Z`) / 1000) + 86400), 200);
       await commit(async (tx) => {
         for (const activity of result.activities) {
           const date = activity.start_date_local.slice(0, 10);
-          if (date >= job.start && date < job.end) await saveSummary(tx, job.userId, activity);
+          // The cross-training catch-up is summary-only and must not alter
+          // running metadata/recording coverage owned by ordinary imports.
+          if (date >= job.start && date < job.end
+            && (job.kind !== "sports" || !isRunning(activity.sport_type ?? activity.type)))
+            await saveSummary(tx, job.userId, activity);
         }
         await tx.stravaSyncJob.update({ where: { id: jobId }, data: {
           page: { increment: 1 }, summaries: { increment: result.activities.filter((activity) =>
-            ["Run", "TrailRun", "VirtualRun"].includes(activity.sport_type ?? activity.type)
-              && activity.start_date_local.slice(0, 10) >= job.start && activity.start_date_local.slice(0, 10) < job.end).length },
-          ...(result.activities.length < 200 ? { phase: "streams" } : {}),
+            activity.start_date_local.slice(0, 10) >= job.start && activity.start_date_local.slice(0, 10) < job.end).length },
+          ...(result.activities.length < 200 ? { phase: job.kind === "sports" ? "sports-complete" : "streams" } : {}),
         } });
       });
       return result.delay ? await pause(result.delay) : { done: false };
     }
     const pendingStreams = { OR: [{ streamState: "pending" }, { elevationStreamState: "pending" }] };
-    const activity = await db().stravaActivity.findFirst({ where: { userId: job.userId, ...pendingStreams,
+    const activity = job.kind === "sports" ? null : await db().stravaActivity.findFirst({ where: { userId: job.userId, sport: { in: RUN_SPORTS }, ...pendingStreams,
       ...(job.kind === "webhook-activity" ? { sourceId: job.sourceId ?? "" }
         : { localDate: { gte: job.start, lt: job.end } }) }, orderBy: [{ startedAt: "desc" }, { id: "asc" }] });
     if (activity) {
@@ -165,9 +169,10 @@ export async function syncChunk(jobId: string, version: number) {
         ? job.end : new Date(job.before * 1000).toISOString().slice(0, 10);
       await tx.stravaConnection.update({ where: { userId: job.userId }, data: {
         syncActive: !!next,
-        ...(!next ? { lastSyncedAt: new Date(job.before * 1000) } : {}),
+        ...(!next && job.kind !== "sports" ? { lastSyncedAt: new Date(job.before * 1000) } : {}),
         ...(!next && job.kind === "elevation" ? { elevationVersion: 1 } : {}),
-        syncHistory: job.start < end ? [...history.filter((entry) => entry.start !== job.start || entry.end !== end),
+        ...(!next && job.kind === "sports" && job.phase === "sports-complete" ? { sportsVersion: SPORTS_VERSION } : {}),
+        syncHistory: job.kind !== "sports" && job.start < end ? [...history.filter((entry) => entry.start !== job.start || entry.end !== end),
           { start: job.start, end, syncedAt: new Date().toISOString() }] : history,
       } });
       await tx.stravaSyncJob.update({ where: { id: jobId }, data: next
