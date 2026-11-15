@@ -215,10 +215,19 @@ test("cross-training backfills completed accounts and shows accessible weekly sp
   await expect(crossToggle).toBeChecked();
   const periodCross = page.locator("[data-period-cross-training]");
   await expect(page.locator("[data-period-running]")).toContainText("Runs");
+  await expect(page.locator("[data-period-running] dt").filter({ hasText: /^Avg HR$/ })).toHaveCount(1);
+  await expect(page.locator("[data-period-running]")).toContainText(/Avg HR(\d+ bpm|—)/);
   await expect(periodCross.getByRole("heading", { name: "Cross-training" })).toBeVisible();
   await expect(periodCross.locator('[data-period-sport="Hike"]')).toContainText("Hiking");
   await expect(periodCross.locator('[data-period-sport="Swim"] [data-sport-icon="swimming"]')).toHaveCount(1);
   await expect(periodCross.locator("[data-period-cross-total]")).toContainText(/^Total\d+ h \d+ min$/);
+  await periodCross.locator("xpath=..").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary.png" }); // TEMP
+  await page.setViewportSize({ width: 375, height: 800 }); // TEMP
+  await periodCross.locator("xpath=..").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary-phone.png" }); // TEMP
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; }); // TEMP
+  await page.setViewportSize({ width: 1280, height: 720 }); // TEMP
+  await periodCross.locator("xpath=..").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary-dark.png" }); // TEMP
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; }); // TEMP
   const volume = page.locator("[data-volume-chart]").filter({ visible: true });
   await expect(volume.locator(".volume-cross")).toHaveCount(0);
   await volume.getByRole("radio", { name: "Time (h)", exact: true }).check();
@@ -274,7 +283,9 @@ test("cross-training backfills completed accounts and shows accessible weekly sp
   await expect(volume.locator(".volume-cross")).toHaveCount(0);
   await expect(volume.locator("[data-volume-legend]")).toHaveCount(0);
   await expect(periodCross).toHaveCount(0);
-  await expect(page.locator("[data-period-running]")).toHaveCount(0);
+  await expect(page.locator("[data-period-running]")).toHaveCount(1);
+  await expect(page.locator("[data-period-distance]")).toContainText("Distance");
+  await page.locator("[data-period-running]").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary-wide.png" }); // TEMP
   await expect(page.locator("dt").filter({ hasText: /^Runs$/ })).toHaveCount(1);
   await expect(page.locator("[data-cross-training-event]:visible")).toHaveCount(0);
   await expect(page.locator("[data-week-cross-training]:visible")).toHaveCount(0);
