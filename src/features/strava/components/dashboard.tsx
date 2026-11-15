@@ -20,6 +20,7 @@ import { MaximalEffort } from "./maximal-effort";
 import { PaceHistogram } from "./pace-histogram";
 import { MaxHrSetting } from "./max-hr-setting";
 import { useMaxHrFreshness } from "./max-hr-freshness";
+import { CALENDAR_ZONE_COLORS } from "../activity-zone-palette";
 import { MetricDefinition } from "./metric-definition";
 import { METRIC_DEFINITIONS } from "../metric-definitions";
 import { INDICATOR_MESSAGES } from "../indicator-messages";
@@ -337,9 +338,12 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
           <h2 className="min-w-0 text-xl font-semibold">{text.zones}</h2>
           <p className="shrink-0 text-sm text-stone-600">HRMax: {data.settings.maxHr ?? PRESET_MAX_HR} bpm</p>
         </div>
-          {zoneTotal > 0 ? <ul className="space-y-3">{data.zones.map((zone) => <li key={zone.zone}>
-            <div className="flex justify-between gap-2 text-sm"><span>{zoneLabels[zone.zone - 1]} · {formatDecimal(locale, zone.min)}–{formatDecimal(locale, zone.max)} bpm</span><span>{unit(zone.seconds)} ({formatDecimal(locale, zone.seconds / zoneTotal * 100)}%)</span></div>
-            <div className="mt-1 h-3 rounded bg-stone-100" aria-hidden="true"><div className="h-3 rounded bg-emerald-600" style={{ width: `${zone.seconds / zoneTotal * 100}%` }} /></div>
+          {zoneTotal > 0 ? <ul data-zone-chart className="space-y-3">{data.zones.map((zone) => <li key={zone.zone} data-zone-row={zone.zone}>
+            <div className="flex justify-between gap-2 text-sm"><span className="flex min-w-0 items-center gap-2">
+              <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: CALENDAR_ZONE_COLORS[zone.zone - 1] }} />
+              {zoneLabels[zone.zone - 1]} · {formatDecimal(locale, zone.min)}–{formatDecimal(locale, zone.max)} bpm</span><span>{unit(zone.seconds)} ({formatDecimal(locale, zone.seconds / zoneTotal * 100)}%)</span></div>
+            <div className="mt-1 h-3 rounded bg-stone-100" aria-hidden="true"><div data-zone-fill={zone.zone} className="h-3 rounded"
+              style={{ width: `${zone.seconds / zoneTotal * 100}%`, backgroundColor: CALENDAR_ZONE_COLORS[zone.zone - 1] }} /></div>
           </li>)}</ul> : <p>{text.unavailable}</p>}
         </article>
         <PaceHistogram distribution={data.paceDistribution} />

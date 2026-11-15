@@ -93,6 +93,24 @@ test("HRmax: activity chart and activities page edit/reset it and every zone and
   await expect(setting.locator("[data-max-hr-source]")).toHaveText("Custom");
   await expect(weekAbove).toHaveText("0 min · 0.0%");
   await expect(thresholdCard).toContainText("0 h 0 min (0.0%)");
+  // The zone-time chart uses the calendar's zone colors, in both themes.
+  const zoneColorsMatch = async () => {
+    for (let zone = 1; zone <= 5; zone++) {
+      const chart = await page.locator(`[data-zone-chart] [data-zone-fill="${zone}"]`).evaluate((node) => getComputedStyle(node).backgroundColor);
+      const calendar = await page.locator(`[data-zone-bar="${zone}"]`).first().evaluate((node) => getComputedStyle(node).backgroundColor);
+      expect(chart, `Z${zone}`).toBe(calendar);
+    }
+  };
+  await zoneColorsMatch();
+  await expect(page.locator('[data-zone-chart] [data-zone-fill="4"]')).toHaveAttribute("style", /width: 100%/);
+  await page.evaluate(() => localStorage.setItem("run-week-theme", "dark"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await zoneColorsMatch();
+  expect(await page.locator('[data-zone-chart] [data-zone-fill="2"]').evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgb(102, 128, 107)");
+  await page.evaluate(() => localStorage.setItem("run-week-theme", "light"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
   await editMaxHr(page, setting, "190");
   await expect(setting.locator("[data-max-hr]")).toHaveText("HRmax: 190 bpm");
