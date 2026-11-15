@@ -246,7 +246,7 @@ involved. While cross-training is shown, the period summary above the calendar
 has a Running container and a Cross-training container (time per sport plus a
 total). Day popovers still list every activity.
 Runs remain exactly `Run`, `TrailRun`, and `VirtualRun`; their zone colors,
-weekly running distance/time, HR charts, volume charts, endurance, maximal efforts
+weekly running distance/time, HR charts, volume distance, endurance, maximal efforts
 and top performances exclude every other sport. Non-running details do not offer
 running pace, splits, zones or maximal-effort controls.
 
@@ -744,8 +744,15 @@ moving-time-weighted average HR, and measured time/percentage in each HR zone.
 All summary durations use hours and minutes, rounded to the nearest minute.
 The training-volume chart below the calendar switches between distance (km, blue)
 and moving time (hours, green), with one series selected at a time and its axis
-always on the left. Points display their values and are joined by lines. Displayed distances are
+always on the left. It uses the activity-page chart style (soft panel, dashed
+grid, line with a light fill, dashed cursor and a value readout that shows the
+period total until a point is hovered or focused). Points display their values. Displayed distances are
 rounded to the nearest kilometer; point positions retain the exact totals.
+While cross-training is shown, the time view stacks running (orange) and
+cross-training active time (indigo) with the total on each point; Running and
+Cross-training checkboxes add or remove either series (at least one stays
+selected) and the areas, values, readout and axis follow. Distance stays
+running only, because distances of different sports are not comparable.
 Month view labels the X axis with the selected month's localized name and year.
 Year view groups
 by month, month view by Monday–Sunday weeks clipped to that month's dates, and

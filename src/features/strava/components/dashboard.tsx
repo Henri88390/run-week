@@ -286,7 +286,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
           </div>)}
         </div>
       </section>}
-      <VolumeChart buckets={data.volumeBuckets} view={yearly ? "year" : weekly ? "week" : "month"} />
+      <VolumeChart buckets={data.volumeBuckets} view={yearly ? "year" : weekly ? "week" : "month"} showCrossTraining={showCrossTraining} />
       <section className="grid gap-4 md:grid-cols-2">
         <article className="panel space-y-3"><div className="flex items-baseline justify-between gap-2">
           <h2 className="min-w-0 text-xl font-semibold">{text.zones}</h2>

@@ -13,6 +13,10 @@
   --chart-altitude: #57534e;
   --chart-blue: #2563eb;
   --chart-emerald: #059669;
+  --chart-run: #f97316;
+  --chart-cross: #4f46e5;
+  --chart-run-text: #c2410c;
+  --chart-cross-text: #4338ca;
   --chart-average-pace: #9f1239;
   --chart-dot-stroke: #ffffff;
   --calendar-zone-2: #10b981;
@@ -106,6 +110,10 @@ html[data-theme="dark"] {
   --chart-altitude: #d6d3d1;
   --chart-blue: #60a5fa;
   --chart-emerald: #34d399;
+  --chart-run: #fb923c;
+  --chart-cross: #818cf8;
+  --chart-run-text: #fdba74;
+  --chart-cross-text: #a5b4fc;
   --chart-average-pace: #fb7185;
   --chart-dot-stroke: #1c1917;
   --calendar-zone-2: #66806b;

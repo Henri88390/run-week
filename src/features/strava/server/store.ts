@@ -75,7 +75,7 @@ export async function dashboard(userId: string, month: string, weekDate?: string
   const enduranceRange = recentEnduranceRange(today);
   const period = year ? { view: "year" as const, year } : weekDate ? { view: "week" as const, date: weekDate } : { view: "month" as const, month };
   const volumeRange = syncPeriodRange(period);
-  const [connection, rows, pending, maximalEfforts, volumeDays, endurance, periodVolumeDays] = await Promise.all([
+  const [connection, rows, pending, maximalEfforts, volumeDays, endurance, periodVolumeDays, periodCrossDays] = await Promise.all([
     db().stravaConnection.findUnique({ where: { userId } }),
     db().stravaActivity.findMany({ where: { userId, localDate: { gte: range.start, lt: range.end } },
       orderBy: [{ localDate: "desc" }, { startedAt: "asc" }, { id: "asc" }] }),
@@ -94,6 +94,9 @@ export async function dashboard(userId: string, month: string, weekDate?: string
     db().stravaActivity.groupBy({ by: ["localDate"], where: { userId, sport: { in: RUN_SPORTS },
       localDate: { gte: volumeRange.start, lt: volumeRange.end } },
       _sum: { distanceMeters: true, movingSeconds: true } }),
+    db().stravaActivity.groupBy({ by: ["localDate"], where: { userId, sport: { notIn: RUN_SPORTS },
+      localDate: { gte: volumeRange.start, lt: volumeRange.end } },
+      _sum: { movingSeconds: true } }),
   ]);
   const settings = settingsSchema.safeParse({ maxHr: PRESET_MAX_HR });
   if (!settings.success) throw new StravaError("unavailable");
@@ -131,9 +134,11 @@ export async function dashboard(userId: string, month: string, weekDate?: string
         runs.reduce((sum, run) => sum + (measurements.get(run.id)?.zoneSeconds[zone] ?? 0), 0)) };
     }) : [],
     paceDistribution: paceHistogram(samples),
-    volumeBuckets: volumeBuckets(period, periodVolumeDays.map((day) => ({
+    volumeBuckets: volumeBuckets(period, [...periodVolumeDays.map((day) => ({
       localDate: day.localDate, distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0,
-    }))),
+    })), ...periodCrossDays.map((day) => ({
+      localDate: day.localDate, distanceMeters: 0, movingSeconds: 0, crossSeconds: day._sum.movingSeconds ?? 0,
+    }))]),
     weeklyVolumes: weeklyVolumes(volumeDays.map((day) => ({ localDate: day.localDate,
       distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0 }))),
     maximalEfforts, performance: effortPerformance(maximalEfforts), endurance, today,

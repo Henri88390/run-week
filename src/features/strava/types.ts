@@ -61,7 +61,7 @@ export const dashboardSchema = z.object({
   maximalEfforts: z.array(activitySummarySchema),
   weeklyVolumes: z.array(z.object({ start: z.iso.date(), distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative() })),
   volumeBuckets: z.array(z.object({ start: z.iso.date(), end: z.iso.date(),
-    distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative() })),
+    distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative(), crossSeconds: finite.nonnegative().default(0) })),
   performance: z.object({ activityId: z.string(), speed: finite, vdot: finite.nullable(), count: finite }).nullable(),
   endurance: z.object({ id: z.string(), name: z.string(), localDate: z.iso.date(),
     movingSeconds: finite.positive(), distanceMeters: finite.positive() }).nullable(),

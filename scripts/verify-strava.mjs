@@ -141,7 +141,7 @@ const volumeSamples = [
 ];
 const monthlyVolume = volumeBuckets({ view: "month", month: "2026-10" }, volumeSamples);
 assert.equal(monthlyVolume.length, 5);
-assert.deepEqual(monthlyVolume[0], { start: "2026-10-01", end: "2026-10-04", distanceMeters: 15000, movingSeconds: 5400 });
+assert.deepEqual(monthlyVolume[0], { start: "2026-10-01", end: "2026-10-04", distanceMeters: 15000, movingSeconds: 5400, crossSeconds: 0 });
 assert.equal(monthlyVolume.at(-1).end, "2026-10-31");
 assert.equal(monthlyVolume.reduce((sum, bucket) => sum + bucket.distanceMeters, 0), 23000);
 assert.equal(monthlyVolume[2].distanceMeters, 0);
@@ -155,6 +155,11 @@ assert.equal(dailyVolume[0].start, "2026-09-28");
 assert.equal(dailyVolume[3].distanceMeters, 5000);
 assert.equal(dailyVolume[6].distanceMeters, 10000);
 assert.equal(volumeBuckets({ view: "month", month: "2024-02" }, []).at(-1).end, "2024-02-29");
+const crossVolume = volumeBuckets({ view: "week", date: "2026-10-01" }, [...volumeSamples,
+  { localDate: "2026-10-01", distanceMeters: 0, movingSeconds: 0, crossSeconds: 2400 }]);
+assert.equal(crossVolume[3].crossSeconds, 2400);
+assert.equal(crossVolume[3].distanceMeters, 5000);
+assert.equal(crossVolume[4].crossSeconds, 0);
 for (const locale of ["en", "fr", "de", "es", "pt", "pl", "ru", "uk", "be", "it"])
   for (const messages of [WEEKLY_VOLUME_MESSAGES[locale], METRIC_DEFINITIONS[locale], INDICATOR_MESSAGES[locale], { daniels: DANIELS_MESSAGES[locale] }])
     for (const value of Object.values(messages)) assert.ok(value.length > 0);
