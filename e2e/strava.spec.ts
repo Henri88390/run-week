@@ -221,16 +221,10 @@ test("cross-training backfills completed accounts and shows accessible weekly sp
   await expect(periodCross.locator('[data-period-sport="Hike"]')).toContainText("Hiking");
   await expect(periodCross.locator('[data-period-sport="Swim"] [data-sport-icon="swimming"]')).toHaveCount(1);
   await expect(periodCross.locator("[data-period-cross-total]")).toContainText(/^Total\d+ h \d+ min$/);
-  await periodCross.locator("xpath=..").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary.png" }); // TEMP
-  await page.setViewportSize({ width: 375, height: 800 }); // TEMP
-  await periodCross.locator("xpath=..").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary-phone.png" }); // TEMP
-  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; }); // TEMP
-  await page.setViewportSize({ width: 1280, height: 720 }); // TEMP
-  await periodCross.locator("xpath=..").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary-dark.png" }); // TEMP
-  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; }); // TEMP
   const volume = page.locator("[data-volume-chart]").filter({ visible: true });
   await expect(volume.locator(".volume-cross")).toHaveCount(0);
   await volume.getByRole("radio", { name: "Time (h)", exact: true }).check();
+  await expect(volume.getByRole("radiogroup", { name: "Training volume: Metric" }).getByRole("radio", { name: "Time (h)" })).toBeChecked();
   await expect(volume.locator(".volume-running")).toHaveCount(1);
   await expect(volume.locator(".volume-cross")).toHaveCount(1);
   await expect(volume.locator("[data-volume-legend]")).toContainText("Cross-training");
@@ -258,7 +252,6 @@ test("cross-training backfills completed accounts and shows accessible weekly sp
   const labelColor = (key: string) => volume.locator(`[data-volume-series-label="${key}"]`).evaluate((node) => getComputedStyle(node).color);
   expect(await labelColor("running")).not.toBe(await labelColor("cross"));
   await expect(volume.locator('[data-volume-dot="total"]')).not.toHaveCount(0);
-  await volume.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-volume-stacked.png" }); // TEMP
   await layout.getByRole("radio", { name: "Separate lines" }).check();
   await expect(volume.locator("[data-volume-layout-hint]")).toHaveText("Each sport drawn on its own from zero, to compare them.");
   await expect(volume.locator('[data-volume-dot="total"]')).toHaveCount(0);
@@ -268,24 +261,42 @@ test("cross-training backfills completed accounts and shows accessible weekly sp
   await expect(volume.locator('[data-volume-dot="cross"]')).toHaveCount(bucketCount);
   await expect(volume.locator('[data-volume-value="cross"]').first()).toHaveText("2.0");
   await expect(volume.locator('[data-volume-value="running"]').first()).toHaveText("1.0");
-  await volume.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-volume-separate.png" }); // TEMP
-  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; }); // TEMP
-  await volume.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-volume-separate-dark.png" }); // TEMP
-  await layout.getByRole("radio", { name: "Stacked total" }).check(); // TEMP
-  await volume.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-volume-stacked-dark.png" }); // TEMP
-  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; }); // TEMP
   await runSeries.uncheck();
   await expect(layout).toHaveCount(0);
   await runSeries.check();
   await layout.getByRole("radio", { name: "Stacked total" }).check();
   await expect(volume.locator('[data-volume-dot="total"]')).not.toHaveCount(0);
+  const crossMode = volume.getByRole("radiogroup", { name: "Training volume: Cross-training" });
+  await expect(crossMode.getByRole("radio", { name: "Combined" })).toBeChecked();
+  await crossMode.getByRole("radio", { name: "By sport" }).check();
+  await expect(volume.locator(".volume-cross")).toHaveCount(0);
+  await expect(crossSeries).toHaveCount(0);
+  await expect(volume.locator(".volume-cycling")).toHaveCount(1);
+  await expect(volume.locator(".volume-swimming")).toHaveCount(1);
+  await expect(volume.locator(".volume-cycling .recharts-area-curve")).toHaveAttribute("stroke", "var(--chart-sport-cycling)");
+  const cyclingSeries = volume.getByRole("checkbox", { name: "Training volume: Cycling", exact: true });
+  await expect(cyclingSeries).toBeChecked();
+  await expect(volume.locator('[data-volume-series-label="cycling"] [data-sport-icon="cycling"]')).toHaveCount(1);
+  expect(await labelColor("cycling")).not.toBe(await labelColor("swimming"));
+  await volume.locator('[role="img"]').first().focus();
+  await expect(volume.locator('[aria-live="polite"]')).toContainText(/Running .* · Cycling .* · Total /);
+  await cyclingSeries.uncheck();
+  await expect(volume.locator(".volume-cycling")).toHaveCount(0);
+  await expect(volume.locator(".volume-swimming")).toHaveCount(1);
+  await layout.getByRole("radio", { name: "Separate lines" }).check();
+  await expect(volume.locator('[data-volume-dot="swimming"]')).toHaveCount(bucketCount);
+  await expect(volume.locator("[data-volume-bucket]")).toHaveCount(bucketCount);
+  await cyclingSeries.check();
+  await layout.getByRole("radio", { name: "Stacked total" }).check();
+  await crossMode.getByRole("radio", { name: "Combined" }).check();
+  await expect(volume.locator(".volume-cross")).toHaveCount(1);
+  await expect(volume.locator(".volume-cycling")).toHaveCount(0);
   await crossToggle.uncheck();
   await expect(volume.locator(".volume-cross")).toHaveCount(0);
   await expect(volume.locator("[data-volume-legend]")).toHaveCount(0);
   await expect(periodCross).toHaveCount(0);
   await expect(page.locator("[data-period-running]")).toHaveCount(1);
   await expect(page.locator("[data-period-distance]")).toContainText("Distance");
-  await page.locator("[data-period-running]").screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-summary-wide.png" }); // TEMP
   await expect(page.locator("dt").filter({ hasText: /^Runs$/ })).toHaveCount(1);
   await expect(page.locator("[data-cross-training-event]:visible")).toHaveCount(0);
   await expect(page.locator("[data-week-cross-training]:visible")).toHaveCount(0);
@@ -1321,10 +1332,6 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(granularity.getByRole("radio", { name: "Per week" })).not.toBeChecked();
     await granularity.getByRole("radio", { name: "Per week" }).check();
     await expect(page.locator("[data-volume-chart] [data-volume-bucket]").filter({ visible: true })).toHaveCount(14);
-    await page.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-months.png", fullPage: true }); // TEMP
-    await page.setViewportSize({ width: 375, height: 800 }); // TEMP
-    await page.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-months-phone.png" }); // TEMP
-    await page.setViewportSize({ width: 1280, height: 720 }); // TEMP
     await expect(page.getByRole("button", { name: "Next period" })).toBeDisabled();
     await page.getByRole("button", { name: "Previous period" }).click();
     await expect(page).toHaveURL(/view=months&month=2026-08&count=3/);

@@ -12,18 +12,20 @@ export function defaultVolumeGranularity(period: SyncPeriod): VolumeGranularity 
   return period.view === "year" ? "month" : period.view === "week" ? "day" : "week";
 }
 
-/** Running distance/time plus non-running active time per chart bucket. */
-export function volumeBuckets(period: SyncPeriod, days: readonly { localDate: string; distanceMeters: number; movingSeconds: number; crossSeconds?: number }[],
+/** Running distance/time plus non-running active time (total and per Strava sport) per chart bucket. */
+export function volumeBuckets(period: SyncPeriod,
+  days: readonly { localDate: string; distanceMeters: number; movingSeconds: number; crossSeconds?: number; sport?: string }[],
   granularity = defaultVolumeGranularity(period)) {
   const range = syncPeriodRange(period);
   const bucketKey = (date: string) => granularity === "month" ? date.slice(0, 7)
     : granularity === "day" ? date : calendarRange(date.slice(0, 7), date).start;
-  const buckets = new Map<string, { start: string; end: string; distanceMeters: number; movingSeconds: number; crossSeconds: number }>();
+  const buckets = new Map<string, { start: string; end: string; distanceMeters: number; movingSeconds: number; crossSeconds: number;
+    crossSports: Record<string, number> }>();
   const cursor = new Date(`${range.start}T00:00:00Z`);
   while (cursor.toISOString().slice(0, 10) < range.end) {
     const date = cursor.toISOString().slice(0, 10);
     const key = bucketKey(date);
-    const bucket = buckets.get(key) ?? { start: date, end: date, distanceMeters: 0, movingSeconds: 0, crossSeconds: 0 };
+    const bucket = buckets.get(key) ?? { start: date, end: date, distanceMeters: 0, movingSeconds: 0, crossSeconds: 0, crossSports: {} };
     bucket.end = date;
     buckets.set(key, bucket);
     cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -36,6 +38,7 @@ export function volumeBuckets(period: SyncPeriod, days: readonly { localDate: st
       bucket.distanceMeters += day.distanceMeters;
       bucket.movingSeconds += day.movingSeconds;
       bucket.crossSeconds += day.crossSeconds ?? 0;
+      if (day.sport && day.crossSeconds) bucket.crossSports[day.sport] = (bucket.crossSports[day.sport] ?? 0) + day.crossSeconds;
     }
   }
   return [...buckets.values()];

@@ -97,7 +97,7 @@ export async function dashboard(userId: string, period: SyncPeriod, today = new 
     db().stravaActivity.groupBy({ by: ["localDate"], where: { userId, sport: { in: RUN_SPORTS },
       localDate: { gte: volumeRange.start, lt: volumeRange.end } },
       _sum: { distanceMeters: true, movingSeconds: true } }),
-    db().stravaActivity.groupBy({ by: ["localDate"], where: { userId, sport: { notIn: RUN_SPORTS },
+    db().stravaActivity.groupBy({ by: ["localDate", "sport"], where: { userId, sport: { notIn: RUN_SPORTS },
       localDate: { gte: volumeRange.start, lt: volumeRange.end } },
       _sum: { movingSeconds: true } }),
   ]);
@@ -126,7 +126,7 @@ export async function dashboard(userId: string, period: SyncPeriod, today = new 
   const chartDays = [...periodVolumeDays.map((day) => ({
     localDate: day.localDate, distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0,
   })), ...periodCrossDays.map((day) => ({
-    localDate: day.localDate, distanceMeters: 0, movingSeconds: 0, crossSeconds: day._sum.movingSeconds ?? 0,
+    localDate: day.localDate, distanceMeters: 0, movingSeconds: 0, crossSeconds: day._sum.movingSeconds ?? 0, sport: day.sport,
   }))];
   return {
     connected: !!connection, consentCurrent: connection?.consentVersion === STRAVA_CONSENT_VERSION,

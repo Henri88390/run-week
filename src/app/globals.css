@@ -385,6 +385,39 @@ html[data-theme="dark"] [data-sport-tone="skating"] { --sport-bg: #3b1d25; --spo
 html[data-theme="dark"] [data-sport-tone="climbing"] { --sport-bg: #283318; --sport-border: #50662c; --sport-fg: #d9f99d; }
 html[data-theme="dark"] [data-sport-tone="racket"] { --sport-bg: #36311a; --sport-border: #6e6230; --sport-fg: #fef08a; }
 
+/* Volume chart lines and labels per sport family, in the hues of the calendar chips above. */
+:root {
+  --chart-sport-cycling: #16a34a; --chart-sport-cycling-text: #15803d;
+  --chart-sport-swimming: #06b6d4; --chart-sport-swimming-text: #0e7490;
+  --chart-sport-walking: #ec4899; --chart-sport-walking-text: #be185d;
+  --chart-sport-hiking: #a0703c; --chart-sport-hiking-text: #7c5326;
+  --chart-sport-strength: #64748b; --chart-sport-strength-text: #334155;
+  --chart-sport-workout: #ef4444; --chart-sport-workout-text: #b91c1c;
+  --chart-sport-elliptical: #8b5cf6; --chart-sport-elliptical-text: #6d28d9;
+  --chart-sport-yoga: #14b8a6; --chart-sport-yoga-text: #0f766e;
+  --chart-sport-rowing: #3b82f6; --chart-sport-rowing-text: #1d4ed8;
+  --chart-sport-skiing: #0ea5e9; --chart-sport-skiing-text: #0369a1;
+  --chart-sport-skating: #f43f5e; --chart-sport-skating-text: #be123c;
+  --chart-sport-climbing: #65a30d; --chart-sport-climbing-text: #4d7c0f;
+  --chart-sport-racket: #eab308; --chart-sport-racket-text: #a16207;
+  --chart-sport-other: var(--chart-cross); --chart-sport-other-text: var(--chart-cross-text);
+}
+html[data-theme="dark"] {
+  --chart-sport-cycling: #4ade80; --chart-sport-cycling-text: #86efac;
+  --chart-sport-swimming: #22d3ee; --chart-sport-swimming-text: #67e8f9;
+  --chart-sport-walking: #f472b6; --chart-sport-walking-text: #f9a8d4;
+  --chart-sport-hiking: #c8996a; --chart-sport-hiking-text: #e0c09c;
+  --chart-sport-strength: #94a3b8; --chart-sport-strength-text: #cbd5e1;
+  --chart-sport-workout: #f87171; --chart-sport-workout-text: #fca5a5;
+  --chart-sport-elliptical: #a78bfa; --chart-sport-elliptical-text: #c4b5fd;
+  --chart-sport-yoga: #2dd4bf; --chart-sport-yoga-text: #5eead4;
+  --chart-sport-rowing: #60a5fa; --chart-sport-rowing-text: #93c5fd;
+  --chart-sport-skiing: #38bdf8; --chart-sport-skiing-text: #7dd3fc;
+  --chart-sport-skating: #fb7185; --chart-sport-skating-text: #fda4af;
+  --chart-sport-climbing: #a3e635; --chart-sport-climbing-text: #bef264;
+  --chart-sport-racket: #facc15; --chart-sport-racket-text: #fde047;
+}
+
 html[data-theme="dark"] [data-training-simulator] .bg-emerald-50 {
   background-color: #292e29;
 }

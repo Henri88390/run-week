@@ -54,7 +54,8 @@ export const bestSectionsSchema = z.object({
 });
 export type BestSectionsData = z.infer<typeof bestSectionsSchema>;
 const volumeBucketSchema = z.object({ start: z.iso.date(), end: z.iso.date(),
-  distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative(), crossSeconds: finite.nonnegative().default(0) });
+  distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative(), crossSeconds: finite.nonnegative().default(0),
+  crossSports: z.record(z.string().min(1).max(80), finite.nonnegative()).default({}) });
 export const dashboardSchema = z.object({
   sportsBackfillPending: z.boolean().default(false),
   connected: z.boolean(), consentCurrent: z.boolean(), syncActive: z.boolean(), syncPage: finite,
