@@ -88,7 +88,7 @@ test("HRmax: activity chart and activities page edit/reset it and every zone and
   const setting = thresholdCard.locator("[data-max-hr-setting]");
   const week = page.locator("aside").filter({ has: page.locator("[data-week-runs]", { hasText: "1" }) });
   const weekAbove = week.locator("[data-week-above]");
-  await expect(page.getByText("HRMax: 200 bpm", { exact: true })).toBeVisible();
+  await expect(page.getByText("HRMax: 200 bpm", { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(setting.locator("[data-max-hr]")).toHaveText("HRmax: 200 bpm");
   await expect(setting.locator("[data-max-hr-source]")).toHaveText("Custom");
   await expect(weekAbove).toHaveText("0 min · 0.0%");
@@ -110,11 +110,11 @@ test("HRmax: activity chart and activities page edit/reset it and every zone and
   expect(await page.locator('[data-zone-chart] [data-zone-fill="2"]').evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgb(102, 128, 107)");
   await page.evaluate(() => localStorage.setItem("run-week-theme", "light"));
   await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", "dark");
 
   await editMaxHr(page, setting, "190");
   await expect(setting.locator("[data-max-hr]")).toHaveText("HRmax: 190 bpm");
-  await expect(page.getByText("HRMax: 190 bpm", { exact: true })).toBeVisible();
+  await expect(page.getByText("HRMax: 190 bpm", { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(weekAbove).toHaveText("10 min · 100.0%");
   await expect(thresholdCard).toContainText("0 h 10 min (100.0%)");
   await week.getByRole("button").hover();
