@@ -703,8 +703,11 @@ when a custom value is set; the same control appears in the Activities page's
 time-above-threshold card. The value is saved with the account
 (`RunningAnalyticsSettings.maxHr`, `PUT /api/strava/settings` with
 `{ "maxHr": number | null }`; `null` restores the default) and every zone,
-calendar color and dashboard statistic is recomputed from it. Disconnecting
-Strava deletes it. Manual threshold settings and maximal-effort confirmation
+calendar color, weekly and period above-threshold time and dashboard statistic is
+recomputed from it. Pages kept alive for back/forward navigation reload their
+data when they reappear with an older HRmax. Disconnecting
+Strava deletes it. `npm run test:e2e -- e2e/max-hr.spec.ts` checks the setting on
+seeded data in about 30 seconds. Manual threshold settings and maximal-effort confirmation
 controls are hidden on the dashboard. Each activity detail has a saved maximal-effort
 checkbox and hover/focus help explaining provisional performance, critical speed
 and D′, minimum effort requirements and elapsed-time use. Race-equivalent VDOT

@@ -17,6 +17,7 @@ import { ACTIVITY_SUMMARY_MESSAGES } from "../activity-summary-messages";
 import { DisclosureHeading } from "./disclosure-heading";
 import { isRunning } from "../sports";
 import { CROSS_TRAINING_MESSAGES, sportLabel } from "../cross-training-messages";
+import { useMaxHrFreshness } from "./max-hr-freshness";
 
 export type { ChartPoint } from "./activity-chart";
 export function ActivityDetail({ activity, points, splits, zoneTimes, zoneIntervals, maxHr }: {
@@ -25,6 +26,7 @@ export function ActivityDetail({ activity, points, splits, zoneTimes, zoneInterv
   zoneIntervals: ZoneInterval[]; maxHr: { value: number; custom: boolean };
 }) {
   const { locale, t } = useI18n();
+  useMaxHrFreshness(maxHr);
   const text = STRAVA_MESSAGES[locale];
   const running = isRunning(activity.sport);
   const duration = (seconds: number) => {

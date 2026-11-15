@@ -9,6 +9,7 @@ import { PRESET_MAX_HR } from "../analytics";
 import { HEART_RATE_MESSAGES } from "../heart-rate-messages";
 import { MAX_HR_MESSAGES } from "../max-hr-messages";
 import { ACTIVITY_QUERY_KEY } from "./activity-query";
+import { rememberSavedMaxHr } from "./max-hr-freshness";
 
 /** Account-wide HRmax: saving or resetting recomputes every zone on the server. */
 export function MaxHrSetting({ value, custom }: { value: number; custom: boolean }) {
@@ -39,7 +40,9 @@ export function MaxHrSetting({ value, custom }: { value: number; custom: boolean
         body: JSON.stringify({ maxHr }), signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error(String(response.status));
-      queries.removeQueries({ queryKey: ACTIVITY_QUERY_KEY });
+      rememberSavedMaxHr(maxHr === null ? { value: PRESET_MAX_HR, custom: false } : { value: maxHr, custom: true });
+      // Invalidate rather than remove, so pages kept for back/forward navigation refetch too.
+      void queries.invalidateQueries({ queryKey: ACTIVITY_QUERY_KEY });
       setStatus(maxHr === null ? "restored" : "saved");
       if (editing) close();
       startRefresh(() => router.refresh());

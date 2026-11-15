@@ -19,6 +19,7 @@ import { periodAnchor, periodFromSearch, useActivityQuery } from "./activity-que
 import { MaximalEffort } from "./maximal-effort";
 import { PaceHistogram } from "./pace-histogram";
 import { MaxHrSetting } from "./max-hr-setting";
+import { useMaxHrFreshness } from "./max-hr-freshness";
 import { MetricDefinition } from "./metric-definition";
 import { METRIC_DEFINITIONS } from "../metric-definitions";
 import { INDICATOR_MESSAGES } from "../indicator-messages";
@@ -39,6 +40,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
   const period = periodFromSearch(searchParams, metrics, initialData);
   const query = useActivityQuery(period, initialData);
   const data = query.data;
+  useMaxHrFreshness({ value: data.settings.maxHr ?? PRESET_MAX_HR, custom: data.maxHrCustom });
   const [showCrossTraining, setShowCrossTraining] = useState(true);
   const notice = searchParams.has("strava") ? initialNotice : undefined;
   const calendarMonths = useMemo(() => {
