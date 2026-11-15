@@ -3,15 +3,17 @@
 import { keepPreviousData, QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { dashboardSchema, type DashboardData } from "../types";
-import { syncPeriodSchema, type SyncPeriod } from "../sync-period";
+import { MONTH_COUNTS, syncPeriodSchema, type SyncPeriod } from "../sync-period";
 import { calendarRange } from "../analytics";
 
 export const ACTIVITY_QUERY_KEY = ["strava-activities"] as const;
 const ACTIVITY_CACHE_TTL = 300_000;
 
 export function activityPeriod(data: DashboardData): SyncPeriod {
+  const count = MONTH_COUNTS.find((value) => Number(value) === data.monthCount);
   return data.year ? { view: "year", year: data.year }
-    : data.weekDate ? { view: "week", date: data.weekDate } : { view: "month", month: data.month };
+    : data.weekDate ? { view: "week", date: data.weekDate }
+      : count ? { view: "months", month: data.month, count } : { view: "month", month: data.month };
 }
 
 /** Mirrors the defaults of the server page so client-side URL changes resolve to the same period. */
@@ -21,7 +23,8 @@ export function periodFromSearch(search: URLSearchParams, metrics: boolean, init
   const month = search.get("month");
   const candidate = view === "year" ? { view, year: search.get("year") ?? today.slice(0, 4) }
     : view === "week" ? { view, date: search.get("date") ?? (month ? `${month}-01` : today) }
-      : { view: "month", month: month ?? today.slice(0, 7) };
+      : view === "months" ? { view, month: month ?? today.slice(0, 7), count: search.get("count") ?? "3" }
+        : { view: "month", month: month ?? today.slice(0, 7) };
   const parsed = syncPeriodSchema.safeParse(candidate);
   if (!parsed.success) return activityPeriod(initialData);
   return parsed.data.view === "week"
@@ -34,7 +37,7 @@ function samePeriod(a: SyncPeriod, b: SyncPeriod) {
 
 /** Date the user navigated from, kept in the URL so switching views returns to the same week/month. */
 export function periodAnchor(search: URLSearchParams, period: SyncPeriod): string {
-  if (period.view === "month") return `${period.month}-01`;
+  if (period.view === "month" || period.view === "months") return `${period.month}-01`;
   if (period.view === "week") {
     const date = search.get("date");
     return date && /^(19|20)\d{2}-\d{2}-\d{2}$/.test(date) && calendarRange(date.slice(0, 7), date).start === period.date

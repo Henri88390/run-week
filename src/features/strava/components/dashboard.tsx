@@ -1,12 +1,12 @@
 "use client";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { formatDate, formatDecimal, formatInteger, weekdayName } from "@/features/i18n/locales";
 import { STRAVA_MESSAGES, stravaNoticeMessage } from "../messages";
 import type { DashboardData } from "../types";
-import { calendarRange, roundedDuration, PRESET_MAX_HR, speedRetention, danielsEstimates } from "../analytics";
+import { calendarRange, roundedDuration, PRESET_MAX_HR, shiftMonth, speedRetention, danielsEstimates } from "../analytics";
 import { HEART_RATE_MESSAGES } from "../heart-rate-messages";
 import { CalendarDay } from "./calendar-day";
 import { CALENDAR_MESSAGES } from "../calendar-messages";
@@ -71,6 +71,12 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
   const selectedMonth = period.view === "year" ? `${period.year}-01` : period.view === "week" ? period.date.slice(0, 7) : period.month;
   const showWeek = selectedWeek !== null;
   const showYear = selectedYear !== null;
+  const monthView = !showWeek && !showYear;
+  const monthCount = period.view === "months" ? Number(period.count) : 1;
+  const monthsLabel = (count: number) => new Intl.NumberFormat(locale, { style: "unit", unit: "month", unitDisplay: "long" }).format(count);
+  const monthSpan = (first: string, last: string) => new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" })
+    .formatRange(new Date(`${first}-01T00:00:00Z`), new Date(`${last}-01T00:00:00Z`));
+  const firstDataMonth = shiftMonth(data.month, 1 - data.monthCount);
   const anchor = periodAnchor(searchParams, period);
   // Shallow navigation keeps the server page untouched so cached periods render instantly.
   const navigate = (url: string) => window.history.pushState(null, "", url);
@@ -89,9 +95,10 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
   const noticeText = stravaNoticeMessage(locale, notice, linkedEmail);
   const zoneTotal = data.zones.reduce((s, z) => s + z.seconds, 0);
   const thresholdTotal = data.threshold ? data.threshold.below + data.threshold.above : 0;
-  const periodUrl = (week: boolean, value: string) => metrics
+  const periodUrl = (week: boolean, value: string, count = 1) => metrics
     ? `/running-metrics?month=${value.slice(0, 7)}`
-    : week ? `/activities?view=week&date=${value}` : `/activities?month=${value.slice(0, 7)}`;
+    : week ? `/activities?view=week&date=${value}`
+      : count > 1 ? `/activities?view=months&month=${value.slice(0, 7)}&count=${count}` : `/activities?month=${value.slice(0, 7)}`;
   const yearUrl = (value: string) => {
     const month = value.slice(0, 7) < data.today.slice(0, 7) ? value.slice(0, 7) : data.today.slice(0, 7);
     return `/activities?view=year&year=${value.slice(0, 4)}&month=${month}`;
@@ -100,9 +107,11 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
     const date = new Date(`${showYear ? anchor : selectedWeek ?? `${selectedMonth}-01`}T00:00:00Z`);
     if (showYear) date.setUTCFullYear(date.getUTCFullYear() + direction);
     else if (showWeek) date.setUTCDate(date.getUTCDate() + direction * 7);
-    else date.setUTCMonth(date.getUTCMonth() + direction);
-    const value = date.toISOString().slice(0, 10);
-    return /^(19|20)\d{2}-/.test(value) ? showYear ? yearUrl(value) : periodUrl(showWeek, value) : null;
+    else date.setUTCMonth(date.getUTCMonth() + direction * monthCount);
+    // A multi-month span moves by its length but never ends after the current month.
+    const value = !showYear && !showWeek && date.toISOString().slice(0, 7) > data.today.slice(0, 7)
+      ? `${data.today.slice(0, 7)}-01` : date.toISOString().slice(0, 10);
+    return /^(19|20)\d{2}-/.test(value) ? showYear ? yearUrl(value) : periodUrl(showWeek, value, monthCount) : null;
   };
   const previous = shiftedPeriod(-1);
   const currentWeek = calendarRange(data.today.slice(0, 7), data.today).start;
@@ -123,15 +132,28 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
       </div>
     </div>}
       <div className="w-full space-y-3 lg:col-start-2 lg:w-80">
-        {!metrics && <div className="flex rounded-xl bg-stone-100 p-1" aria-label={text.calendar}>
-          {[{ week: true, label: navigation.week }, { week: false, label: navigation.month }].map((view) =>
-            <Link key={view.label} href={periodUrl(view.week, anchor)} prefetch={false} onClick={linkNavigate}
-              aria-current={!showYear && showWeek === view.week ? "page" : undefined}
-              className={`flex-1 rounded-lg px-3 py-2 text-center text-sm font-semibold focus-visible:outline-2 ${!showYear && showWeek === view.week ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>
-              {view.label}
-            </Link>)}
-          <Link href={yearUrl(anchor)} prefetch={false} onClick={linkNavigate} aria-current={showYear ? "page" : undefined}
-            className={`flex-1 rounded-lg px-3 py-2 text-center text-sm font-semibold focus-visible:outline-2 ${showYear ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>{yearLabel}</Link>
+        {!metrics && <div className="flex gap-0.5 rounded-xl bg-stone-100 p-1" aria-label={text.calendar}>
+          <Link href={periodUrl(true, anchor)} prefetch={false} onClick={linkNavigate} data-period-view="week"
+            aria-current={showWeek ? "page" : undefined}
+            className={`min-w-0 flex-1 rounded-lg px-2 py-2 text-center text-sm font-semibold whitespace-nowrap focus-visible:outline-2 ${showWeek ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>
+            {navigation.week}
+          </Link>
+          <div className={`relative min-w-0 flex-[1.3] rounded-lg focus-within:outline-2 ${monthView ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>
+            <select aria-label={navigation.monthCount} data-period-view="months" value={monthView ? String(monthCount) : ""}
+              onChange={(event) => navigate(periodUrl(false, anchor, Number(event.target.value)))}
+              className="w-full cursor-pointer appearance-none rounded-lg bg-transparent py-2 pr-7 pl-2 text-center text-sm font-semibold whitespace-nowrap outline-none [&>option]:bg-stone-50 [&>option]:text-stone-900">
+              {!monthView && <option value="" disabled hidden>{navigation.month}</option>}
+              {[1, 2, 3, 4, 6].map((count) => <option key={count} value={count}>{monthsLabel(count)}</option>)}
+            </select>
+            <svg aria-hidden="true" viewBox="0 0 16 16" className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2">
+              <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <Link href={yearUrl(anchor)} prefetch={false} onClick={linkNavigate} data-period-view="year"
+            aria-current={showYear ? "page" : undefined}
+            className={`min-w-0 flex-1 rounded-lg px-2 py-2 text-center text-sm font-semibold whitespace-nowrap focus-visible:outline-2 ${showYear ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:bg-white/60"}`}>
+            {yearLabel}
+          </Link>
         </div>}
         <div className="flex items-center gap-2">
           <button type="button" aria-label={navigation.previous} disabled={previous === null}
@@ -140,7 +162,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 6-6 6 6 6" /></svg>
           </button>
           <label className="block min-w-0 flex-1">
-            <span className="sr-only">{showYear ? yearLabel : showWeek ? navigation.week : navigation.month}</span>
+            <span className="sr-only">{showYear ? yearLabel : showWeek ? navigation.week : monthCount > 1 ? monthsLabel(monthCount) : navigation.month}</span>
             {showYear ? <select data-calendar-date-picker aria-label={yearLabel} className="block h-12 w-full rounded-xl border-2 border-emerald-700/40 bg-emerald-50 px-3 text-base font-semibold text-emerald-950 focus-visible:outline-2"
               value={selectedYear ?? ""} onChange={(event) => navigate(yearUrl(`${event.target.value}${anchor.slice(4)}`))}>
               {Array.from({ length: Number(data.today.slice(0, 4)) - 1900 + 1 }, (_, i) => <option key={i} value={1900 + i}>{1900 + i}</option>)}
@@ -149,7 +171,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
               onClick={(event) => {
                 if (typeof event.currentTarget.showPicker === "function" && !event.currentTarget.disabled) event.currentTarget.showPicker();
               }}
-              onChange={(event) => { if (event.target.validity.valid && event.target.value) navigate(periodUrl(showWeek, event.target.value)); }} />}
+              onChange={(event) => { if (event.target.validity.valid && event.target.value) navigate(periodUrl(showWeek, event.target.value, monthCount)); }} />}
           </label>
           <button type="button" aria-label={navigation.next} disabled={next === null}
             onClick={() => { if (next) navigate(next); }}
@@ -264,7 +286,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
             <CalendarDay key={month.date} month={month} index={i % 3} showCrossTraining={showCrossTraining} />)}
         </div>
       </section> : <section className="panel space-y-4">
-        <h2 className="text-xl font-semibold">{text.calendar}</h2>
+        <h2 className="text-xl font-semibold">{text.calendar}{data.monthCount > 1 && <> · {monthSpan(firstDataMonth, data.month)}</>}</h2>
         <div className="flex flex-wrap gap-2 text-xs" aria-label={text.zones}>
           {showCrossTraining ? <>
             <span className="run-tone rounded border px-2 py-1">{calendarText.running}</span>
@@ -275,18 +297,26 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
           <div className="grid grid-cols-7 gap-1 text-center text-xs md:mr-56 sm:text-sm">
             {Array.from({ length: 7 }, (_, i) => <span key={i} className="py-1 font-medium">{weekdayName(locale, i, "short")}</span>)}
           </div>
-          {data.weeks.map((week) => <div key={week.startDate} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]" data-week={week.startDate}>
+          {data.weeks.map((week) => {
+            const monthStart = data.monthCount > 1
+              ? week.days.find((day) => day.date.endsWith("-01") && day.date.slice(0, 7) >= firstDataMonth && day.date.slice(0, 7) <= data.month) : undefined;
+            return <Fragment key={week.startDate}>
+            {monthStart && <h3 data-calendar-month={monthStart.date.slice(0, 7)} className="pt-2 text-base font-semibold capitalize">
+              {new Date(`${monthStart.date}T00:00:00Z`).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" })}
+            </h3>}
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]" data-week={week.startDate}>
             <div className="grid min-w-0 grid-cols-7 gap-1 text-center text-sm">
               {week.days.map((day, index) => <CalendarDay key={day.date} day={day} index={index} showCrossTraining={showCrossTraining}
-                outside={!day.date.startsWith(data.month)}
+                outside={day.date.slice(0, 7) < firstDataMonth || day.date.slice(0, 7) > data.month}
                 color={showCrossTraining && day.activities.some((activity) => isRunning(activity.sport)) ? "run-tone"
                   : day.zone === null ? "border-stone-200 bg-stone-50" : zoneColors[day.zone]} />)}
             </div>
             <aside className="grid" aria-label={`${formatDate(locale, week.startDate)} · ${hrText.totalTime}`}><CalendarDay week={week} showCrossTraining={showCrossTraining} /></aside>
-          </div>)}
+          </div></Fragment>;
+          })}
         </div>
       </section>}
-      <VolumeChart buckets={data.volumeBuckets} view={yearly ? "year" : weekly ? "week" : "month"} showCrossTraining={showCrossTraining} />
+      <VolumeChart buckets={data.volumeBuckets} alternateBuckets={data.alternateVolumeBuckets} view={yearly ? "year" : weekly ? "week" : data.monthCount > 1 ? "months" : "month"} showCrossTraining={showCrossTraining} />
       <section className="grid gap-4 md:grid-cols-2">
         <article className="panel space-y-3"><div className="flex items-baseline justify-between gap-2">
           <h2 className="min-w-0 text-xl font-semibold">{text.zones}</h2>

@@ -162,7 +162,15 @@ export function heartRateZone(hr: number | null, maxHr: number | null, validMaxH
   return 5;
 }
 
-export function calendarRange(month: string, weekDate?: string) {
+/** `YYYY-MM` moved by a number of months. */
+export function shiftMonth(month: string, months: number) {
+  const date = new Date(`${month}-01T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 7);
+}
+
+/** Monday-aligned weeks covering a week, or `monthCount` months ending with `month`. */
+export function calendarRange(month: string, weekDate?: string, monthCount = 1) {
   if (weekDate) {
     const start = new Date(`${weekDate}T00:00:00Z`);
     start.setUTCDate(start.getUTCDate() - (start.getUTCDay() + 6) % 7);
@@ -170,7 +178,7 @@ export function calendarRange(month: string, weekDate?: string) {
     end.setUTCDate(end.getUTCDate() + 7);
     return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
   }
-  const start = new Date(`${month}-01T00:00:00Z`);
+  const start = new Date(`${shiftMonth(month, 1 - monthCount)}-01T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - (start.getUTCDay() + 6) % 7);
   const end = new Date(`${month}-01T00:00:00Z`);
   end.setUTCMonth(end.getUTCMonth() + 1);
@@ -203,8 +211,9 @@ export function heartRateTimes(streams: readonly ActivityStreams[], settings: An
 }
 
 export function calendarWeeks(month: string, activities: readonly ActivitySummary[],
-  measurements: ReadonlyMap<string, { above: number; measured: number; zoneSeconds: number[] }>, maxHr: number | null, weekDate?: string): CalendarWeek[] {
-  const range = calendarRange(month, weekDate);
+  measurements: ReadonlyMap<string, { above: number; measured: number; zoneSeconds: number[] }>, maxHr: number | null, weekDate?: string,
+  monthCount = 1): CalendarWeek[] {
+  const range = calendarRange(month, weekDate, monthCount);
   const weeks: CalendarWeek[] = [];
   const cursor = new Date(`${range.start}T00:00:00Z`);
   while (cursor.toISOString().slice(0, 10) < range.end) {

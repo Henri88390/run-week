@@ -210,6 +210,22 @@ assert.deepEqual(syncPeriodRange({ view: "year", year: "2026" }), { start: "2026
 assert.equal(syncPeriodSchema.safeParse({ view: "week", date: "2026-02-30" }).success, false);
 assert.equal(syncPeriodSchema.safeParse({ view: "month", month: "2026-13" }).success, false);
 assert.equal(syncPeriodSchema.safeParse({ view: "year", year: "2026", backfill: true }).success, false);
+assert.deepEqual(syncPeriodRange({ view: "months", month: "2026-02", count: "3" }), { start: "2025-12-01", end: "2026-03-01" });
+assert.deepEqual(syncPeriodRange({ view: "months", month: "2026-06", count: "6" }), { start: "2026-01-01", end: "2026-07-01" });
+assert.equal(syncPeriodSchema.safeParse({ view: "months", month: "2026-06", count: "5" }).success, false);
+assert.equal(syncPeriodSchema.safeParse({ view: "months", month: "2026-06" }).success, false);
+const multiMonthVolume = volumeBuckets({ view: "months", month: "2026-11", count: "2" }, volumeSamples);
+assert.equal(multiMonthVolume[0].start, "2026-10-01");
+assert.equal(multiMonthVolume.at(-1).end, "2026-11-30");
+assert.ok(multiMonthVolume.every((bucket) => (Date.parse(bucket.end) - Date.parse(bucket.start)) / 86400000 <= 6), "Multi-month volume is weekly");
+assert.equal(multiMonthVolume.reduce((sum, bucket) => sum + bucket.distanceMeters, 0), 93000);
+const multiMonthByMonth = volumeBuckets({ view: "months", month: "2026-11", count: "2" }, volumeSamples, "month");
+assert.deepEqual(multiMonthByMonth.map((bucket) => [bucket.start, bucket.end, bucket.distanceMeters]),
+  [["2026-10-01", "2026-10-31", 23000], ["2026-11-01", "2026-11-30", 70000]]);
+const yearByWeek = volumeBuckets({ view: "year", year: "2026" }, volumeSamples, "week");
+assert.equal(yearByWeek.length, 53);
+assert.deepEqual([yearByWeek[0].start, yearByWeek[0].end, yearByWeek.at(-1).end], ["2026-01-01", "2026-01-04", "2026-12-31"]);
+assert.equal(yearByWeek.reduce((sum, bucket) => sum + bucket.distanceMeters, 0), 183000);
 const { STRAVA_MESSAGES } = load("src/features/strava/messages.ts");
 const { HEART_RATE_MESSAGES } = load("src/features/strava/heart-rate-messages.ts");
 assert.equal(Object.keys(STRAVA_MESSAGES).length, 10);

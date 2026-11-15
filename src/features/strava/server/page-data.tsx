@@ -12,6 +12,7 @@ import { monthValue } from "./http";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { activityZoneTimes, calendarRange } from "../analytics";
+import { MONTH_COUNTS, type SyncPeriod } from "../sync-period";
 import { activityZoneSelectionIntervals } from "../zone-selection";
 import { z } from "zod";
 import { activityChartPoints } from "../activity-chart-data";
@@ -21,7 +22,7 @@ import { BestSections, BestSectionsPrompt } from "../components/best-sections";
 import { kilometreSplits } from "../stream-metrics";
 
 export async function DashboardContent({ searchParams, metrics = false }: {
-  searchParams: Promise<{ month?: string; strava?: string; view?: string; date?: string; year?: string }>; metrics?: boolean;
+  searchParams: Promise<{ month?: string; strava?: string; view?: string; date?: string; year?: string; count?: string }>; metrics?: boolean;
 }) {
   await connection();
   const userId = await currentUserId();
@@ -33,20 +34,24 @@ export async function DashboardContent({ searchParams, metrics = false }: {
   try {
     const search = await searchParams;
     const today = new Date().toISOString().slice(0, 10);
-    const view = z.enum(["month", "week", "year"]).parse(search.view ?? "month");
+    const view = z.enum(["month", "months", "week", "year"]).parse(search.view ?? "month");
     const year = !metrics && view === "year"
       ? z.string().regex(/^(19|20)\d{2}$/).parse(search.year ?? today.slice(0, 4)) : undefined;
     const weekDate = !metrics && view === "week"
       ? z.iso.date().refine((value) => /^(19|20)\d{2}-/.test(value)).parse(search.date ?? (search.month ? `${monthValue(search.month)}-01` : today)) : undefined;
+    const count = !metrics && view === "months" ? z.enum(MONTH_COUNTS).parse(search.count ?? "3") : undefined;
     const month = year ? `${year}-01` : weekDate?.slice(0, 7) ?? monthValue(search.month ?? null);
+    const period: SyncPeriod = year ? { view: "year", year } : weekDate ? { view: "week", date: weekDate }
+      : count ? { view: "months", month, count } : { view: "month", month };
     if (year && year > today.slice(0, 4)) futureUrl = `/activities?view=year&year=${today.slice(0, 4)}`;
     else if (weekDate && calendarRange(month, weekDate).start > calendarRange(today.slice(0, 7), today).start)
       futureUrl = `/activities?view=week&date=${today}`;
+    else if (count && month > today.slice(0, 7)) futureUrl = `/activities?view=months&month=${today.slice(0, 7)}&count=${count}`;
     else if (!year && !weekDate && month > today.slice(0, 7))
       futureUrl = `${metrics ? "/running-metrics" : "/activities"}?month=${today.slice(0, 7)}`;
     if (!futureUrl) {
       const linked = await db().stravaConnection.findUnique({ where: { userId }, select: { consentVersion: true } });
-      if (linked?.consentVersion === STRAVA_CONSENT_VERSION) data = await cachedDashboard(userId, month, weekDate, year, today);
+      if (linked?.consentVersion === STRAVA_CONSENT_VERSION) data = await cachedDashboard(userId, period, today);
     }
     notice = search.strava;
     if (notice === "alreadyLinked") linkedEmail = await readLinkedAccountEmail(userId);

@@ -53,6 +53,8 @@ export const bestSectionsSchema = z.object({
   })),
 });
 export type BestSectionsData = z.infer<typeof bestSectionsSchema>;
+const volumeBucketSchema = z.object({ start: z.iso.date(), end: z.iso.date(),
+  distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative(), crossSeconds: finite.nonnegative().default(0) });
 export const dashboardSchema = z.object({
   sportsBackfillPending: z.boolean().default(false),
   connected: z.boolean(), consentCurrent: z.boolean(), syncActive: z.boolean(), syncPage: finite,
@@ -60,8 +62,9 @@ export const dashboardSchema = z.object({
   activities: z.array(activitySummarySchema), settings: settingsSchema,
   maximalEfforts: z.array(activitySummarySchema),
   weeklyVolumes: z.array(z.object({ start: z.iso.date(), distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative() })),
-  volumeBuckets: z.array(z.object({ start: z.iso.date(), end: z.iso.date(),
-    distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative(), crossSeconds: finite.nonnegative().default(0) })),
+  volumeBuckets: z.array(volumeBucketSchema),
+  /** Same period at the other granularity (months for multi-month periods, weeks for a year); empty otherwise. */
+  alternateVolumeBuckets: z.array(volumeBucketSchema).default([]),
   performance: z.object({ activityId: z.string(), speed: finite, vdot: finite.nullable(), count: finite }).nullable(),
   endurance: z.object({ id: z.string(), name: z.string(), localDate: z.iso.date(),
     movingSeconds: finite.positive(), distanceMeters: finite.positive() }).nullable(),
@@ -69,7 +72,8 @@ export const dashboardSchema = z.object({
   zones: z.array(z.object({ zone: finite, min: finite, max: finite, seconds: finite })),
   threshold: z.object({ below: finite, above: finite }).nullable(),
   criticalSpeed: z.object({ speed: finite, dPrime: finite, rSquared: finite, count: finite }).nullable(),
-  truncated: z.boolean(), month: z.string(), weekDate: z.iso.date().nullable(), year: z.string().nullable(),
+  truncated: z.boolean(), month: z.string(), monthCount: z.number().int().min(1).max(6).default(1),
+  weekDate: z.iso.date().nullable(), year: z.string().nullable(),
   weeks: z.array(calendarWeekSchema),
   months: z.array(z.object({ month: z.string(), zoneSeconds: z.array(finite) })),
   paceDistribution: z.object({

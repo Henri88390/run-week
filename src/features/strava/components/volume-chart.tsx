@@ -14,8 +14,9 @@ import { volumeAxisMaximum } from "../volume-chart";
 
 type Point = { index: number; running: number; cross: number; total: number };
 
-export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossTraining = true }: {
-  buckets: DashboardData["volumeBuckets"]; view: "year" | "month" | "week"; showCrossTraining?: boolean;
+export const VolumeChart = memo(function VolumeChart({ buckets: periodBuckets, alternateBuckets = [], view, showCrossTraining = true }: {
+  buckets: DashboardData["volumeBuckets"]; alternateBuckets?: DashboardData["volumeBuckets"];
+  view: "year" | "month" | "months" | "week"; showCrossTraining?: boolean;
 }) {
   const { locale, t } = useI18n();
   const text = VOLUME_CHART_MESSAGES[locale];
@@ -23,6 +24,14 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossT
   const crossLabel = CROSS_TRAINING_MESSAGES[locale].label;
   const [series, setSeries] = useState<"distance" | "time">("distance");
   const radioName = useId();
+  // Periods longer than a month can be grouped by week or month; the other grouping comes precomputed.
+  const defaultGranularity = view === "year" ? "month" : "week";
+  const [granularityChoice, setGranularityChoice] = useState<"week" | "month" | null>(null);
+  const groupable = (view === "months" || view === "year") && alternateBuckets.length > 0;
+  const granularity = groupable ? granularityChoice ?? defaultGranularity : defaultGranularity;
+  const buckets = granularity === defaultGranularity ? periodBuckets : alternateBuckets;
+  const perMonth = view !== "week" && view !== "month" && granularity === "month";
+  const granularityName = useId();
   const distance = series === "distance";
   // Distances of different sports are not comparable, so only time includes cross-training.
   const hasCross = !distance && showCrossTraining && buckets.some((bucket) => bucket.crossSeconds > 0);
@@ -49,10 +58,15 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossT
   const label = (index: number) => {
     const bucket = buckets[index];
     if (!bucket) return "";
-    if (view === "year") return new Date(`${bucket.start}T00:00:00Z`).toLocaleDateString(locale, { month: "short", timeZone: "UTC" });
     if (view === "week") return weekdayName(locale, index, "short");
+    if (perMonth) return new Date(`${bucket.start}T00:00:00Z`).toLocaleDateString(locale, { month: "short", timeZone: "UTC" });
+    if (view !== "month") return new Date(`${bucket.start}T00:00:00Z`).toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: "UTC" });
     return `${Number(bucket.start.slice(-2))}–${Number(bucket.end.slice(-2))}`;
   };
+  // Dense weekly charts scroll horizontally and label every other week.
+  const dense = buckets.length > 20;
+  const chartWidth = view === "week" || view === "month" ? undefined
+    : Math.max(view === "year" ? 640 : 340, buckets.length * (dense ? 30 : 52));
   const duration = (seconds: number) => {
     const { hours, minutes } = roundedDuration(seconds);
     return hours > 0 ? `${hours} ${t.units.h} ${String(minutes).padStart(2, "0")} ${t.units.min}` : `${minutes} ${t.units.min}`;
@@ -110,11 +124,25 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossT
   </svg>;
   return <section data-volume-chart className="panel space-y-3">
     <h2 className="text-xl font-semibold">{text.title}</h2>
-    <div role="radiogroup" aria-label={text.title} className="flex flex-wrap gap-5">
-      <label className="flex items-center gap-2 text-blue-800"><input type="radio" name={radioName} checked={distance}
-        onChange={() => setSeries("distance")} />{STRAVA_MESSAGES[locale].distance} ({t.units.km})</label>
-      <label className="flex items-center gap-2 text-emerald-800"><input type="radio" name={radioName} checked={!distance}
-        onChange={() => setSeries("time")} />{calendarText.time} ({t.units.h})</label>
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <div role="radiogroup" aria-label={text.title} className="flex flex-wrap gap-5">
+        <label className="flex items-center gap-2 text-blue-800"><input type="radio" name={radioName} checked={distance}
+          onChange={() => setSeries("distance")} />{STRAVA_MESSAGES[locale].distance} ({t.units.km})</label>
+        <label className="flex items-center gap-2 text-emerald-800"><input type="radio" name={radioName} checked={!distance}
+          onChange={() => setSeries("time")} />{calendarText.time} ({t.units.h})</label>
+      </div>
+      {groupable && <div data-volume-granularity role="radiogroup" aria-label={`${text.title}: ${text.groupBy}`} className="flex items-center gap-2">
+        <span aria-hidden="true" className="text-xs font-medium text-stone-600">{text.groupBy}</span>
+        <span className="inline-flex rounded-lg border border-stone-300 bg-white p-0.5 shadow-sm">
+          {(["week", "month"] as const).map((option) => <label key={option}
+            className="relative flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium text-stone-700 hover:bg-stone-100 has-checked:bg-stone-800 has-checked:font-semibold has-checked:text-stone-50 has-focus-visible:outline-2 has-focus-visible:outline-offset-1">
+            <input type="radio" name={granularityName} value={option} checked={granularity === option}
+              onChange={() => { setGranularityChoice(option); setSelected(null); }}
+              className="absolute inset-0 cursor-pointer appearance-none opacity-0" />
+            {option === "week" ? text.perWeek : text.perMonth}
+          </label>)}
+        </span>
+      </div>}
     </div>
     <div className="min-w-0 space-y-2 rounded-xl bg-stone-50/60 p-2">
       {hasCross && <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 px-1">
@@ -129,9 +157,9 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossT
             <span aria-hidden="true" className="text-xs font-medium text-stone-600">{text.display}</span>
             <span className="inline-flex rounded-lg border border-stone-300 bg-white p-0.5 shadow-sm">
               {(["combined", "separate"] as const).map((option) => <label key={option} title={text[`${option}Hint`]}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium text-stone-700 hover:bg-stone-100 has-checked:bg-stone-800 has-checked:font-semibold has-checked:text-stone-50 has-focus-visible:outline-2 has-focus-visible:outline-offset-1">
+                className="relative flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium text-stone-700 hover:bg-stone-100 has-checked:bg-stone-800 has-checked:font-semibold has-checked:text-stone-50 has-focus-visible:outline-2 has-focus-visible:outline-offset-1">
                 <input type="radio" name={layoutName} value={option} checked={layout === option} onChange={() => setLayout(option)}
-                  className="sr-only" />{layoutIcon(option)}{text[option]}
+                  className="absolute inset-0 cursor-pointer appearance-none opacity-0" />{layoutIcon(option)}{text[option]}
               </label>)}
             </span>
           </div>
@@ -147,13 +175,14 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossT
       <div className="overflow-x-auto">
         <div role="group" aria-label={text.title}
           className={`h-60 sm:h-64 [&_.recharts-surface]:outline-none ${view === "year" ? "min-w-[640px]" : "min-w-[340px]"}`}
+          style={chartWidth ? { minWidth: chartWidth } : undefined}
           onMouseLeave={() => setSelected(null)}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart data={points} accessibilityLayer={false} margin={{ top: 26, right: 16, bottom: 0, left: 0 }}
               onMouseMove={(state) => { if (state.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex)); }}
               onClick={(state) => { if (state.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex)); }}>
               <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="2 6" />
-              <XAxis dataKey="index" type="number" domain={[0, Math.max(1, buckets.length - 1)]} ticks={points.map((point) => point.index)}
+              <XAxis dataKey="index" type="number" domain={[0, Math.max(1, buckets.length - 1)]} ticks={points.filter((point) => !dense || point.index % 2 === 0).map((point) => point.index)}
                 tickLine={false} axisLine={false} interval={0} padding={{ left: 18, right: 18 }}
                 tick={{ fill: "var(--chart-axis)", fontSize: 11 }} tickFormatter={(value: number) => label(value)} />
               <YAxis domain={[0, maximum]} ticks={ticks} width={44} tickLine={false} axisLine={false}
@@ -178,8 +207,11 @@ export const VolumeChart = memo(function VolumeChart({ buckets, view, showCrossT
           </ResponsiveContainer>
         </div>
       </div>
-      {view === "month" && buckets[0] && <p data-volume-month className="text-center text-xs text-stone-500">
-        {new Date(`${buckets[0].start}T00:00:00Z`).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" })}
+      {(view === "month" || view === "months") && buckets[0] && <p data-volume-month className="text-center text-xs text-stone-500">
+        {view === "months"
+          ? new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" })
+            .formatRange(new Date(`${buckets[0].start}T00:00:00Z`), new Date(`${buckets.at(-1)?.end ?? buckets[0].start}T00:00:00Z`))
+          : new Date(`${buckets[0].start}T00:00:00Z`).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" })}
       </p>}
     </div>
   </section>;

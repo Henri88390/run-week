@@ -10,7 +10,7 @@ import type { StravaConfig } from "./config";
 import { clearActivityCache } from "./cache";
 import { weeklyVolumes } from "../weekly-volume";
 import { syncHistorySchema } from "../sync-history";
-import { syncPeriodRange } from "../sync-period";
+import { syncPeriodRange, type SyncPeriod } from "../sync-period";
 import { volumeBuckets } from "../volume-chart";
 import { createSyncJob } from "./background-jobs";
 import { requireBackgroundSync } from "./inngest";
@@ -70,10 +70,13 @@ export async function disconnect(userId: string) {
   });
 }
 
-export async function dashboard(userId: string, month: string, weekDate?: string, year?: string, today = new Date().toISOString().slice(0, 10)): Promise<DashboardData> {
-  const range = year ? { start: `${year}-01-01`, end: `${Number(year) + 1}-01-01` } : calendarRange(month, weekDate);
+export async function dashboard(userId: string, period: SyncPeriod, today = new Date().toISOString().slice(0, 10)): Promise<DashboardData> {
+  const month = period.view === "year" ? `${period.year}-01` : period.view === "week" ? period.date.slice(0, 7) : period.month;
+  const weekDate = period.view === "week" ? period.date : undefined;
+  const year = period.view === "year" ? period.year : undefined;
+  const monthCount = period.view === "months" ? Number(period.count) : 1;
+  const range = year ? { start: `${year}-01-01`, end: `${Number(year) + 1}-01-01` } : calendarRange(month, weekDate, monthCount);
   const enduranceRange = recentEnduranceRange(today);
-  const period = year ? { view: "year" as const, year } : weekDate ? { view: "week" as const, date: weekDate } : { view: "month" as const, month };
   const volumeRange = syncPeriodRange(period);
   const [connection, rows, pending, maximalEfforts, volumeDays, endurance, periodVolumeDays, periodCrossDays] = await Promise.all([
     db().stravaConnection.findUnique({ where: { userId } }),
@@ -119,14 +122,19 @@ export async function dashboard(userId: string, month: string, weekDate?: string
     averageHr: row.averageHr, maxHr: row.maxHr, maximalEffort: row.maximalEffort, streamState: row.streamState,
     elevationGainMeters: row.elevationGainMeters,
   }));
-  const monthActivities = weekDate || year ? activities : activities.filter((activity) => activity.localDate.startsWith(month));
+  const periodActivities = activities.filter((activity) => activity.localDate >= volumeRange.start && activity.localDate < volumeRange.end);
+  const chartDays = [...periodVolumeDays.map((day) => ({
+    localDate: day.localDate, distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0,
+  })), ...periodCrossDays.map((day) => ({
+    localDate: day.localDate, distanceMeters: 0, movingSeconds: 0, crossSeconds: day._sum.movingSeconds ?? 0,
+  }))];
   return {
     connected: !!connection, consentCurrent: connection?.consentVersion === STRAVA_CONSENT_VERSION,
     sportsBackfillPending: !!connection && connection.sportsVersion < SPORTS_VERSION,
     syncActive: connection?.syncActive ?? false, syncPage: connection?.syncPage ?? 1,
     lastSyncedAt: connection?.lastSyncedAt?.toISOString() ?? null, retryAt: connection?.retryAt?.toISOString() ?? null,
-    pending, month, year: year ?? null, weekDate: weekDate ? range.start : null, activities: monthActivities, settings: settings.data, ...heartRateTimes(samples, settings.data),
-    weeks: calendarWeeks(month, activities, measurements, settings.data.maxHr, weekDate),
+    pending, month, monthCount, year: year ?? null, weekDate: weekDate ? range.start : null, activities: periodActivities, settings: settings.data, ...heartRateTimes(samples, settings.data),
+    weeks: calendarWeeks(month, activities, measurements, settings.data.maxHr, weekDate, monthCount),
     months: year ? Array.from({ length: 12 }, (_, i) => {
       const month = `${year}-${String(i + 1).padStart(2, "0")}`;
       const runs = activities.filter((activity) => activity.localDate.startsWith(month));
@@ -134,11 +142,9 @@ export async function dashboard(userId: string, month: string, weekDate?: string
         runs.reduce((sum, run) => sum + (measurements.get(run.id)?.zoneSeconds[zone] ?? 0), 0)) };
     }) : [],
     paceDistribution: paceHistogram(samples),
-    volumeBuckets: volumeBuckets(period, [...periodVolumeDays.map((day) => ({
-      localDate: day.localDate, distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0,
-    })), ...periodCrossDays.map((day) => ({
-      localDate: day.localDate, distanceMeters: 0, movingSeconds: 0, crossSeconds: day._sum.movingSeconds ?? 0,
-    }))]),
+    volumeBuckets: volumeBuckets(period, chartDays),
+    alternateVolumeBuckets: period.view === "months" ? volumeBuckets(period, chartDays, "month")
+      : period.view === "year" ? volumeBuckets(period, chartDays, "week") : [],
     weeklyVolumes: weeklyVolumes(volumeDays.map((day) => ({ localDate: day.localDate,
       distanceMeters: day._sum.distanceMeters ?? 0, movingSeconds: day._sum.movingSeconds ?? 0 }))),
     maximalEfforts, performance: effortPerformance(maximalEfforts), endurance, today,

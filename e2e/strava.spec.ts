@@ -1240,7 +1240,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await expect(page.getByLabel("Week", { exact: true })).toHaveAttribute("max", new Date().toISOString().slice(0, 10));
     await page.getByLabel("Week", { exact: true }).fill("2026-01-01");
     await expect(page.locator('[data-week="2025-12-29"]')).toBeVisible();
-    await page.getByRole("link", { name: "Month", exact: true }).click();
+    await page.getByRole("combobox", { name: "Number of months" }).selectOption("1");
     // The month view keeps the date chosen in the week view, not the month of the week's Monday.
     await expect(page).toHaveURL(/month=2026-01/);
     await expect(page.locator("[data-week]")).toHaveCount(5);
@@ -1261,7 +1261,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.getByRole("link", { name: "Year", exact: true }).click();
     await expect(page).toHaveURL(/view=year&year=2026&month=2026-01/);
     await expect(page.locator("[data-year-month]")).toHaveCount(12);
-    await page.getByRole("link", { name: "Month", exact: true }).click();
+    await page.getByRole("combobox", { name: "Number of months" }).selectOption("1");
     await expect(page).toHaveURL(/month=2026-01/);
     await expect(page.locator("[data-week]")).toHaveCount(5);
     await page.getByRole("link", { name: "Year", exact: true }).click();
@@ -1271,7 +1271,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     // Only first visits to December and the year fetch; recently viewed periods come from the client cache.
     expect(dataRequests).toHaveLength(2);
     page.off("request", countDataRequest);
-    await page.getByRole("link", { name: "Month", exact: true }).click();
+    await page.getByRole("combobox", { name: "Number of months" }).selectOption("1");
     await page.getByLabel("Month", { exact: true }).fill("2026-11");
     await expect(page.locator("[data-week]")).toHaveCount(6);
     await expect(page.getByRole("button", { name: "Next period" })).toBeDisabled();
@@ -1287,6 +1287,51 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
         expect(Math.abs(arrowBounds.y + arrowBounds.height / 2 - pickerBounds.y - pickerBounds.height / 2)).toBeLessThan(1);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    const monthCount = page.getByRole("combobox", { name: "Number of months" });
+    await expect(monthCount).toHaveValue("1");
+    await expect(monthCount.locator("option")).toHaveText(["1 month", "2 months", "3 months", "4 months", "6 months"]);
+    await monthCount.selectOption("3");
+    await expect(page).toHaveURL(/view=months&month=2026-11&count=3/);
+    await expect(monthCount).toHaveValue("3");
+    await expect(page.getByRole("link", { name: "Week", exact: true })).not.toHaveAttribute("aria-current");
+    await expect(page.locator("[data-calendar-month]")).toHaveText(["September 2026", "October 2026", "November 2026"]);
+    await expect(page.locator("[data-week]")).toHaveCount(14);
+    await expect(page.locator('[data-date="2026-08-31"] .border-dashed')).toHaveCount(1);
+    await expect(page.locator('[data-date="2026-09-30"] .border-dashed')).toHaveCount(0);
+    await expect(page.locator("[data-volume-chart] [data-volume-bucket]").filter({ visible: true })).toHaveCount(14);
+    await expect(page.locator("[data-volume-month]")).toHaveText(/September.+November 2026/);
+    const granularity = page.getByRole("radiogroup", { name: "Training volume: Group by" });
+    await expect(granularity.getByRole("radio", { name: "Per week" })).toBeChecked();
+    await granularity.getByRole("radio", { name: "Per month" }).check();
+    await expect(page.locator("[data-volume-chart] [data-volume-bucket]").filter({ visible: true })).toHaveCount(3);
+    await expect(page.locator("[data-volume-chart] [data-volume-bucket]").first()).toHaveAttribute("aria-label", /^Sep 1, 2026 – Sep 30, 2026: /);
+    await granularity.getByRole("radio", { name: "Per week" }).focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(granularity.getByRole("radio", { name: "Per week" })).not.toBeChecked();
+    await granularity.getByRole("radio", { name: "Per week" }).check();
+    await expect(page.locator("[data-volume-chart] [data-volume-bucket]").filter({ visible: true })).toHaveCount(14);
+    await page.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-months.png", fullPage: true }); // TEMP
+    await page.setViewportSize({ width: 375, height: 800 }); // TEMP
+    await page.screenshot({ path: "C:/Users/henri/AppData/Local/Temp/rw-months-phone.png" }); // TEMP
+    await page.setViewportSize({ width: 1280, height: 720 }); // TEMP
+    await expect(page.getByRole("button", { name: "Next period" })).toBeDisabled();
+    await page.getByRole("button", { name: "Previous period" }).click();
+    await expect(page).toHaveURL(/view=months&month=2026-08&count=3/);
+    await expect(page.locator("[data-calendar-month]")).toHaveText(["June 2026", "July 2026", "August 2026"]);
+    await page.getByLabel("3 months", { exact: true }).fill("2026-10");
+    await expect(page).toHaveURL(/view=months&month=2026-10&count=3/);
+    await monthCount.selectOption("6");
+    await expect(page).toHaveURL(/view=months&month=2026-10&count=6/);
+    await expect(page.locator("[data-calendar-month]")).toHaveCount(6);
+    await expect(page.getByRole("button", { name: "Next period" })).toBeEnabled();
+    await page.getByRole("button", { name: "Next period" }).click();
+    // Moving forward never ends after the current month.
+    await expect(page).toHaveURL(/view=months&month=2026-11&count=6/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    for (const query of ["view=months&month=2099-01&count=3", "view=months&month=2026-01&count=5", "view=months&month=2026-01"])
+      expect((await page.request.get(`/api/strava/activities?${query}`)).status()).toBe(400);
+    await page.getByRole("combobox", { name: "Number of months" }).selectOption("1");
+    await expect(page).toHaveURL(/month=2026-11$/);
     await page.getByRole("link", { name: "Year", exact: true }).click();
     await expect(page).toHaveURL(/view=year&year=2026/);
     await expect(page.locator("[data-year-month]")).toHaveCount(12);
