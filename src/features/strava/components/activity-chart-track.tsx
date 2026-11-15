@@ -1,6 +1,6 @@
-import { createContext, memo, useContext, useMemo } from "react";
+import { createContext, memo, useContext, useMemo, type ReactNode } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis, usePlotArea, useXAxisScale, useYAxisScale } from "recharts";
-import { activityZoneBounds, PRESET_MAX_HR } from "../analytics";
+import { activityZoneBounds } from "../analytics";
 import { distanceAxisTicks, markChartWork, timeAxisTicks, type ChartAxis, type ChartPoint, type ChartMetric } from "../activity-chart-data";
 import { splitAxisBounds, type SplitInterval } from "../split-selection";
 import type { ZoneInterval } from "../zone-selection";
@@ -18,13 +18,14 @@ type TrackProps = {
   intervals: SplitInterval[];
   zones: ZoneSelection;
   extent: { min: number; max: number } | null; unavailable: string;
+  maxHr: number; maxHrLabel: string; aside?: ReactNode;
 };
 const CursorPosition = createContext<number | null>(null);
 const SplitSelection = createContext<SplitInterval[]>([]);
 const ZoneSelectionContext = createContext<ZoneSelection>({ selected: [], intervals: [] });
 
 /** HR uses horizontal ranges; other tracks use at most five memoized interval paths. */
-function SelectedZones({ axis, metric }: { axis: ChartAxis; metric: ChartMetric }) {
+function SelectedZones({ axis, metric, maxHr }: { axis: ChartAxis; metric: ChartMetric; maxHr: number }) {
   const zones = useContext(ZoneSelectionContext);
   const scale = useXAxisScale();
   const yScale = useYAxisScale();
@@ -51,7 +52,7 @@ function SelectedZones({ axis, metric }: { axis: ChartAxis; metric: ChartMetric 
   if (!plot) return null;
   return <g pointerEvents="none">
     {metric === "hr" && yScale && zones.selected.map((zone) => {
-      const [min, max] = activityZoneBounds(zone);
+      const [min, max] = activityZoneBounds(zone, maxHr);
       const start = yScale(max), end = yScale(min);
       if (start === undefined || end === undefined) return null;
       const top = Math.max(plot.y, start), bottom = Math.min(plot.y + plot.height, end);
@@ -88,6 +89,18 @@ function SelectedSplits({ axis }: { axis: ChartAxis }) {
   })}</g>;
 }
 
+/** Distinct from the shared cursor's reference-line class. */
+function MaxHrLine({ value, label }: { value: number; label: string }) {
+  const yScale = useYAxisScale();
+  const plot = usePlotArea();
+  const y = yScale?.(value);
+  if (y === undefined || !plot || y < plot.y || y > plot.y + plot.height) return null;
+  return <g data-max-hr-line={value} pointerEvents="none">
+    <line x1={plot.x} x2={plot.x + plot.width} y1={y} y2={y} stroke="var(--chart-hr)" strokeWidth={1.5} strokeDasharray="6 4" />
+    <text x={plot.x + plot.width - 4} y={y - 4} textAnchor="end" fill="var(--chart-hr)" fontSize={11} fontWeight={600}>{label}</text>
+  </g>;
+}
+
 /** Context updates only this line, without passing selection through AreaChart. */
 function SharedCursor() {
   const value = useContext(CursorPosition);
@@ -99,15 +112,16 @@ function SharedCursor() {
     stroke="var(--chart-cursor)" strokeDasharray="4 4" pointerEvents="none" />;
 }
 
-export function ActivityChartTrack({ selected, intervals, zones, unavailable, ...props }: TrackProps) {
+export function ActivityChartTrack({ selected, intervals, zones, unavailable, aside, ...props }: TrackProps) {
   const { label, color, unit, metric, format, axis } = props;
   const value = selected?.[metric];
   return <details open data-chart-track={metric} data-chart-axis={axis} className="group/disclosure min-w-0 rounded-xl bg-stone-50/60 p-2">
     <DisclosureHeading title={`${label} (${unit})`} level={3} color={color} />
-    <div style={{ color }}>
-      <output data-chart-track-readout aria-label={label} aria-live="off" className="font-semibold tabular-nums">
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <output data-chart-track-readout aria-label={label} aria-live="off" className="font-semibold tabular-nums" style={{ color }}>
         {value != null ? `${format(value)} ${unit}` : unavailable}
       </output>
+      {aside}
     </div>
     <CursorPosition value={selected?.[axis] ?? null}>
       <SplitSelection value={intervals}>
@@ -119,16 +133,16 @@ export function ActivityChartTrack({ selected, intervals, zones, unavailable, ..
   </details>;
 }
 
-const StaticChart = memo(function StaticChart({ data, metric, color, format, formatTime, formatDistance, axis, onSelect, extent }: Omit<TrackProps, "selected" | "intervals" | "zones" | "unavailable">) {
+const StaticChart = memo(function StaticChart({ data, metric, color, format, formatTime, formatDistance, axis, onSelect, extent, maxHr, maxHrLabel }: Omit<TrackProps, "selected" | "intervals" | "zones" | "unavailable" | "aside">) {
   markChartWork(`static:${metric}`);
   const domain = useMemo(() => {
     markChartWork(`domain:${metric}`);
     const { min, max } = extent ?? { min: 0, max: 1 };
     const padding = Math.max(metric === "pace" ? 5 : 1, (max - min) * .08);
     return metric === "hr"
-      ? [Math.min(PRESET_MAX_HR * .5, min - padding), Math.max(PRESET_MAX_HR, max + padding)]
+      ? [Math.min(maxHr * .5, min - padding), Math.max(maxHr + 4, max + padding)]
       : [Math.max(metric === "altitude" ? -Infinity : 0, min - padding), max + padding];
-  }, [extent, metric]);
+  }, [extent, metric, maxHr]);
   const duration = Math.max(0, data.at(-1)?.time ?? 0);
   const end = duration > 0 ? duration : 1;
   const axisDomain = axis === "time"
@@ -149,16 +163,17 @@ const StaticChart = memo(function StaticChart({ data, metric, color, format, for
           <YAxis domain={domain} width={64} reversed={metric === "pace"} tickCount={4} tickLine={false} axisLine={false}
             tick={{ fill: "var(--chart-axis)", fontSize: 11 }} tickFormatter={format} />
           {metric === "hr" && ACTIVITY_ZONE_COLORS.map((color, index) => {
-            const [min, max] = activityZoneBounds(index + 1);
+            const [min, max] = activityZoneBounds(index + 1, maxHr);
             return <ReferenceArea key={index} y1={Math.max(domain[0], min)} y2={Math.min(domain[1], max)}
               fill={color} fillOpacity={.08} stroke="none"
               label={{ value: `Z${index + 1}`, position: "insideTopLeft", fill: "var(--chart-axis)", fontSize: 10 }} />;
           })}
+          {metric === "hr" && <MaxHrLine value={maxHr} label={`${maxHrLabel} ${format(maxHr)}`} />}
           <Tooltip content={() => null} cursor={false} isAnimationActive={false} />
           <Area dataKey={metric} type="linear" stroke={color} strokeWidth={2} fill={color} fillOpacity={.08}
             baseValue={metric === "pace" ? domain[1] : domain[0]} dot={false} activeDot={false}
             connectNulls={false} isAnimationActive={false} />
-          <SelectedZones axis={axis} metric={metric} />
+          <SelectedZones axis={axis} metric={metric} maxHr={maxHr} />
           <SelectedSplits axis={axis} />
           <SharedCursor />
         </AreaChart>

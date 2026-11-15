@@ -11,7 +11,8 @@ import { cachedDashboard } from "./cached-dashboard";
 import { monthValue } from "./http";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
-import { activityZoneTimes, calendarRange } from "../analytics";
+import { activityZoneTimes, calendarRange, PRESET_MAX_HR } from "../analytics";
+import { maxHeartRate } from "./store";
 import { MONTH_COUNTS, type SyncPeriod } from "../sync-period";
 import { activityZoneSelectionIntervals } from "../zone-selection";
 import { z } from "zod";
@@ -89,11 +90,12 @@ export async function DetailContent({ params }: { params: Promise<{ id: string }
   if (!userId) return <AnalyticsPrompt />;
   const { id } = await params;
   let row;
+  let maxHr = { value: PRESET_MAX_HR, custom: false };
   let connected = false;
   try {
     const linked = await db().stravaConnection.findUnique({ where: { userId }, select: { consentVersion: true } });
     connected = linked?.consentVersion === STRAVA_CONSENT_VERSION;
-    if (connected) row = await db().stravaActivity.findFirst({ where: { userId, id } });
+    if (connected) [row, maxHr] = await Promise.all([db().stravaActivity.findFirst({ where: { userId, id } }), maxHeartRate(userId)]);
   }
   catch (error) {
     logStravaFailure(error, "detail");
@@ -108,7 +110,7 @@ export async function DetailContent({ params }: { params: Promise<{ id: string }
     distanceMeters: row.distanceMeters, movingSeconds: row.movingSeconds, elapsedSeconds: row.elapsedSeconds,
     averageHr: row.averageHr, maxHr: row.maxHr, maximalEffort: row.maximalEffort, streamState: row.streamState,
     elevationGainMeters: row.elevationGainMeters,
-  }} points={points} splits={kilometreSplits(parsed.success ? parsed.data : null)}
-    zoneTimes={activityZoneTimes(parsed.success ? parsed.data : null, row.elapsedSeconds)}
-    zoneIntervals={activityZoneSelectionIntervals(parsed.success ? parsed.data : null, row.elapsedSeconds)} />;
+  }} points={points} splits={kilometreSplits(parsed.success ? parsed.data : null)} maxHr={maxHr}
+    zoneTimes={activityZoneTimes(parsed.success ? parsed.data : null, row.elapsedSeconds, maxHr.value)}
+    zoneIntervals={activityZoneSelectionIntervals(parsed.success ? parsed.data : null, row.elapsedSeconds, maxHr.value)} />;
 }

@@ -70,6 +70,13 @@ export async function disconnect(userId: string) {
   });
 }
 
+/** The account's manual HRmax, or the shared preset when unset. */
+export async function maxHeartRate(userId: string): Promise<{ value: number; custom: boolean }> {
+  const row = await db().runningAnalyticsSettings.findUnique({ where: { userId }, select: { maxHr: true } });
+  const stored = settingsSchema.shape.maxHr.safeParse(row?.maxHr ?? null);
+  return stored.success && stored.data !== null ? { value: stored.data, custom: true } : { value: PRESET_MAX_HR, custom: false };
+}
+
 export async function dashboard(userId: string, period: SyncPeriod, today = new Date().toISOString().slice(0, 10)): Promise<DashboardData> {
   const month = period.view === "year" ? `${period.year}-01` : period.view === "week" ? period.date.slice(0, 7) : period.month;
   const weekDate = period.view === "week" ? period.date : undefined;
@@ -78,7 +85,7 @@ export async function dashboard(userId: string, period: SyncPeriod, today = new 
   const range = year ? { start: `${year}-01-01`, end: `${Number(year) + 1}-01-01` } : calendarRange(month, weekDate, monthCount);
   const enduranceRange = recentEnduranceRange(today);
   const volumeRange = syncPeriodRange(period);
-  const [connection, rows, pending, maximalEfforts, volumeDays, endurance, periodVolumeDays, periodCrossDays] = await Promise.all([
+  const [connection, rows, pending, maximalEfforts, volumeDays, endurance, periodVolumeDays, periodCrossDays, maxHr] = await Promise.all([
     db().stravaConnection.findUnique({ where: { userId } }),
     db().stravaActivity.findMany({ where: { userId, localDate: { gte: range.start, lt: range.end } },
       orderBy: [{ localDate: "desc" }, { startedAt: "asc" }, { id: "asc" }] }),
@@ -100,8 +107,9 @@ export async function dashboard(userId: string, period: SyncPeriod, today = new 
     db().stravaActivity.groupBy({ by: ["localDate", "sport"], where: { userId, sport: { notIn: RUN_SPORTS },
       localDate: { gte: volumeRange.start, lt: volumeRange.end } },
       _sum: { movingSeconds: true } }),
+    maxHeartRate(userId),
   ]);
-  const settings = settingsSchema.safeParse({ maxHr: PRESET_MAX_HR });
+  const settings = settingsSchema.safeParse({ maxHr: maxHr.value });
   if (!settings.success) throw new StravaError("unavailable");
   // Full displayed weeks must not lose boundary days or sport totals to a
   // shared run/non-run row cap. The date range still bounds this calendar read.
@@ -133,7 +141,7 @@ export async function dashboard(userId: string, period: SyncPeriod, today = new 
     sportsBackfillPending: !!connection && connection.sportsVersion < SPORTS_VERSION,
     syncActive: connection?.syncActive ?? false, syncPage: connection?.syncPage ?? 1,
     lastSyncedAt: connection?.lastSyncedAt?.toISOString() ?? null, retryAt: connection?.retryAt?.toISOString() ?? null,
-    pending, month, monthCount, year: year ?? null, weekDate: weekDate ? range.start : null, activities: periodActivities, settings: settings.data, ...heartRateTimes(samples, settings.data),
+    pending, month, monthCount, year: year ?? null, weekDate: weekDate ? range.start : null, activities: periodActivities, settings: settings.data, maxHrCustom: maxHr.custom, ...heartRateTimes(samples, settings.data),
     weeks: calendarWeeks(month, activities, measurements, settings.data.maxHr, weekDate, monthCount),
     months: year ? Array.from({ length: 12 }, (_, i) => {
       const month = `${year}-${String(i + 1).padStart(2, "0")}`;

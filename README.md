@@ -242,9 +242,10 @@ Day cells show every activity: one chip per cross-training session (two rides
 are two chips), stacked below the run on mixed days; when they don't fit, the
 cell and its whole week row grow taller instead of clipping. Year tiles use one
 chip with the month's combined cross-training time when several sports are
-involved. While cross-training is shown, the period summary above the calendar
-has a Running container and a Cross-training container (time per sport plus a
-total). Day popovers still list every activity.
+involved. The period summary above the calendar always has a Running container:
+a large distance figure with runs, moving time, average pace and moving-time-
+weighted average HR beside it. While cross-training is shown, a Cross-training
+container (time per sport plus a total) sits next to it. Day popovers still list every activity.
 Runs remain exactly `Run`, `TrailRun`, and `VirtualRun`; their zone colors,
 weekly running distance/time, HR charts, volume distance, endurance, maximal efforts
 and top performances exclude every other sport. Non-running details do not offer
@@ -695,14 +696,21 @@ Twelve monthly cards link to their month view and show measured HR-zone bars.
 Hover or keyboard focus opens a viewport-positioned summary with monthly distance,
 moving time, weighted average HR, pace and zone durations/percentages.
 Arrows and the year selector navigate between years.
-The simplified UI temporarily uses a shared HRmax preset of 190 bpm, not a
-personalized measurement. Manual HR settings and maximal-effort confirmation
+HR zones use the account's maximum heart rate (HRmax), 190 bpm by default.
+The heart-rate track on each activity detail shows HRmax as a dashed line with
+an Edit control (60–240 bpm, Escape cancels) and a "Reset to default" action
+when a custom value is set; the same control appears in the Activities page's
+time-above-threshold card. The value is saved with the account
+(`RunningAnalyticsSettings.maxHr`, `PUT /api/strava/settings` with
+`{ "maxHr": number | null }`; `null` restores the default) and every zone,
+calendar color and dashboard statistic is recomputed from it. Disconnecting
+Strava deletes it. Manual threshold settings and maximal-effort confirmation
 controls are hidden on the dashboard. Each activity detail has a saved maximal-effort
 checkbox and hover/focus help explaining provisional performance, critical speed
 and D′, minimum effort requirements and elapsed-time use. Race-equivalent VDOT
 does not update the planner or change HR zones.
-Existing stored settings/confirmations remain intact;
-stored HR settings do not override the preset.
+Existing stored zone bounds/confirmations remain intact but do not override the
+HRmax-based zones.
 Zones are Z1 <70%, Z2 70–80%, Z3 80–85%, Z4 85–90%, Z5 90–100% HRmax;
 lower bounds are inclusive and upper bounds exclusive except 100% in Z5.
 Above threshold is strictly >90% HRmax (exactly 90% is not above threshold).
@@ -742,16 +750,22 @@ Weekly summary cells also open on hover, focus or tap, combining the week's
 distance, moving time, distance-weighted pace (total time / total distance),
 moving-time-weighted average HR, and measured time/percentage in each HR zone.
 All summary durations use hours and minutes, rounded to the nearest minute.
-The training-volume chart below the calendar switches between distance (km, blue)
-and moving time (hours, green), with one series selected at a time and its axis
-always on the left. It uses the activity-page chart style (soft panel, dashed
+The period switcher offers Week, a month dropdown (1, 2, 3, 4 or 6 months ending
+with the selected month; `view=months&count=N`) and Year.
+The training-volume chart below the calendar has one options toolbar of labelled
+segmented controls: Metric (distance in km, blue, or moving time in hours, green;
+its axis is always on the left), Group by (per week or per month, only for
+multi-month and year periods), Cross-training (Combined or By sport) and Chart
+(Stacked total or Separate lines, when two or more lines are shown). It uses the
+activity-page chart style (soft panel, dashed
 grid, line with a light fill, dashed cursor and a value readout that shows the
 period total until a point is hovered or focused). Points display their values. Displayed distances are
 rounded to the nearest kilometer; point positions retain the exact totals.
-While cross-training is shown, the time view stacks running (orange) and
-cross-training active time (indigo) with the total on each point; Running and
-Cross-training checkboxes add or remove either series (at least one stays
-selected) and the areas, values, readout and axis follow. Distance stays
+While cross-training is shown, the time view adds cross-training active time
+(indigo) to running (orange); By sport replaces it with one line per sport in the
+same colors as the calendar chips. Legend checkboxes above the readout add or
+remove each line (at least one stays selected) and the areas, values, readout and
+axis follow. Distance stays
 running only, because distances of different sports are not comparable.
 Month view labels the X axis with the selected month's localized name and year.
 Year view groups

@@ -13,7 +13,7 @@ export async function cachedDashboard(userId: string, period: SyncPeriod, today 
     if (!linked || linked.consentVersion !== STRAVA_CONSENT_VERSION) throw new StravaError("notConnected", 409);
     const key = period.view === "year" ? `year:${period.year}` : period.view === "week" ? `week:${period.date}`
       : period.view === "months" ? `months:${period.count}:${period.month}` : `month:${period.month}`;
-    const field = `dashboard:v18:${key}:${today}`;
+    const field = `dashboard:v20:${key}:${today}`;
     const cached = await readActivityCache(userId, field, dashboardSchema);
     if (cached) return cached;
     const data = await dashboard(userId, period, today);

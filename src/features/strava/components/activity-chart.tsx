@@ -13,11 +13,13 @@ import { ActivityChartTrack } from "./activity-chart-track";
 import type { SplitInterval } from "../split-selection";
 import type { ZoneSelection } from "./activity-chart-track";
 import { DisclosureHeading } from "./disclosure-heading";
+import { MAX_HR_MESSAGES } from "../max-hr-messages";
+import { MaxHrSetting } from "./max-hr-setting";
 
 export type { ChartPoint } from "../activity-chart-data";
 
-export const ActivityChart = memo(function ActivityChart({ points, intervals, zones }: {
-  points: ChartPoint[]; intervals: SplitInterval[]; zones: ZoneSelection;
+export const ActivityChart = memo(function ActivityChart({ points, intervals, zones, maxHr }: {
+  points: ChartPoint[]; intervals: SplitInterval[]; zones: ZoneSelection; maxHr: { value: number; custom: boolean };
 }) {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
@@ -105,6 +107,8 @@ export const ActivityChart = memo(function ActivityChart({ points, intervals, zo
           color={metric.color} unit={metric.unit} format={metric.format}
           axis={axis} formatTime={formatTime} formatDistance={formatDistance}
           extent={extents[metric.key]} unavailable={text.unavailable}
+          maxHr={maxHr.value} maxHrLabel={MAX_HR_MESSAGES[locale].short}
+          aside={metric.key === "hr" ? <MaxHrSetting value={maxHr.value} custom={maxHr.custom} /> : undefined}
           selected={point} intervals={intervals} zones={zones} onSelect={choose} />)}
         {!shown.length && <p className="py-4 text-sm text-stone-500">{text.streamMissing}</p>}
       </div>

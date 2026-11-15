@@ -22,9 +22,9 @@ export function mergeZoneIntervals(intervals: readonly ZoneInterval[]): ZoneInte
 }
 
 /** Interpolate only a clipped endpoint inside its actual raw recorded-distance pair. */
-export function activityZoneSelectionIntervals(stream: ActivityStreams | null, elapsedSeconds: number): ZoneInterval[] {
+export function activityZoneSelectionIntervals(stream: ActivityStreams | null, elapsedSeconds: number, maxHr?: number): ZoneInterval[] {
   const distanceAvailable = stream !== null && hasRecordedDistance(stream);
-  return mergeZoneIntervals(activityZoneIntervals(stream, elapsedSeconds).map(({ sample, ...interval }) => {
+  return mergeZoneIntervals(activityZoneIntervals(stream, elapsedSeconds, maxHr).map(({ sample, ...interval }) => {
     const start = distanceAvailable ? stream?.distance?.[sample] : null;
     const end = distanceAvailable ? stream?.distance?.[sample + 1] : null;
     const startTime = stream?.time[sample], endTime = stream?.time[sample + 1];

@@ -61,6 +61,8 @@ export const dashboardSchema = z.object({
   connected: z.boolean(), consentCurrent: z.boolean(), syncActive: z.boolean(), syncPage: finite,
   lastSyncedAt: z.iso.datetime().nullable(), retryAt: z.iso.datetime().nullable(), pending: finite,
   activities: z.array(activitySummarySchema), settings: settingsSchema,
+  /** Whether `settings.maxHr` is the account's saved value rather than the default preset. */
+  maxHrCustom: z.boolean().default(false),
   maximalEfforts: z.array(activitySummarySchema),
   weeklyVolumes: z.array(z.object({ start: z.iso.date(), distanceMeters: finite.nonnegative(), movingSeconds: finite.nonnegative() })),
   volumeBuckets: z.array(volumeBucketSchema),

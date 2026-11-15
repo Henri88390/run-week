@@ -9,8 +9,8 @@ import { STRAVA_MESSAGES } from "../messages";
 import { ACTIVITY_ZONE_COLORS } from "../activity-zone-palette";
 import { DisclosureHeading } from "./disclosure-heading";
 
-export function ActivityZones({ zoneTimes, elapsedSeconds, selected, onToggle }: {
-  zoneTimes: { zones: number[]; unclassified: number }; elapsedSeconds: number;
+export function ActivityZones({ zoneTimes, elapsedSeconds, maxHr, selected, onToggle }: {
+  zoneTimes: { zones: number[]; unclassified: number }; elapsedSeconds: number; maxHr: number;
   selected: readonly number[]; onToggle: (zone: number) => void;
 }) {
   const { locale, t } = useI18n();
@@ -29,7 +29,7 @@ export function ActivityZones({ zoneTimes, elapsedSeconds, selected, onToggle }:
       {zoneTimes.zones.map((seconds, index) => {
         const zone = index + 1;
         const labels = ["<70%", "70–80%", "80–85%", "85–90%", "≥90%"];
-        const [min, max] = activityZoneBounds(zone);
+        const [min, max] = activityZoneBounds(zone, maxHr);
         const color = ACTIVITY_ZONE_COLORS[index];
         const style: CSSProperties & { "--activity-zone-color": string } = { "--activity-zone-color": color };
         return <li key={zone}>

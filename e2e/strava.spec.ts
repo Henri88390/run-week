@@ -279,7 +279,9 @@ test("cross-training backfills completed accounts and shows accessible weekly sp
   await expect(volume.locator('[data-volume-series-label="cycling"] [data-sport-icon="cycling"]')).toHaveCount(1);
   expect(await labelColor("cycling")).not.toBe(await labelColor("swimming"));
   await volume.locator('[role="img"]').first().focus();
-  await expect(volume.locator('[aria-live="polite"]')).toContainText(/Running .* · Cycling .* · Total /);
+  const readout = volume.locator('[aria-live="polite"]');
+  await expect(readout).toContainText(/Running .* · Walking .* · Swimming .* · Total /);
+  await expect(readout).not.toContainText("Cross-training");
   await cyclingSeries.uncheck();
   await expect(volume.locator(".volume-cycling")).toHaveCount(0);
   await expect(volume.locator(".volume-swimming")).toHaveCount(1);
@@ -839,7 +841,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     const paceSummary = page.locator("dl > div").filter({ has: page.getByText("Average moving pace", { exact: true }) });
     await expect(paceSummary.locator("dd")).toHaveText(/^\d+:[0-5]\d min\/km$/);
     await expect(page.getByRole("heading", { name: "Manual HR settings" })).toHaveCount(0);
-    await expect(page.getByText("HRMax: 190 bpm")).toBeVisible();
+    await expect(page.getByText("HRMax: 190 bpm", { exact: true })).toBeVisible();
     await expect(page.locator("[data-weekly-volume]")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.mouse.move(0, 0);
@@ -1188,6 +1190,71 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await chart.screenshot({ path: test.info().outputPath("activity-chart-mobile.png") });
+    const maxHrSetting = hrTrack.locator("[data-max-hr-setting]");
+    const maxHrUrl = page.url();
+    await expect(maxHrSetting.locator("[data-max-hr]")).toHaveText("HRmax: 190 bpm");
+    await expect(maxHrSetting.locator("[data-max-hr-source]")).toHaveText("Default");
+    await expect(hrTrack.locator('[data-max-hr-line="190"]')).toContainText("HRmax 190");
+    await expect(page.locator('[data-zone-button="5"]')).toContainText("(171.0–≤240.0 bpm)");
+    await expect(maxHrSetting.getByRole("button", { name: /Reset to default/ })).toHaveCount(0);
+    const origin = { Origin: new URL(maxHrUrl).origin };
+    expect((await page.request.put("/api/strava/settings", { data: { maxHr: 200 } })).status()).toBe(403);
+    expect((await page.request.put("/api/strava/settings", { data: { maxHr: 59 }, headers: origin })).status()).toBe(400);
+    expect((await page.request.put("/api/strava/settings", { data: { maxHr: 200, zoneBounds: [] }, headers: origin })).status()).toBe(400);
+    const editMaxHr = maxHrSetting.getByRole("button", { name: "Edit maximum heart rate" });
+    await editMaxHr.click();
+    const maxHrInput = maxHrSetting.getByLabel("Maximum heart rate (bpm)");
+    await expect(maxHrInput).toBeFocused();
+    await expect(maxHrInput).toHaveValue("190");
+    await page.keyboard.press("Escape");
+    await expect(maxHrInput).toHaveCount(0);
+    await expect(editMaxHr).toBeFocused();
+    await editMaxHr.click();
+    await maxHrInput.fill("300");
+    await maxHrSetting.getByRole("button", { name: "Save" }).click();
+    await expect(maxHrSetting.getByRole("alert")).toHaveText("Enter a whole number between 60 and 240.");
+    await expect(maxHrInput).toHaveAttribute("aria-invalid", "true");
+    await maxHrInput.fill("200");
+    await maxHrInput.press("Enter");
+    await expect(maxHrSetting.getByRole("status")).toHaveText("Maximum heart rate saved. Zones were updated.");
+    await expect(maxHrSetting.locator("[data-max-hr]")).toHaveText("HRmax: 200 bpm");
+    await expect(maxHrSetting.locator("[data-max-hr-source]")).toHaveText("Custom");
+    await expect(hrTrack.locator('[data-max-hr-line="200"]')).toContainText("HRmax 200");
+    await expect(page.locator('[data-zone-button="5"]')).toContainText("(180.0–≤240.0 bpm)");
+    await expect(editMaxHr).toBeFocused();
+    expect((await query(`SELECT "maxHr" FROM "RunningAnalyticsSettings" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email])).rows[0].maxHr).toBe(200);
+    await page.reload();
+    await expect(maxHrSetting.locator("[data-max-hr]")).toHaveText("HRmax: 200 bpm");
+    await page.goto(`/activities?month=${month}`);
+    await expect(page.getByText("HRMax: 200 bpm", { exact: true })).toBeVisible();
+    // The same account setting can be edited from the activities page's above-threshold card.
+    const thresholdMaxHr = page.locator("[data-threshold-card] [data-max-hr-setting]");
+    await expect(thresholdMaxHr.locator("[data-max-hr]")).toHaveText("HRmax: 200 bpm");
+    await expect(thresholdMaxHr.locator("[data-max-hr-source]")).toHaveText("Custom");
+    console.log("TEMPWEEK before", JSON.stringify(await page.locator("[data-week-above]").allTextContents())); // TEMP
+    await thresholdMaxHr.getByRole("button", { name: "Edit maximum heart rate" }).click();
+    await thresholdMaxHr.getByLabel("Maximum heart rate (bpm)").fill("120"); // TEMP
+    await thresholdMaxHr.getByRole("button", { name: "Save" }).click(); // TEMP
+    await expect(thresholdMaxHr.locator("[data-max-hr]")).toHaveText("HRmax: 120 bpm"); // TEMP
+    await page.waitForTimeout(3000); // TEMP
+    console.log("TEMPWEEK after", JSON.stringify(await page.locator("[data-week-above]").allTextContents()), JSON.stringify(await page.locator("[data-threshold-card]").innerText())); // TEMP
+    await page.reload(); // TEMP
+    console.log("TEMPWEEK reload", JSON.stringify(await page.locator("[data-week-above]").allTextContents())); // TEMP
+    await thresholdMaxHr.getByRole("button", { name: "Edit maximum heart rate" }).click();
+    await thresholdMaxHr.getByLabel("Maximum heart rate (bpm)").fill("195");
+    await thresholdMaxHr.getByRole("button", { name: "Save" }).click();
+    await expect(thresholdMaxHr.getByRole("status")).toHaveText("Maximum heart rate saved. Zones were updated.");
+    await expect(thresholdMaxHr.locator("[data-max-hr]")).toHaveText("HRmax: 195 bpm");
+    await expect(page.getByText("HRMax: 195 bpm", { exact: true })).toBeVisible();
+    expect((await query(`SELECT "maxHr" FROM "RunningAnalyticsSettings" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email])).rows[0].maxHr).toBe(195);
+    await page.goto(maxHrUrl);
+    await expect(maxHrSetting.locator("[data-max-hr]")).toHaveText("HRmax: 195 bpm");
+    await maxHrSetting.getByRole("button", { name: "Reset to default (190 bpm)" }).click();
+    await expect(maxHrSetting.getByRole("status")).toHaveText("Default maximum heart rate restored.");
+    await expect(maxHrSetting.locator("[data-max-hr]")).toHaveText("HRmax: 190 bpm");
+    await expect(maxHrSetting.locator("[data-max-hr-source]")).toHaveText("Default");
+    await expect(page.locator('[data-zone-button="5"]')).toContainText("(171.0–≤240.0 bpm)");
+    expect((await query(`SELECT "maxHr" FROM "RunningAnalyticsSettings" WHERE "userId"=(SELECT id FROM "User" WHERE email=$1)`, [email])).rows[0].maxHr).toBeNull();
     const detailUrl = page.url();
     const detailId = detailUrl.split("/").at(-1);
     const original = (await query('SELECT streams, "elevationGainMeters" FROM "StravaActivity" WHERE id=$1', [detailId])).rows[0];
@@ -1195,7 +1262,7 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.reload();
     await expect(page.locator("[data-activity-summary] > div").filter({ hasText: "Elevation gain (D+)" }).locator("dd")).toHaveText("Unavailable");
     await expect(altitudeLine).toHaveCount(0);
-    await expect(page.getByText("Elevation: Unavailable", { exact: true })).toBeVisible();
+    await expect(page.getByText("Elevation: Unavailable", { exact: true }).filter({ visible: true })).toHaveCount(1);
     await expect(hrLine).toHaveCount(1);
     await query('UPDATE "StravaActivity" SET "elevationGainMeters"=0 WHERE id=$1', [detailId]);
     await page.reload();
@@ -1353,6 +1420,9 @@ test("website Strava OAuth, bounded summaries/streams, privacy and analytics", a
     await page.getByRole("link", { name: "Year", exact: true }).click();
     await expect(page).toHaveURL(/view=year&year=2026/);
     await expect(page.locator("[data-year-month]")).toHaveCount(12);
+    // The grouping chosen for the multi-month period is kept for the year.
+    await expect(granularity.getByRole("radio", { name: "Per week" })).toBeChecked();
+    await granularity.getByRole("radio", { name: "Per month" }).check();
     await expect(page.locator("[data-volume-chart] [data-volume-bucket]").filter({ visible: true })).toHaveCount(12);
     await expect(page.locator("[data-statistics-range]")).toHaveCount(0);
     await expect(hrCard.getByRole("listitem").filter({ hasText: "Z5" })).toContainText("0 h 30 min");

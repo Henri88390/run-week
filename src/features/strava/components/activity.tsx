@@ -19,10 +19,10 @@ import { isRunning } from "../sports";
 import { CROSS_TRAINING_MESSAGES, sportLabel } from "../cross-training-messages";
 
 export type { ChartPoint } from "./activity-chart";
-export function ActivityDetail({ activity, points, splits, zoneTimes, zoneIntervals }: {
+export function ActivityDetail({ activity, points, splits, zoneTimes, zoneIntervals, maxHr }: {
   activity: ActivitySummary; points: ChartPoint[]; splits: KilometreSplit[];
   zoneTimes: { zones: number[]; unclassified: number };
-  zoneIntervals: ZoneInterval[];
+  zoneIntervals: ZoneInterval[]; maxHr: { value: number; custom: boolean };
 }) {
   const { locale, t } = useI18n();
   const text = STRAVA_MESSAGES[locale];
@@ -64,14 +64,14 @@ export function ActivityDetail({ activity, points, splits, zoneTimes, zoneInterv
     </details>
     {running && !points.length && <p>{text.streamMissing}</p>}
     {running && <ActivityAnalysis key={activity.id} points={points} splits={splits} zoneTimes={zoneTimes}
-      zoneIntervals={zoneIntervals} elapsedSeconds={activity.elapsedSeconds} />}
+      zoneIntervals={zoneIntervals} elapsedSeconds={activity.elapsedSeconds} maxHr={maxHr} />}
   </div>;
 }
 
 /** Smallest shared interactive parent; navigating to another activity resets selection. */
-function ActivityAnalysis({ points, splits, zoneTimes, zoneIntervals, elapsedSeconds }: {
+function ActivityAnalysis({ points, splits, zoneTimes, zoneIntervals, elapsedSeconds, maxHr }: {
   points: ChartPoint[]; splits: KilometreSplit[]; zoneTimes: { zones: number[]; unclassified: number };
-  zoneIntervals: ZoneInterval[]; elapsedSeconds: number;
+  zoneIntervals: ZoneInterval[]; elapsedSeconds: number; maxHr: { value: number; custom: boolean };
 }) {
   const [selected, setSelected] = useState<number[]>([]);
   const [selectedZones, setSelectedZones] = useState<number[]>([]);
@@ -80,10 +80,10 @@ function ActivityAnalysis({ points, splits, zoneTimes, zoneIntervals, elapsedSec
     selected: selectedZones, intervals: selectedZoneIntervals(zoneIntervals, selectedZones),
   }), [zoneIntervals, selectedZones]);
   return <>
-    <ActivityChart points={points} intervals={intervals} zones={zones} />
+    <ActivityChart points={points} intervals={intervals} zones={zones} maxHr={maxHr} />
     <KilometreSplits splits={splits} selected={selected}
       onToggle={(number) => setSelected((current) => toggleSplit(current, number))} />
-    <ActivityZones zoneTimes={zoneTimes} elapsedSeconds={elapsedSeconds} selected={selectedZones}
+    <ActivityZones zoneTimes={zoneTimes} elapsedSeconds={elapsedSeconds} maxHr={maxHr.value} selected={selectedZones}
       onToggle={(number) => setSelectedZones((current) => toggleSplit(current, number))} />
   </>;
 }

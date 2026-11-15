@@ -18,6 +18,7 @@ import { PERFORMANCE_MESSAGES } from "../performance-messages";
 import { periodAnchor, periodFromSearch, useActivityQuery } from "./activity-query";
 import { MaximalEffort } from "./maximal-effort";
 import { PaceHistogram } from "./pace-histogram";
+import { MaxHrSetting } from "./max-hr-setting";
 import { MetricDefinition } from "./metric-definition";
 import { METRIC_DEFINITIONS } from "../metric-definitions";
 import { INDICATOR_MESSAGES } from "../indicator-messages";
@@ -332,7 +333,7 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
       <section className="grid gap-4 md:grid-cols-2">
         <article className="panel space-y-3"><div className="flex items-baseline justify-between gap-2">
           <h2 className="min-w-0 text-xl font-semibold">{text.zones}</h2>
-          <p className="shrink-0 text-sm text-stone-600">HRMax: {PRESET_MAX_HR} bpm</p>
+          <p className="shrink-0 text-sm text-stone-600">HRMax: {data.settings.maxHr ?? PRESET_MAX_HR} bpm</p>
         </div>
           {zoneTotal > 0 ? <ul className="space-y-3">{data.zones.map((zone) => <li key={zone.zone}>
             <div className="flex justify-between gap-2 text-sm"><span>{zoneLabels[zone.zone - 1]} · {formatDecimal(locale, zone.min)}–{formatDecimal(locale, zone.max)} bpm</span><span>{unit(zone.seconds)} ({formatDecimal(locale, zone.seconds / zoneTotal * 100)}%)</span></div>
@@ -340,7 +341,8 @@ export function ActivityDashboard({ data: initialData, metrics = false, notice: 
           </li>)}</ul> : <p>{text.unavailable}</p>}
         </article>
         <PaceHistogram distribution={data.paceDistribution} />
-        <article className="panel space-y-3"><h2 className="text-xl font-semibold">{hrText.aboveTime} (&gt;90%)</h2>
+        <article data-threshold-card className="panel space-y-3"><h2 className="text-xl font-semibold">{hrText.aboveTime} (&gt;90%)</h2>
+          <MaxHrSetting value={data.settings.maxHr ?? PRESET_MAX_HR} custom={data.maxHrCustom} />
           {data.threshold && thresholdTotal > 0 ? <ul className="space-y-3">{[[text.below, data.threshold.below], [calendarText.above, data.threshold.above]].map(([label, value]) => {
             const seconds = typeof value === "number" ? value : 0;
             return <li key={label}><div className="flex justify-between gap-2 text-sm"><span>{label}</span><span>{unit(seconds)} ({formatDecimal(locale, seconds / thresholdTotal * 100)}%)</span></div>

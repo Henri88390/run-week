@@ -102,6 +102,7 @@ assert.equal(zoneResult.unclassified, 50, "Gaps, missing readings and uncovered 
 assert.equal(zoneResult.zones.reduce((a, b) => a + b, 0) + zoneResult.unclassified, 110);
 assert.deepEqual(heartRateTimes([zoneStream], { maxHr: 190 }).zones.map((z) => z.seconds), zoneResult.zones);
 assert.deepEqual(activityZoneTimes(null, 60), { zones: [0, 0, 0, 0, 0], unclassified: 60 });
+assert.deepEqual(activityZoneTimes(zoneStream, 110, 200).zones, [20, 10, 10, 10, 10], "A saved HRmax reclassifies activity zones");
 assert.equal(activityZoneTimes({ ...zoneStream, time: [0, 10, 5] }, 60).unclassified, 60);
 assert.deepEqual(activityZoneTimes({ ...zoneStream, time: [0, 10], heartrate: [160, null] }, 5),
   { zones: [0, 0, 5, 0, 0], unclassified: 0 }, "Left-sample hold and elapsed clipping match dashboard semantics");
@@ -170,7 +171,8 @@ for (const locale of LOCALES) assert.ok(STREAM_MESSAGES[locale].selectionHelp.le
 const { activityZoneSelectionIntervals, selectedZoneIntervals, mergeZoneIntervals } = load("src/features/strava/zone-selection.ts");
 const { activityZoneBounds } = load("src/features/strava/analytics.ts");
 const { ACTIVITY_ZONES_MESSAGES } = load("src/features/strava/activity-zones-messages.ts");
-assert.deepEqual([1, 2, 3, 4, 5].map(activityZoneBounds), [[30, 133], [133, 152], [152, 161.5], [161.5, 171], [171, 240]]);
+assert.deepEqual([1, 2, 3, 4, 5].map((zone) => activityZoneBounds(zone)), [[30, 133], [133, 152], [152, 161.5], [161.5, 171], [171, 240]]);
+assert.deepEqual([1, 2, 3, 4, 5].map((zone) => activityZoneBounds(zone, 200)), [[30, 140], [140, 160], [160, 170], [170, 180], [180, 240]], "Custom HRmax moves activity zone bounds");
 const boundaryHrs = [29, 30, 132.99, 133, 151.99, 152, 161.49, 161.5, 170.99, 171, 190, 191, 240, 241, NaN, null];
 const boundaryStream = { time: Array.from({ length: boundaryHrs.length + 1 }, (_, i) => i * 5),
   heartrate: [...boundaryHrs, 150], distance: null, velocity_smooth: null, altitude: null };
